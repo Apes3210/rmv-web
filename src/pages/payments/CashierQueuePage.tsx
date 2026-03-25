@@ -1,20 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { CreditCard, CheckCircle, XCircle, AlertTriangle, QrCode, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 
 import { extractErrorMessage, extractItems } from '@/lib/utils';
+import { resolveBlockedAction, type BlockedActionInfo } from '@/lib/blocked-actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { BlockedActionPrompt } from '@/components/shared/BlockedActionPrompt';
 import { PageError } from '@/components/shared/PageError';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { usePendingPayments, useVerifyPayment, useDeclinePayment, useOverduePayments } from '@/hooks/usePayments';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useThemeStore } from '@/stores/theme.store';
+import { useSignature } from '@/hooks/useUsers';
+import { SignaturePad } from '@/components/shared/SignaturePad';
 import {
   Dialog,
   DialogContent,
@@ -41,22 +45,42 @@ export function CashierQueuePage() {
   const isDark = resolvedTheme === 'dark';
   const { data: payments, isLoading, isError, refetch } = usePendingPayments();
   const { data: overduePayments, isLoading: overdueLoading } = useOverduePayments();
+  const { data: savedSignature } = useSignature();
   const verifyMutation = useVerifyPayment();
   const declineMutation = useDeclinePayment();
 
   const [verifyId, setVerifyId] = useState('');
+  const [verifySignatureKey, setVerifySignatureKey] = useState('');
+  const [useNewVerifySignature, setUseNewVerifySignature] = useState(false);
   const [declineDialog, setDeclineDialog] = useState({ open: false, id: '' });
   const [declineReason, setDeclineReason] = useState('');
+  const [blockedAction, setBlockedAction] = useState<BlockedActionInfo | null>(null);
+
+  useEffect(() => {
+    if (!verifyId) return;
+    if (savedSignature?.signatureKey && !useNewVerifySignature && !verifySignatureKey) {
+      setVerifySignatureKey(savedSignature.signatureKey);
+    }
+  }, [savedSignature?.signatureKey, useNewVerifySignature, verifyId, verifySignatureKey]);
 
   const paymentList = extractItems<any>(payments);
   const overduePaymentList = extractItems<any>(overduePayments);
 
   const handleVerify = async () => {
+    if (!verifySignatureKey) {
+      toast.error('Cashier signature is required before verification');
+      return;
+    }
+
     try {
-      await verifyMutation.mutateAsync(verifyId);
+      setBlockedAction(null);
+      await verifyMutation.mutateAsync({ id: verifyId, signatureKey: verifySignatureKey });
       toast.success('Payment verified! The customer has been notified and the project will advance to the next stage.', { duration: 5000 });
       setVerifyId('');
+      setVerifySignatureKey('');
+      setUseNewVerifySignature(false);
     } catch (err) {
+      setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
       toast.error(extractErrorMessage(err, 'Verification failed'));
     }
   };
@@ -67,11 +91,13 @@ export function CashierQueuePage() {
       return;
     }
     try {
+      setBlockedAction(null);
       await declineMutation.mutateAsync({ id: declineDialog.id, reason: declineReason });
       toast.success('Payment declined — the customer has been notified and can re-submit.', { duration: 5000 });
       setDeclineDialog({ open: false, id: '' });
       setDeclineReason('');
     } catch (err) {
+      setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
       toast.error(extractErrorMessage(err, 'Decline failed'));
     }
   };
@@ -84,6 +110,15 @@ export function CashierQueuePage() {
         <h1 className="text-2xl font-bold tracking-tight text-[#1d1d1f] dark:text-slate-50">Cashier Queue</h1>
         <p className="text-sm text-[#616a74] dark:text-slate-300">Review and verify payment submissions</p>
       </div>
+
+      {blockedAction && (
+        <BlockedActionPrompt
+          title={blockedAction.title}
+          reason={blockedAction.reason}
+          actionLabel={blockedAction.actionLabel}
+          actionPath={blockedAction.actionPath}
+        />
+      )}
 
       {isLoading ? (
         <div className="space-y-3">
@@ -152,7 +187,16 @@ export function CashierQueuePage() {
                   <Button
                     size="sm"
                     className={isDark ? 'rounded-lg border border-emerald-400/45 bg-[linear-gradient(180deg,rgba(34,197,94,0.94)_0%,rgba(21,128,61,0.98)_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_28px_rgba(6,78,59,0.3)] hover:bg-[linear-gradient(180deg,rgba(52,211,153,0.98)_0%,rgba(22,163,74,0.98)_100%)] disabled:opacity-100 dark:disabled:border-white/10 dark:disabled:bg-[#1b2432] dark:disabled:text-slate-500 dark:disabled:shadow-none' : 'rounded-lg border border-emerald-400 bg-[linear-gradient(180deg,#22c55e_0%,#15803d_100%)] text-white hover:bg-[linear-gradient(180deg,#34d399_0%,#16a34a_100%)]'}
-                    onClick={() => setVerifyId(String(p._id))}
+                    onClick={() => {
+                      setVerifyId(String(p._id));
+                      if (savedSignature?.signatureKey) {
+                        setVerifySignatureKey(savedSignature.signatureKey);
+                        setUseNewVerifySignature(false);
+                      } else {
+                        setVerifySignatureKey('');
+                        setUseNewVerifySignature(true);
+                      }
+                    }}
                     disabled={verifyMutation.isPending}
                   >
                     <CheckCircle className="mr-1 h-3.5 w-3.5" />
@@ -232,18 +276,25 @@ export function CashierQueuePage() {
         return (
           <ConfirmDialog
             open={!!verifyId}
-            onOpenChange={(open) => !open && setVerifyId('')}
+            onOpenChange={(open) => {
+              if (!open) {
+                setVerifyId('');
+                setVerifySignatureKey('');
+                setUseNewVerifySignature(false);
+              }
+            }}
             title="Verify Payment"
             description="Review the details below, then confirm to mark this payment as verified. A receipt will be generated."
             confirmLabel="Verify Payment"
             isLoading={verifyMutation.isPending}
             onConfirm={handleVerify}
+            confirmDisabled={!verifySignatureKey || verifyMutation.isPending}
             confirmClassName={isDark
               ? 'min-w-[8.5rem] border border-emerald-400/45 bg-[linear-gradient(180deg,rgba(34,197,94,0.94)_0%,rgba(21,128,61,0.98)_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_14px_28px_rgba(6,78,59,0.3)] hover:bg-[linear-gradient(180deg,rgba(52,211,153,0.98)_0%,rgba(22,163,74,0.98)_100%)] disabled:opacity-100 dark:disabled:border-white/10 dark:disabled:bg-[#1b2432] dark:disabled:text-slate-500 dark:disabled:shadow-none'
               : 'min-w-[8.5rem] border border-emerald-400 bg-[linear-gradient(180deg,#22c55e_0%,#15803d_100%)] text-white hover:bg-[linear-gradient(180deg,#34d399_0%,#16a34a_100%)]'}
           >
             {verifyPayment && (
-              <div className={`space-y-2.5 rounded-xl border p-4 text-sm ${isDark ? 'border-slate-700 bg-slate-900/70 text-slate-200' : 'border-[#e8e8ed] bg-[#f5f5f7]/50'}`}>
+              <div className={`space-y-3 rounded-xl border p-4 text-sm ${isDark ? 'border-slate-700 bg-slate-900/70 text-slate-200' : 'border-[#e8e8ed] bg-[#f5f5f7]/50'}`}>
                 <div className="flex justify-between">
                   <span className={isDark ? 'text-slate-400' : 'text-[#86868b]'}>Customer</span>
                   <span className={`font-medium ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>{getPaymentContext(verifyPayment).customerName}</span>
@@ -272,6 +323,51 @@ export function CashierQueuePage() {
                     This payment was confirmed by PayMongo
                   </div>
                 )}
+
+                <div className="space-y-2 rounded-lg border border-dashed border-[#d2d2d7] p-3 dark:border-slate-600">
+                  <p className={`text-xs font-semibold uppercase tracking-wide ${isDark ? 'text-slate-300' : 'text-[#616a74]'}`}>
+                    Cashier Signature
+                  </p>
+                  {savedSignature?.signatureKey && (
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={!useNewVerifySignature ? 'default' : 'outline'}
+                        className="rounded-lg"
+                        onClick={() => {
+                          setUseNewVerifySignature(false);
+                          setVerifySignatureKey(savedSignature.signatureKey!);
+                        }}
+                      >
+                        Use saved signature
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={useNewVerifySignature ? 'default' : 'outline'}
+                        className="rounded-lg"
+                        onClick={() => {
+                          setUseNewVerifySignature(true);
+                          setVerifySignatureKey('');
+                        }}
+                      >
+                        Draw new signature
+                      </Button>
+                    </div>
+                  )}
+
+                  {(!savedSignature?.signatureKey || useNewVerifySignature) && (
+                    <SignaturePad
+                      onSave={(key) => setVerifySignatureKey(key)}
+                      existingKey={!useNewVerifySignature ? savedSignature?.signatureKey : null}
+                    />
+                  )}
+
+                  {verifySignatureKey && (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-300">Signature ready for verification.</p>
+                  )}
+                </div>
               </div>
             )}
           </ConfirmDialog>

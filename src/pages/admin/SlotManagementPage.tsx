@@ -1,8 +1,10 @@
 import { useState, useMemo, useCallback } from 'react';
 import { format, addDays, parse, isWeekend } from 'date-fns';
 import {
+  Calendar,
   CalendarOff,
   ShieldBan,
+  Plus,
   Trash2,
   Loader2,
   Clock,
@@ -37,7 +39,11 @@ import {
   useDeleteBlockedSlot,
   useBulkBlockSlots,
   useBulkDeleteBlockedSlots,
+  useHolidays,
+  useCreateHoliday,
+  useDeleteHoliday,
   type BlockedSlot,
+  type Holiday,
 } from '@/hooks/useConfig';
 
 const SLOT_CODES = ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00'] as const;
@@ -50,9 +56,26 @@ function formatSlotTime(slotCode: string): string {
   return `${displayHour}:00 ${ampm}`;
 }
 
+function formatHolidayDate(dateString: string) {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
 export function SlotManagementPage() {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [activeType, setActiveType] = useState<'office' | 'ocular'>('office');
+  const [holidayYear, setHolidayYear] = useState(String(new Date().getFullYear()));
+  const [addHolidayOpen, setAddHolidayOpen] = useState(false);
+  const [holidayName, setHolidayName] = useState('');
+  const [holidayDate, setHolidayDate] = useState('');
+  const [deleteHoliday, setDeleteHoliday] = useState<{ open: boolean; holiday: Holiday | null }>({
+    open: false,
+    holiday: null,
+  });
 
   // Single-slot dialogs (unchanged)
   const [blockDialog, setBlockDialog] = useState<{ open: boolean; slotCode: string }>({
@@ -83,10 +106,45 @@ export function SlotManagementPage() {
   const [bulkUnblockConfirm, setBulkUnblockConfirm] = useState(false);
 
   const { data: blockedSlots, isLoading } = useBlockedSlots(selectedDate);
+  const { data: holidays, isLoading: holidaysLoading } = useHolidays(holidayYear);
   const createBlock = useCreateBlockedSlot();
   const deleteBlock = useDeleteBlockedSlot();
   const bulkBlock = useBulkBlockSlots();
   const bulkDelete = useBulkDeleteBlockedSlots();
+  const createHoliday = useCreateHoliday();
+  const deleteHolidayMut = useDeleteHoliday();
+
+  const handleAddHoliday = async () => {
+    if (!holidayName.trim()) {
+      toast.error('Holiday name is required');
+      return;
+    }
+    if (!holidayDate) {
+      toast.error('Holiday date is required');
+      return;
+    }
+
+    try {
+      await createHoliday.mutateAsync({ name: holidayName.trim(), date: holidayDate });
+      toast.success('Holiday added');
+      setAddHolidayOpen(false);
+      setHolidayName('');
+      setHolidayDate('');
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to add holiday'));
+    }
+  };
+
+  const handleDeleteHoliday = async () => {
+    if (!deleteHoliday.holiday) return;
+    try {
+      await deleteHolidayMut.mutateAsync(deleteHoliday.holiday._id);
+      toast.success('Holiday removed');
+      setDeleteHoliday({ open: false, holiday: null });
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to remove holiday'));
+    }
+  };
 
   const blockedSet = useMemo(() => {
     if (!blockedSlots) return new Set<string>();
@@ -314,6 +372,76 @@ export function SlotManagementPage() {
             <p className="text-sm font-medium text-amber-600">
               ⚠ This date falls on a weekend. Appointments are not available on weekends.
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Holiday Calendar */}
+      <Card id="holiday-calendar" className="rounded-xl border-gray-100 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
+        <CardHeader className="pb-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg text-gray-900 dark:text-slate-100">
+                <Calendar className="h-5 w-5 text-gray-500 dark:text-slate-400" />
+                Holiday Calendar
+              </CardTitle>
+              <CardDescription className="dark:text-slate-400">
+                Manage full-day appointment blocks for holidays and closure dates.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                value={holidayYear}
+                onChange={(e) => setHolidayYear(e.target.value)}
+                className="h-9 w-24 text-sm"
+                min={2020}
+                max={2050}
+              />
+              <Button
+                size="sm"
+                onClick={() => setAddHolidayOpen(true)}
+                className="rounded-lg"
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                Add Holiday
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {holidaysLoading ? (
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-12 rounded-lg" />
+              ))}
+            </div>
+          ) : !holidays?.length ? (
+            <p className="py-6 text-center text-sm text-gray-400 dark:text-slate-500">
+              No holidays configured for {holidayYear}.
+            </p>
+          ) : (
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {holidays.map((h) => (
+                <div
+                  key={h._id}
+                  className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50/40 p-3 dark:border-slate-700 dark:bg-slate-800/70"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-slate-100">{h.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">{formatHolidayDate(h.date)}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDeleteHoliday({ open: true, holiday: h })}
+                    className="text-red-500 hover:bg-red-50 hover:text-red-700 dark:text-red-300 dark:hover:bg-red-500/10 dark:hover:text-red-200"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -546,6 +674,66 @@ export function SlotManagementPage() {
       </Card>
 
       {/* ── Single Block Dialog ── */}
+
+      <Dialog
+        open={addHolidayOpen}
+        onOpenChange={(open) => {
+          setAddHolidayOpen(open);
+          if (!open) {
+            setHolidayName('');
+            setHolidayDate('');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-sm dark:border-slate-700 dark:bg-slate-900">
+          <DialogHeader>
+            <DialogTitle className="dark:text-slate-100">Add Holiday</DialogTitle>
+            <DialogDescription className="dark:text-slate-400">
+              Block all appointments for a specific date.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <Label className="text-sm font-medium dark:text-slate-300">Holiday name</Label>
+              <Input
+                value={holidayName}
+                onChange={(e) => setHolidayName(e.target.value)}
+                placeholder="e.g. Christmas Day"
+                className="mt-1 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              />
+            </div>
+            <div>
+              <Label className="text-sm font-medium dark:text-slate-300">Date</Label>
+              <Input
+                type="date"
+                value={holidayDate}
+                onChange={(e) => setHolidayDate(e.target.value)}
+                className="mt-1 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddHolidayOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void handleAddHoliday()} disabled={createHoliday.isPending}>
+              {createHoliday.isPending ? 'Adding...' : 'Add Holiday'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={deleteHoliday.open}
+        title="Remove Holiday"
+        description={`Are you sure you want to remove "${deleteHoliday.holiday?.name}"? Appointments will be allowed on this date.`}
+        confirmLabel="Remove Holiday"
+        variant="destructive"
+        loading={deleteHolidayMut.isPending}
+        onConfirm={handleDeleteHoliday}
+        onCancel={() => setDeleteHoliday({ open: false, holiday: null })}
+      />
+
       <Dialog
         open={blockDialog.open}
         onOpenChange={(open) => {

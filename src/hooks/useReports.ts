@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { ApiResponse, AuditLogListResponse } from '@/lib/types';
 
@@ -277,5 +277,85 @@ export function useAuditLogs(params?: { limit?: number; page?: number }, enabled
       return data.data;
     },
     enabled,
+  });
+}
+
+export interface LifecycleMismatchHotspot {
+  targetType?: string;
+  currentStatus?: string;
+  attemptedStatus?: string;
+  refreshRequired?: boolean;
+  count: number;
+  lastSeenAt?: string;
+  hotspotKey?: string;
+  isAcknowledged?: boolean;
+  acknowledgedAt?: string;
+  acknowledgedBy?: string;
+  acknowledgmentNote?: string;
+  escalation?: {
+    ownerTeam: string;
+    ownerRole: string;
+    slaHours: number;
+    runbookPath: string;
+  };
+}
+
+interface LifecycleMismatchHotspotsResponse {
+  total: number;
+  limit: number;
+  refreshRequiredTotal: number;
+  acknowledgedCount?: number;
+  unacknowledgedCount?: number;
+  byTargetType: Array<{ targetType: string; count: number }>;
+  escalationSummary?: {
+    topTargetType: string;
+    ownerTeam: string;
+    ownerRole: string;
+    slaHours: number;
+    runbookPath: string;
+  };
+  trend: {
+    previousWindowTotal: number | null;
+    trendDelta: number | null;
+    trendPercent: number | null;
+  };
+  items: LifecycleMismatchHotspot[];
+}
+
+export function useLifecycleMismatchHotspots(
+  params?: { dateFrom?: string; dateTo?: string; limit?: number },
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['reports', 'lifecycle-mismatch-hotspots', params],
+    queryFn: async () => {
+      const { data } = await api.get<ApiResponse<LifecycleMismatchHotspotsResponse>>(
+        '/reports/lifecycle-mismatch-hotspots',
+        { params },
+      );
+      return data.data;
+    },
+    enabled,
+    refetchInterval: () => getActiveTabRefetchInterval(60_000),
+  });
+}
+
+export function useAcknowledgeLifecycleMismatchHotspot() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      targetType?: string;
+      currentStatus?: string;
+      attemptedStatus?: string;
+      refreshRequired?: boolean;
+      acknowledged?: boolean;
+      note?: string;
+    }) => {
+      const { data } = await api.post('/reports/lifecycle-mismatch-hotspots/acknowledge', payload);
+      return data.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reports', 'lifecycle-mismatch-hotspots'] });
+    },
   });
 }

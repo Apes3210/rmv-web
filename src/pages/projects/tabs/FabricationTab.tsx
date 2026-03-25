@@ -5,9 +5,11 @@ import { Hammer, Plus, Clock, User, Paperclip, Lock, CreditCard, Pencil, Trash2,
 import toast from 'react-hot-toast';
 
 import { extractErrorMessage } from '@/lib/utils';
+import { resolveBlockedAction, type BlockedActionInfo } from '@/lib/blocked-actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { AuthImage } from '@/components/shared/AuthImage';
+import { BlockedActionPrompt } from '@/components/shared/BlockedActionPrompt';
 import { openAuthenticatedFile } from '@/hooks/useUploads';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -43,6 +45,17 @@ interface FabricationTabProps {
   showAssignmentNotice: boolean;
 }
 
+const FABRICATION_STEP_MARKERS: Array<{ key: string; label: string }> = [
+  { key: FabricationStatus.MATERIAL_PREP, label: 'Material Prep' },
+  { key: FabricationStatus.CUTTING, label: 'Cutting' },
+  { key: FabricationStatus.WELDING, label: 'Welding' },
+  { key: FabricationStatus.ASSEMBLY, label: 'Assembly' },
+  { key: FabricationStatus.FINISHING, label: 'Finishing' },
+  { key: FabricationStatus.QUALITY_CHECK, label: 'Quality Check' },
+  { key: FabricationStatus.READY_FOR_DELIVERY, label: 'Ready for Delivery' },
+  { key: FabricationStatus.DONE, label: 'Done' },
+];
+
 export function FabricationTab({
   projectId,
   projectStatus,
@@ -71,6 +84,7 @@ export function FabricationTab({
   // Upload-in-progress guards
   const [uploading, setUploading] = useState(false);
   const [editUploading, setEditUploading] = useState(false);
+  const [blockedAction, setBlockedAction] = useState<BlockedActionInfo | null>(null);
 
   const {
     data: updates,
@@ -89,6 +103,8 @@ export function FabricationTab({
       if (data.projectId !== projectId) return;
       queryClient.invalidateQueries({ queryKey: ['fabrication', 'project', projectId] });
       queryClient.invalidateQueries({ queryKey: ['fabrication', 'status', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     };
 
     sock.on('fabrication:update', handleFabricationUpdate);
@@ -129,12 +145,17 @@ export function FabricationTab({
 
   const isReadyForDelivery = fabricationStatus?.currentStatus === FabricationStatus.READY_FOR_DELIVERY;
   const installationConfirmed = !!installationConfirmedAt;
+  const currentFabricationStepIndex = FABRICATION_STEP_MARKERS.findIndex(
+    (step) => step.key === fabricationStatus?.currentStatus,
+  );
 
   const handleConfirmInstallation = async () => {
     try {
+      setBlockedAction(null);
       await confirmInstallationMutation.mutateAsync(projectId);
       toast.success('Installation confirmed! The fabrication team will coordinate delivery and installation.', { duration: 5000 });
     } catch (err) {
+      setBlockedAction(resolveBlockedAction(err, '/help/projects-fabrication/fabrication-gates-and-payments#overview'));
       toast.error(extractErrorMessage(err, 'Failed to confirm installation'));
     }
   };
@@ -179,6 +200,7 @@ export function FabricationTab({
     }
 
     try {
+      setBlockedAction(null);
       await addUpdateMutation.mutateAsync({
         projectId,
         status,
@@ -195,6 +217,7 @@ export function FabricationTab({
       setNotes('');
       setPhotoKeys([]);
     } catch (err) {
+      setBlockedAction(resolveBlockedAction(err, '/help/projects-fabrication/fabrication-gates-and-payments#overview'));
       toast.error(extractErrorMessage(err, 'Failed to add update'));
     }
   };
@@ -243,6 +266,15 @@ export function FabricationTab({
 
   return (
     <div className="space-y-4">
+      {blockedAction && (
+        <BlockedActionPrompt
+          title={blockedAction.title}
+          reason={blockedAction.reason}
+          actionLabel={blockedAction.actionLabel}
+          actionPath={blockedAction.actionPath}
+        />
+      )}
+
       {/* Customer Fabrication Guide Banner */}
       {isCustomer && fabricationStatus?.currentStatus && fabricationStatus.currentStatus !== FabricationStatus.READY_FOR_DELIVERY && fabricationStatus.currentStatus !== FabricationStatus.DONE && (
         <Card className="rounded-xl border-indigo-200 bg-indigo-50/50 dark:border-indigo-500/35 dark:bg-indigo-500/10">
@@ -266,6 +298,56 @@ export function FabricationTab({
             <div>
               <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">Fabrication Complete</p>
               <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">Your order has been delivered and installed. Thank you!</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Live Fabrication Step Marker */}
+      {fabricationStatus?.currentStatus && (
+        <Card className={`${isDark ? 'metal-panel-strong dark:bg-slate-950/85' : 'metal-panel'} rounded-xl border-[color:var(--color-border)]/60 dark:border-slate-700`}>
+          <CardContent className="space-y-3 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-[var(--color-card-foreground)]'}`}>
+                Fabrication Lifecycle Marker
+              </p>
+              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${isDark ? 'bg-slate-800 text-slate-100' : 'bg-[#edf0f4] text-[#1f2b37]'}`}>
+                {currentFabricationStepIndex >= 0
+                  ? `Step ${currentFabricationStepIndex + 1} of ${FABRICATION_STEP_MARKERS.length}`
+                  : 'Queued'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+              {FABRICATION_STEP_MARKERS.map((step, idx) => {
+                const isCurrent = step.key === fabricationStatus.currentStatus;
+                const isComplete = currentFabricationStepIndex >= 0 && idx < currentFabricationStepIndex;
+                const isQualityCheck = step.key === FabricationStatus.QUALITY_CHECK;
+
+                return (
+                  <div
+                    key={step.key}
+                    className={`rounded-lg border px-2 py-2 text-center text-[11px] font-medium transition-colors ${
+                      isCurrent
+                        ? isDark
+                          ? 'border-sky-400/45 bg-sky-500/20 text-sky-100'
+                          : 'border-sky-300 bg-sky-50 text-sky-800'
+                        : isComplete
+                          ? isDark
+                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                          : isDark
+                            ? 'border-slate-700 bg-slate-900/70 text-slate-400'
+                            : 'border-[#d8dee6] bg-[#f8fafc] text-[#5c6b7a]'
+                    }`}
+                  >
+                    <p className="leading-none">{idx + 1}</p>
+                    <p className={`mt-1 leading-tight ${isQualityCheck && isCurrent ? 'font-semibold' : ''}`}>
+                      {step.label}
+                    </p>
+                  </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>

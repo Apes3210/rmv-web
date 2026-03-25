@@ -330,3 +330,51 @@ export function useConfirmInstallation() {
     },
   });
 }
+
+export function useSubmitProjectReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      rating,
+      comment,
+    }: {
+      projectId: string;
+      rating: number;
+      comment?: string;
+    }) => {
+      const { data } = await api.post<ApiResponse<Project>>(
+        `/projects/${projectId}/review`,
+        { rating, comment },
+      );
+      return data.data;
+    },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: KEYS.detail(variables.projectId) });
+      qc.invalidateQueries({ queryKey: KEYS.all });
+    },
+  });
+}
+
+export function useSkipProjectReview() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      reason,
+    }: {
+      projectId: string;
+      reason?: string;
+    }) => {
+      const { data } = await api.post<ApiResponse<Project>>(
+        `/projects/${projectId}/review/skip`,
+        { reason },
+      );
+      return data.data;
+    },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: KEYS.detail(variables.projectId) });
+      qc.invalidateQueries({ queryKey: KEYS.all });
+    },
+  });
+}

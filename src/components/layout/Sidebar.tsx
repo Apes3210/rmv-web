@@ -9,6 +9,7 @@ import { sidebarNavGroups } from './navigation';
 import {
   LogOut,
   ChevronRight,
+  LifeBuoy,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
@@ -47,6 +48,7 @@ export function Sidebar() {
   const onAppointments = location.pathname === '/appointments' || location.pathname.startsWith('/appointments/');
   const onPayments = location.pathname === '/payments' || location.pathname.startsWith('/payments/');
   const onCashierQueue = location.pathname === '/cashier-queue' || location.pathname.startsWith('/cashier-queue/');
+  const isHelpActive = isNavItemActive(location.pathname, '/help');
 
   useEffect(() => {
     const pending = dashboardSummary?.pendingAppointments ?? 0;
@@ -201,6 +203,22 @@ export function Sidebar() {
                 {user.roles[0]?.replace(/_/g, ' ')}
               </p>
             </div>
+            <ChevronRight className="h-4 w-4 text-[#919ca7]" />
+          </Link>
+
+          <Link
+            to="/help"
+            className={cn(
+              'flex h-10 items-center justify-between rounded-xl px-3 text-[13px] font-medium transition-colors',
+              isHelpActive
+                ? 'bg-[linear-gradient(180deg,rgba(247,249,251,0.17)_0%,rgba(198,206,215,0.09)_100%)] text-[#eef2f6]'
+                : 'text-[#a3adb8] hover:bg-white/[0.06] hover:text-[#eef2f6]',
+            )}
+          >
+            <span className="flex items-center gap-3">
+              <LifeBuoy className="h-4 w-4" />
+              Help Center
+            </span>
             <ChevronRight className="h-4 w-4 text-[#919ca7]" />
           </Link>
 

@@ -13,6 +13,7 @@ import {
   CalendarOff,
   CalendarPlus,
   ReceiptText,
+  LifeBuoy,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -98,6 +99,12 @@ export const sidebarNavGroups: NavGroup[] = [
         icon: ReceiptText,
         roles: [Role.CASHIER, Role.ADMIN],
       },
+      {
+        label: 'My Refunds',
+        path: '/my-refunds',
+        icon: ReceiptText,
+        roles: [Role.CUSTOMER],
+      },
     ],
   },
   {
@@ -160,6 +167,12 @@ export const mobileBottomTabItems: NavItem[] = [
     icon: BarChart3,
     roles: [Role.CASHIER],
   },
+  {
+    label: 'Help',
+    path: '/help',
+    icon: LifeBuoy,
+    roles: Object.values(Role),
+  },
 ];
 
 export const mobileMenuItems: NavItem[] = [
@@ -191,6 +204,7 @@ export const mobileMenuItems: NavItem[] = [
   { label: 'Slot Management', path: '/slot-management', icon: CalendarOff, roles: [Role.ADMIN, Role.APPOINTMENT_AGENT] },
   { label: 'Create Appointment', path: '/appointments/create-for-customer', icon: CalendarPlus, roles: [Role.APPOINTMENT_AGENT] },
   { label: 'Settings', path: '/settings', icon: Settings, roles: [Role.ADMIN] },
+  { label: 'Help Center', path: '/help', icon: LifeBuoy, roles: Object.values(Role) },
 ];
 
 export function getVisibleNavigationPaths(roles: Role[]): Set<string> {

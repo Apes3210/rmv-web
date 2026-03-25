@@ -5,6 +5,7 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 import { extractErrorMessage } from '@/lib/utils';
+import { resolveBlockedAction, type BlockedActionInfo } from '@/lib/blocked-actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { api } from '@/lib/api';
@@ -13,11 +14,13 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { CollectionToolbar } from '@/components/shared/CollectionToolbar';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { BlockedActionPrompt } from '@/components/shared/BlockedActionPrompt';
 import { useProjects } from '@/hooks/useProjects';
 import {
   usePaymentPlan,
   usePaymentsByProject,
   useStageCheckout,
+  useRequestStageCashPayment,
   useSimulateStagePayment,
   useRecordCashPayment,
   useMyPaymentHistory,
@@ -60,10 +63,12 @@ export function PaymentsPage() {
   const { data: plan, isLoading: planLoading } = usePaymentPlan(selectedProjectId);
   const { data: payments } = usePaymentsByProject(selectedProjectId);
   const stageCheckout = useStageCheckout();
+  const requestStageCash = useRequestStageCashPayment();
   const simulatePayment = useSimulateStagePayment();
   const recordCash = useRecordCashPayment();
 
   const [searchParams, setSearchParams] = useSearchParams();
+  const [blockedAction, setBlockedAction] = useState<BlockedActionInfo | null>(null);
 
   const [cashDialog, setCashDialog] = useState<{ open: boolean; stageId: string; amount: number }>({
     open: false,
@@ -150,6 +155,7 @@ export function PaymentsPage() {
 
   const handleQrCheckout = async (stageId: string) => {
     try {
+      setBlockedAction(null);
       const result = await stageCheckout.mutateAsync(stageId);
       window.open(result.checkoutUrl, '_blank');
       toast.success(
@@ -157,16 +163,32 @@ export function PaymentsPage() {
         { duration: 6000 },
       );
     } catch (err) {
+      setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
       toast.error(extractErrorMessage(err, 'Failed to create checkout session'));
     }
   };
 
   const handleSimulate = async (stageId: string) => {
     try {
+      setBlockedAction(null);
       await simulatePayment.mutateAsync(stageId);
       toast.success('Payment simulated — awaiting cashier verification');
     } catch (err) {
+      setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
       toast.error(extractErrorMessage(err, 'Simulation failed'));
+    }
+  };
+
+  const handleRequestCash = async (stageId: string) => {
+    try {
+      setBlockedAction(null);
+      await requestStageCash.mutateAsync(stageId);
+      toast.success('Cash payment request submitted. A cashier will verify it shortly.', {
+        duration: 5000,
+      });
+    } catch (err) {
+      setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
+      toast.error(extractErrorMessage(err, 'Failed to request cash payment'));
     }
   };
 
@@ -177,6 +199,7 @@ export function PaymentsPage() {
       return;
     }
     try {
+      setBlockedAction(null);
       const result = await recordCash.mutateAsync({
         stageId: cashDialog.stageId,
         amountPaid: amount,
@@ -185,12 +208,22 @@ export function PaymentsPage() {
       setCashDialog({ open: false, stageId: '', amount: 0 });
       setCashAmount('');
     } catch (err) {
+      setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
       toast.error(extractErrorMessage(err, 'Failed to record cash payment'));
     }
   };
 
   return (
     <div className="space-y-5">
+      {blockedAction && (
+        <BlockedActionPrompt
+          title={blockedAction.title}
+          reason={blockedAction.reason}
+          actionLabel={blockedAction.actionLabel}
+          actionPath={blockedAction.actionPath}
+        />
+      )}
+
       {/* ═══════════════════════════════════════════════════════
           LEVEL 1 — PROJECT LIST VIEW (no project selected)
           ═══════════════════════════════════════════════════════ */}
@@ -693,6 +726,16 @@ export function PaymentsPage() {
                             </Button>
                             <Button
                               size="sm"
+                              variant="outline"
+                              className="rounded-lg border-[#93ad9d] text-xs h-8 text-[#4e6c5a] hover:bg-[linear-gradient(180deg,#eef6f1_0%,#dceade_100%)]"
+                              onClick={() => handleRequestCash(String(stage.stageId))}
+                              disabled={requestStageCash.isPending}
+                            >
+                              <Banknote className="mr-1 h-3.5 w-3.5" />
+                              Pay in Cash
+                            </Button>
+                            <Button
+                              size="sm"
                               variant="ghost"
                               className="metal-pill rounded-lg text-xs h-8 text-[#171b21] dark:text-slate-200 hover:text-[#4d5660] dark:hover:text-white"
                               onClick={() => handleSimulate(String(stage.stageId))}
@@ -775,6 +818,15 @@ export function PaymentsPage() {
                               >
                                 <QrCode className="mr-1 h-3 w-3" />
                                 {isEarlyPay ? 'Early QR' : 'Pay QR'}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="rounded-lg border-[#93ad9d] text-[#4e6c5a] hover:bg-[linear-gradient(180deg,#eef6f1_0%,#dceade_100%)] text-xs h-7 px-2"
+                                onClick={() => handleRequestCash(String(stage.stageId))}
+                                disabled={requestStageCash.isPending}
+                              >
+                                <Banknote className="mr-1 h-3 w-3" /> Cash
                               </Button>
                               <Button
                                 size="sm"

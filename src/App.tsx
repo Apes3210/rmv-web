@@ -180,6 +180,16 @@ const RefundQueuePage = lazy(() =>
     default: module.RefundQueuePage,
   })),
 );
+const MyRefundsPage = lazy(() =>
+  import('@/pages/refunds/MyRefundsPage').then((module) => ({
+    default: module.MyRefundsPage,
+  })),
+);
+const HelpCenterPage = lazy(() =>
+  import('@/pages/HelpCenterPage').then((module) => ({
+    default: module.HelpCenterPage,
+  })),
+);
 
 const NotFoundPage = lazy(() =>
   import('@/pages/errors/NotFoundPage').then((module) => ({ default: module.NotFoundPage })),
@@ -270,6 +280,7 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/notifications" element={<NotificationsPage />} />
+              <Route path="/help/*" element={<HelpCenterPage />} />
 
               {/* Account settings (nested tabs) */}
               <Route path="/account" element={<AccountLayout />}>
@@ -353,6 +364,16 @@ export default function App() {
               >
                 <Route path="/cashier-queue" element={<CashierQueuePage />} />
                 <Route path="/refund-requests" element={<RefundQueuePage />} />
+              </Route>
+
+              <Route
+                element={
+                  <ProtectedRoute
+                    allowedRoles={[Role.CUSTOMER]}
+                  />
+                }
+              >
+                <Route path="/my-refunds" element={<MyRefundsPage />} />
               </Route>
 
               <Route

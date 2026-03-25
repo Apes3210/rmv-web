@@ -14,6 +14,9 @@ import {
   Loader2,
   LayoutDashboard,
   X,
+  CircleCheckBig,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth.store';
 import { useNotificationStore } from '@/stores/notification.store';
@@ -25,6 +28,14 @@ import { canAccessPath } from '@/lib/auth-routing';
 import { getVisibleNavigationPaths } from './navigation';
 import toast from 'react-hot-toast';
 import type { Project, Appointment, User } from '@/lib/types';
+import { useSignature } from '@/hooks/useUsers';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 const pageMeta: Record<string, { title: string; description: string }> = {
   dashboard: { title: 'Dashboard', description: 'Your project overview at a glance' },
@@ -37,6 +48,7 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   reports: { title: 'Reports', description: 'Analytics and insights' },
   users: { title: 'Manage Accounts', description: 'User and access management' },
   settings: { title: 'Settings', description: 'System configuration' },
+  help: { title: 'Help Center', description: 'Guides and support information' },
   notifications: { title: 'Notifications', description: 'Updates and alerts' },
   account: { title: 'Account Settings', description: 'Manage your account' },
   'cashier-queue': { title: 'Cashier Queue', description: 'Process pending payments' },
@@ -144,6 +156,13 @@ const quickSearchItems: QuickSearchItem[] = [
     roles: Object.values(Role),
   },
   {
+    title: 'Help Center',
+    path: '/help',
+    description: 'Support articles and contact details',
+    keywords: ['help', 'support', 'faq', 'guides'],
+    roles: Object.values(Role),
+  },
+  {
     title: 'Security',
     path: '/account/security',
     description: 'Change your password',
@@ -226,6 +245,41 @@ export function AppLayout() {
   const { unreadCount, setNotifications, addNotification } = useNotificationStore();
   const { data: notificationsData } = useNotifications({ limit: '50' });
   const queryClient = useQueryClient();
+  const { data: signatureData } = useSignature();
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  const profileChecks = useMemo(() => {
+    if (!user) return { completed: 0, total: 3, percent: 0 };
+    const hasAddress = Boolean(
+      user.addressData?.formattedAddress
+      || user.addressData?.street
+      || user.addressData?.city,
+    );
+    const completed = [
+      Boolean(user.isEmailVerified),
+      hasAddress,
+      Boolean(signatureData?.signatureKey),
+    ].filter(Boolean).length;
+    return {
+      completed,
+      total: 3,
+      percent: Math.round((completed / 3) * 100),
+    };
+  }, [signatureData?.signatureKey, user]);
+
+  const profileChecklist = useMemo(() => {
+    if (!user) return [] as Array<{ label: string; done: boolean; path: string }>;
+    const hasAddress = Boolean(
+      user.addressData?.formattedAddress
+      || user.addressData?.street
+      || user.addressData?.city,
+    );
+    return [
+      { label: 'Verify your email address', done: Boolean(user.isEmailVerified), path: '/account/security' },
+      { label: 'Complete your address details', done: hasAddress, path: '/account/profile' },
+      { label: 'Save your e-signature', done: Boolean(signatureData?.signatureKey), path: '/account/profile' },
+    ];
+  }, [signatureData?.signatureKey, user]);
 
   // ── Real-time socket connection ──────────────────────────────────────
   const addNotificationRef = useRef(addNotification);
@@ -244,10 +298,38 @@ export function AppLayout() {
       toast(n.title + ': ' + n.message);
     };
 
+    const handlePaymentsQueueUpdate = (payload: { type?: string; amountPaid?: number }) => {
+      queryClientRef.current.invalidateQueries({ queryKey: ['payments', 'pending'] });
+      queryClientRef.current.invalidateQueries({ queryKey: ['payments', 'overdue'] });
+      queryClientRef.current.invalidateQueries({ queryKey: ['refunds'] });
+      queryClientRef.current.invalidateQueries({ queryKey: ['dashboard-summary'] });
+
+      if (!user.roles.includes(Role.CASHIER)) return;
+
+      const messageByType: Record<string, string> = {
+        payment_submitted: 'New customer payment is waiting in cashier queue.',
+        payment_verified: 'A payment was verified. Queue has been updated.',
+        payment_declined: 'A payment was declined. Queue has been updated.',
+        cash_payment_recorded: 'A cash payment was recorded.',
+        refund_submitted: 'New refund request is waiting for review.',
+        refund_approved: 'A refund request was approved.',
+        refund_denied: 'A refund request was denied.',
+      };
+
+      const message = payload.type ? messageByType[payload.type] ?? 'Cashier queue was updated.' : 'Cashier queue was updated.';
+      toast(message);
+
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        void new Notification('RMV Cashier Queue', { body: message });
+      }
+    };
+
     sock.on('notification:new', handleNewNotification);
+    sock.on('payments:queue-updated', handlePaymentsQueueUpdate);
 
     return () => {
       sock.off('notification:new', handleNewNotification);
+      sock.off('payments:queue-updated', handlePaymentsQueueUpdate);
     };
   }, [user]);
 
@@ -792,6 +874,22 @@ export function AppLayout() {
               </Link>
 
               {user && (
+                <button
+                  type="button"
+                  onClick={() => setIsProfileModalOpen(true)}
+                  className="metal-pill hidden items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground lg:flex"
+                >
+                  <CircleCheckBig className="h-3.5 w-3.5" />
+                  <span className="font-medium">
+                    Profile {profileChecks.percent}%
+                  </span>
+                  <span className="rounded-full bg-white/65 px-1.5 py-0.5 text-[10px] font-semibold text-foreground dark:bg-slate-800/85 dark:text-slate-100">
+                    {profileChecks.completed}/{profileChecks.total}
+                  </span>
+                </button>
+              )}
+
+              {user && (
                 <Link
                   to="/account/profile"
                   className="metal-pill flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 transition-colors hover:text-[#11151a]"
@@ -815,6 +913,79 @@ export function AppLayout() {
         <div className="animate-page px-3 pb-28 pt-[4.5rem] py-4 sm:px-4 md:px-8 md:pb-8 md:pt-6 md:py-6">
           <Outlet />
         </div>
+
+        <Dialog open={isProfileModalOpen} onOpenChange={setIsProfileModalOpen}>
+          <DialogContent className="sm:max-w-md rounded-2xl">
+            <DialogHeader>
+              <DialogTitle>Profile Completion</DialogTitle>
+              <DialogDescription>
+                Keep your account complete to avoid workflow blockers in payments, contracts, and approvals.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div className="rounded-xl border border-[color:var(--color-border)]/60 p-3">
+                <p className="text-sm font-semibold text-foreground">{profileChecks.percent}% complete</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {profileChecks.completed} of {profileChecks.total} checks finished
+                </p>
+                <div className="mt-2 h-2 rounded-full bg-[color:var(--color-muted)] overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all"
+                    style={{ width: `${profileChecks.percent}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {profileChecklist.map((item, idx) => (
+                  <div key={`${item.label}-${idx}`} className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--color-border)]/60 px-3 py-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {item.done ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                      ) : (
+                        <Circle className="h-4 w-4 text-muted-foreground shrink-0" />
+                      )}
+                      <p className="text-sm text-foreground truncate">{item.label}</p>
+                    </div>
+                    {!item.done && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsProfileModalOpen(false);
+                          navigate(item.path);
+                        }}
+                        className="text-xs font-medium text-sky-700 hover:text-sky-600"
+                      >
+                        Fix
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsProfileModalOpen(false)}
+                  className="rounded-lg border border-[color:var(--color-border)]/60 px-3 py-1.5 text-xs font-medium text-foreground hover:bg-[color:var(--color-muted)]"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsProfileModalOpen(false);
+                    navigate('/account/profile');
+                  }}
+                  className="rounded-lg bg-foreground px-3 py-1.5 text-xs font-medium text-background"
+                >
+                  Open Profile
+                </button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

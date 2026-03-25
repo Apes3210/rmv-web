@@ -159,10 +159,18 @@ export interface RefundRequest {
   accountNumber: string;
   bankName?: string;
   amount: number;
-  status: 'pending' | 'approved' | 'denied';
+  status: 'pending' | 'approved' | 'denied' | 'cancelled';
   reviewedBy?: string | { _id: string; firstName: string; lastName: string };
   reviewedAt?: string;
   denialReason?: string;
+  cancelledAt?: string;
+  cancelledReason?: string;
+  timeline?: Array<{
+    key: string;
+    label: string;
+    at: string;
+    note?: string;
+  }>;
   createdAt: string;
   updatedAt: string;
 }
@@ -216,6 +224,14 @@ export interface Project {
   originalContractDownloadedAt?: string;
   cancelReason?: string;
   installationConfirmedAt?: string;
+  customerReview?: {
+    rating?: number;
+    comment?: string;
+    submittedAt?: string;
+    submittedBy?: string | { _id: string; firstName: string; lastName: string };
+    skippedAt?: string;
+    skippedReason?: string;
+  };
   latestBlueprintStatus?: string;
   createdAt: string;
   updatedAt: string;
@@ -298,6 +314,7 @@ export interface Payment {
   proofKey?: string;
   status: string;
   declineReason?: string;
+  cashierSignatureKey?: string;
   receiptNumber?: string;
   receiptKey?: string;
   creditFromPrevious: number;

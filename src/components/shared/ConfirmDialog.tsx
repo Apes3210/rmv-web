@@ -24,6 +24,7 @@ interface ConfirmDialogProps {
   onConfirm: () => void;
   children?: React.ReactNode;
   confirmClassName?: string;
+  confirmDisabled?: boolean;
 }
 
 export function ConfirmDialog({
@@ -41,6 +42,7 @@ export function ConfirmDialog({
   onConfirm,
   children,
   confirmClassName,
+  confirmDisabled = false,
 }: ConfirmDialogProps) {
   const isDestructive = variant === 'destructive' || destructive;
   const busy = isLoading ?? loading ?? false;
@@ -93,7 +95,7 @@ export function ConfirmDialog({
           <Button
             variant={isDestructive ? 'destructive' : 'default'}
             onClick={onConfirm}
-            disabled={busy}
+            disabled={busy || confirmDisabled}
             className={confirmClassName ?? 'min-w-[8.5rem]'}
           >
             {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

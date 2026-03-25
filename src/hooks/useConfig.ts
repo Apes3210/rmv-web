@@ -9,6 +9,32 @@ export interface ConfigItem {
   description?: string;
 }
 
+export interface ConfigVersionEntry {
+  _id: string;
+  value: unknown;
+  description?: string;
+  updatedBy?: string;
+  updatedAt: string;
+}
+
+export interface ConfigImpactPreview {
+  key: string;
+  riskLevel: 'low' | 'medium' | 'high';
+  warnings: string[];
+  requiresConfirmation: boolean;
+}
+
+export interface ConfigVersionHistory {
+  key: string;
+  current: {
+    value: unknown;
+    description?: string;
+    updatedAt: string;
+    updatedBy?: string;
+  };
+  versions: ConfigVersionEntry[];
+}
+
 export interface Holiday {
   _id: string;
   date: string;
@@ -55,6 +81,40 @@ export function useUpdateConfig() {
       return data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['configs'] }),
+  });
+}
+
+export function useConfigImpactPreview() {
+  return useMutation({
+    mutationFn: async ({ key, value }: { key: string; value: unknown }) => {
+      const { data } = await api.post(`/config/configs/${key}/preview`, { value });
+      return data.data as ConfigImpactPreview;
+    },
+  });
+}
+
+export function useConfigVersions(key?: string) {
+  return useQuery<ConfigVersionHistory>({
+    queryKey: ['config-versions', key],
+    enabled: !!key,
+    queryFn: async () => {
+      const { data } = await api.get(`/config/configs/${key}/versions`);
+      return data.data;
+    },
+  });
+}
+
+export function useRollbackConfigVersion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ key, versionId }: { key: string; versionId: string }) => {
+      const { data } = await api.post(`/config/configs/${key}/rollback`, { versionId });
+      return data.data as ConfigItem;
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['configs'] });
+      qc.invalidateQueries({ queryKey: ['config-versions', vars.key] });
+    },
   });
 }
 

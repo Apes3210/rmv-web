@@ -9,11 +9,13 @@ import {
 import toast from 'react-hot-toast';
 
 import { extractErrorMessage } from '@/lib/utils';
+import { resolveBlockedAction, type BlockedActionInfo } from '@/lib/blocked-actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import { BlockedActionPrompt } from '@/components/shared/BlockedActionPrompt';
 import { AuthImage } from '@/components/shared/AuthImage';
 import { openAuthenticatedFile, useAuthenticatedUrl } from '@/hooks/useUploads';
 import {
@@ -315,6 +317,7 @@ export function BlueprintTab({ projectId, onNavigateToDetails }: BlueprintTabPro
     blueprint: null,
   });
   const [paymentType, setPaymentType] = useState<'full' | 'installment'>('full');
+  const [blockedAction, setBlockedAction] = useState<BlockedActionInfo | null>(null);
 
   // ── Engineer upload state ──
   const [blueprintFile, setBlueprintFile] = useState<File | null>(null);
@@ -712,6 +715,7 @@ export function BlueprintTab({ projectId, onNavigateToDetails }: BlueprintTabPro
 
   const handleChoosePaymentPlan = () => {
     if (!acceptDialog.blueprint) return;
+    setBlockedAction(null);
     selectPaymentPlanMutation.mutate(
       { id: projectId, paymentType },
       {
@@ -723,7 +727,10 @@ export function BlueprintTab({ projectId, onNavigateToDetails }: BlueprintTabPro
           refetchBlueprint();
           refetchProject();
         },
-        onError: (err) => toast.error(extractErrorMessage(err, 'Failed to create payment plan')),
+        onError: (err) => {
+          setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
+          toast.error(extractErrorMessage(err, 'Failed to create payment plan'));
+        },
       },
     );
   };
@@ -1453,7 +1460,10 @@ export function BlueprintTab({ projectId, onNavigateToDetails }: BlueprintTabPro
                     </div>
                     <Button
                       className="w-full flex-shrink-0 rounded-xl border border-emerald-500/70 bg-[linear-gradient(180deg,#22c55e_0%,#15803d_100%)] px-6 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_16px_32px_rgba(8,68,39,0.28)] hover:bg-[linear-gradient(180deg,#34d399_0%,#16a34a_100%)] hover:text-white sm:w-auto dark:border-emerald-400/55 dark:bg-[linear-gradient(180deg,#34d399_0%,#15803d_100%)] dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_34px_rgba(6,78,59,0.36)] dark:hover:bg-[linear-gradient(180deg,#6ee7b7_0%,#16a34a_100%)]"
-                      onClick={() => setAcceptDialog({ open: true, blueprint: bp })}
+                      onClick={() => {
+                        setBlockedAction(null);
+                        setAcceptDialog({ open: true, blueprint: bp });
+                      }}
                     >
                       <CheckCircle className="mr-2 h-4 w-4" />
                       Choose Payment Plan
@@ -1892,12 +1902,23 @@ export function BlueprintTab({ projectId, onNavigateToDetails }: BlueprintTabPro
             </div>
           )}
 
+          {blockedAction && (
+            <BlockedActionPrompt
+              title={blockedAction.title}
+              reason={blockedAction.reason}
+              actionLabel={blockedAction.actionLabel}
+              actionPath={blockedAction.actionPath}
+              className="mt-3"
+            />
+          )}
+
           <DialogFooter className="pt-4">
             <Button
               variant="outline"
               onClick={() => {
                 setAcceptDialog({ open: false, blueprint: null });
                 setPaymentType('full');
+                setBlockedAction(null);
               }}
               className="rounded-lg border-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
             >

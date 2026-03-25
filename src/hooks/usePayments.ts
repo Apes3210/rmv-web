@@ -140,8 +140,8 @@ export function useSubmitPaymentProof() {
 export function useVerifyPayment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { data } = await api.post<ApiResponse<Payment>>(`/payments/${id}/verify`);
+    mutationFn: async ({ id, signatureKey }: { id: string; signatureKey: string }) => {
+      const { data } = await api.post<ApiResponse<Payment>>(`/payments/${id}/verify`, { signatureKey });
       return data.data;
     },
     onSuccess: () => {
@@ -188,6 +188,28 @@ export function useStageCheckout() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.plans });
+    },
+  });
+}
+
+// ── Customer: Request Cash Payment for a Stage ──
+export function useRequestStageCashPayment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (stageId: string) => {
+      const { data } = await api.post<ApiResponse<{
+        paymentId: string;
+        stageId: string;
+        amountPaid: number;
+        method: string;
+        status: string;
+      }>>(`/payments/stages/${stageId}/request-cash`);
+      return data.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEYS.all });
+      qc.invalidateQueries({ queryKey: KEYS.plans });
+      qc.invalidateQueries({ queryKey: KEYS.pending });
     },
   });
 }

@@ -114,3 +114,55 @@ export function useDenyRefund() {
     },
   });
 }
+
+/** Customer: update a pending refund request */
+export function useUpdateMyRefundRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      reason,
+      refundMethod,
+      accountName,
+      accountNumber,
+      bankName,
+    }: {
+      id: string;
+      reason: string;
+      refundMethod: 'gcash' | 'bank_transfer';
+      accountName: string;
+      accountNumber: string;
+      bankName?: string;
+    }) => {
+      const { data } = await api.patch<ApiResponse<RefundRequest>>(`/refunds/${id}/my`, {
+        reason,
+        refundMethod,
+        accountName,
+        accountNumber,
+        bankName,
+      });
+      return data.data;
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: KEYS.all });
+      qc.invalidateQueries({ queryKey: ['appointments'] });
+    },
+  });
+}
+
+/** Customer: cancel a pending refund request */
+export function useCancelMyRefundRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason?: string }) => {
+      const { data } = await api.post<ApiResponse<RefundRequest>>(`/refunds/${id}/my/cancel`, {
+        reason,
+      });
+      return data.data;
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: KEYS.all });
+      qc.invalidateQueries({ queryKey: ['appointments'] });
+    },
+  });
+}

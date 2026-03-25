@@ -32,9 +32,9 @@ const expectations: FileExpectation[] = [
   {
     filePath: '../components/shared/CollectionToolbar.tsx',
     snippets: [
-      'text-[#15191f] dark:text-slate-100',
-      'text-[#616a74] dark:text-slate-400',
-      'metal-pill text-[#59626d] dark:text-slate-300 hover:-translate-y-0.5 hover:text-[#14181d] dark:hover:text-white',
+      'text-[#15191f] dark:text-slate-50',
+      'text-xs leading-relaxed text-[#616a74] dark:text-slate-300',
+      'metal-pill text-[#59626d] dark:text-slate-200 hover:-translate-y-0.5 hover:text-[#14181d] dark:hover:text-white',
     ],
   },
   {
@@ -57,10 +57,10 @@ const expectations: FileExpectation[] = [
   {
     filePath: '../pages/projects/ProjectDetailPage.tsx',
     snippets: [
-      "text-[var(--color-border)] dark:text-slate-400",
+      "text-[var(--color-border)] dark:text-slate-300",
       "text-[var(--text-metal-muted-color)] dark:text-slate-300",
       'dark:border-slate-700 bg-[#f5f5f7] dark:bg-slate-800 text-left',
-      'text-sm text-[#6e6e73] dark:text-slate-400 py-2',
+      'text-sm text-[#6e6e73] dark:text-slate-400',
     ],
   },
   {
@@ -68,7 +68,7 @@ const expectations: FileExpectation[] = [
     snippets: [
       'dark:border-slate-700 dark:bg-slate-900/70',
       'dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-300',
-      'dark:border-slate-700 dark:bg-slate-800/65',
+      'metal-panel-strong dark:bg-slate-950/85',
       'dark:border-slate-700 dark:bg-slate-900',
     ],
   },
@@ -76,9 +76,9 @@ const expectations: FileExpectation[] = [
     filePath: '../pages/projects/tabs/FabricationTab.tsx',
     snippets: [
       'dark:border-indigo-500/35 dark:bg-indigo-500/10',
-      'dark:border-slate-700 dark:bg-slate-900/80',
-      'dark:border-slate-700 dark:bg-slate-900',
-      'dark:border-slate-700 dark:bg-slate-800',
+      'metal-panel-strong dark:bg-slate-950/85',
+      'metal-panel dark:bg-slate-900/85',
+      'bg-slate-900/50 dark:bg-slate-800',
     ],
   },
   {
@@ -114,7 +114,7 @@ const expectations: FileExpectation[] = [
     snippets: [
       'dark:border-slate-600 dark:text-slate-100 dark:hover:bg-slate-800',
       'text-[13px] font-medium text-gray-700 dark:text-slate-300',
-      'dark:border-slate-700 dark:text-slate-100 dark:placeholder:text-slate-500',
+      'dark:text-slate-100 dark:placeholder:text-slate-500 dark:hover:border-white/30',
     ],
   },
 ];

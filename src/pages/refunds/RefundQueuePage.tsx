@@ -33,6 +33,7 @@ const STATUS_FILTERS = [
   { label: 'Pending', value: 'pending' },
   { label: 'Approved', value: 'approved' },
   { label: 'Denied', value: 'denied' },
+  { label: 'Cancelled', value: 'cancelled' },
 ];
 
 export function RefundQueuePage() {

@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, Trash2, Settings, Calendar, Power, RefreshCw, Save, CreditCard } from 'lucide-react';
+import { Plus, Trash2, Settings, Power, RefreshCw, Save, CreditCard, AlertTriangle, History } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 import { extractErrorMessage } from '@/lib/utils';
+import {
+  getImpactSummaryText,
+  getRiskLabelClass,
+  getRiskPanelClass,
+  getVersionHistoryStatus,
+} from '@/lib/config-safety';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,35 +22,203 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { PageError } from '@/components/shared/PageError';
 import {
   useConfigs,
   useUpdateConfig,
-  useHolidays,
-  useCreateHoliday,
-  useDeleteHoliday,
+  useConfigImpactPreview,
+  useConfigVersions,
+  useRollbackConfigVersion,
   useToggleMaintenance,
 } from '@/hooks/useConfig';
-import type { ConfigItem, Holiday } from '@/hooks/useConfig';
+import type { ConfigImpactPreview, ConfigItem } from '@/hooks/useConfig';
 
-const holidaySchema = z.object({
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Required (YYYY-MM-DD)'),
-  name: z.string().min(1, 'Name is required').max(100),
-});
+function getConfigTier(key: string) {
+  if (key === 'help_center_content' || key === 'ncrPolygonFile') {
+    return { label: 'Advanced', tone: 'warning' as const };
+  }
 
-type HolidayFormData = z.infer<typeof holidaySchema>;
+  if (key.includes('maintenance') || key.includes('feature')) {
+    return { label: 'System', tone: 'info' as const };
+  }
+
+  if (key.includes('fee') || key.includes('distance') || key.includes('installment')) {
+    return { label: 'Core', tone: 'success' as const };
+  }
+
+  return { label: 'Config', tone: 'secondary' as const };
+}
+
+function getConfigPreview(value: unknown, key: string) {
+  if (key === 'help_center_content') {
+    const raw = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+    try {
+      const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+      const title = typeof parsed === 'object' && parsed && 'title' in parsed ? String((parsed as Record<string, unknown>).title ?? 'Help Center') : 'Help Center';
+      const subtitle = typeof parsed === 'object' && parsed && 'subtitle' in parsed ? String((parsed as Record<string, unknown>).subtitle ?? '') : '';
+      const content = typeof parsed === 'object' && parsed && 'content' in parsed ? String((parsed as Record<string, unknown>).content ?? '') : raw;
+      const sectionCount = content.split(/\n\n+/).filter(Boolean).length;
+      const excerpt = content
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 180);
+
+      return {
+        kind: 'structured' as const,
+        summary: `${title}${subtitle ? ` • ${subtitle}` : ''}`,
+        details: `${sectionCount} content blocks`,
+        excerpt: excerpt + (content.length > 180 ? '…' : ''),
+      };
+    } catch {
+      const excerpt = raw.replace(/\s+/g, ' ').trim().slice(0, 180);
+      return {
+        kind: 'structured' as const,
+        summary: 'Help Center content',
+        details: 'JSON content used by the Help Center page',
+        excerpt: excerpt + (raw.length > 180 ? '…' : ''),
+      };
+    }
+  }
+
+  if (typeof value === 'string') {
+    return {
+      kind: 'text' as const,
+      summary: value,
+    };
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return {
+      kind: 'text' as const,
+      summary: String(value),
+    };
+  }
+
+  const raw = JSON.stringify(value, null, 2);
+  return {
+    kind: 'json' as const,
+    summary: 'JSON configuration',
+    details: 'Open the editor to inspect or change the full object',
+    excerpt: raw.replace(/\s+/g, ' ').trim().slice(0, 180) + (raw.length > 180 ? '…' : ''),
+  };
+}
+
+type SimpleConfigField = {
+  label: string;
+  help: string;
+  group: 'pricing' | 'payment' | 'mapping';
+  inputType: 'number' | 'text';
+  unit?: string;
+  step?: number;
+  min?: number;
+};
+
+const SIMPLE_CONFIG_GROUPS: Array<{
+  id: SimpleConfigField['group'];
+  title: string;
+  description: string;
+}> = [
+  {
+    id: 'pricing',
+    title: 'Ocular Fees',
+    description: 'Controls base fees, included distance, and distance limits.',
+  },
+  {
+    id: 'payment',
+    title: 'Payment Follow-up',
+    description: 'Controls reminder schedule and escalation timing.',
+  },
+  {
+    id: 'mapping',
+    title: 'NCR Mapping',
+    description: 'Controls map references used in NCR location checks.',
+  },
+];
+
+const SIMPLE_CONFIG_FIELDS: Record<string, SimpleConfigField> = {
+  baseFee: {
+    label: 'Base Ocular Fee',
+    help: 'Starting transportation fee for outside-NCR ocular visits.',
+    group: 'pricing',
+    inputType: 'number',
+    unit: 'PHP',
+    min: 0,
+    step: 1,
+  },
+  baseCoveredKm: {
+    label: 'Base Distance Included',
+    help: 'Distance already covered by the base ocular fee.',
+    group: 'pricing',
+    inputType: 'number',
+    unit: 'km',
+    min: 0,
+    step: 1,
+  },
+  extraFeePerKm: {
+    label: 'Extra Fee Per Kilometer',
+    help: 'Additional fee charged per kilometer beyond the base distance.',
+    group: 'pricing',
+    inputType: 'number',
+    unit: 'PHP/km',
+    min: 0,
+    step: 1,
+  },
+  maxDistanceKm: {
+    label: 'Maximum Service Distance',
+    help: 'Maximum distance the team accepts for ocular visits.',
+    group: 'pricing',
+    inputType: 'number',
+    unit: 'km',
+    min: 1,
+    step: 1,
+  },
+  paymentReminderDays: {
+    label: 'Payment Reminder Interval',
+    help: 'How many days between payment reminder notifications.',
+    group: 'payment',
+    inputType: 'number',
+    unit: 'days',
+    min: 1,
+    step: 1,
+  },
+  paymentEscalationAfterReminders: {
+    label: 'Escalate After Reminders',
+    help: 'Number of reminders before escalating to cashier/admin.',
+    group: 'payment',
+    inputType: 'number',
+    unit: 'reminders',
+    min: 1,
+    step: 1,
+  },
+  ncrCenterLat: {
+    label: 'NCR Center Latitude',
+    help: 'Reference latitude used in NCR distance calculations.',
+    group: 'mapping',
+    inputType: 'number',
+    step: 0.000001,
+  },
+  ncrCenterLng: {
+    label: 'NCR Center Longitude',
+    help: 'Reference longitude used in NCR distance calculations.',
+    group: 'mapping',
+    inputType: 'number',
+    step: 0.000001,
+  },
+  ncrPolygonFile: {
+    label: 'NCR Boundary File Path',
+    help: 'GeoJSON file path used to validate if an address point is inside NCR.',
+    group: 'mapping',
+    inputType: 'text',
+  },
+};
 
 export function SettingsPage() {
   const [editConfig, setEditConfig] = useState<ConfigItem | null>(null);
   const [configValue, setConfigValue] = useState('');
   const [configDesc, setConfigDesc] = useState('');
-  const [holidayYear, setHolidayYear] = useState(String(new Date().getFullYear()));
-  const [addHolidayOpen, setAddHolidayOpen] = useState(false);
-  const [deleteHoliday, setDeleteHoliday] = useState<{ open: boolean; holiday: Holiday | null }>({
-    open: false,
-    holiday: null,
-  });
+  const [configImpact, setConfigImpact] = useState<ConfigImpactPreview | null>(null);
+  const [simpleConfigValues, setSimpleConfigValues] = useState<Record<string, string>>({});
+  const [simpleConfigSavingKey, setSimpleConfigSavingKey] = useState<string | null>(null);
 
   // Payment settings state
   const [surchargePercent, setSurchargePercent] = useState('10');
@@ -61,22 +232,38 @@ export function SettingsPage() {
     error: configsError,
     refetch: refetchConfigs,
   } = useConfigs();
-  const {
-    data: holidays,
-    isLoading: holidaysLoading,
-  } = useHolidays(holidayYear);
 
   const updateConfig = useUpdateConfig();
-  const createHoliday = useCreateHoliday();
-  const deleteHolidayMut = useDeleteHoliday();
+  const previewConfigImpact = useConfigImpactPreview();
+  const rollbackConfigVersion = useRollbackConfigVersion();
+  const { data: configVersionHistory, isLoading: configVersionsLoading } = useConfigVersions(editConfig?.key);
   const toggleMaintenance = useToggleMaintenance();
 
-  const holidayForm = useForm<HolidayFormData>({
-    resolver: zodResolver(holidaySchema),
-    defaultValues: { date: '', name: '' },
-  });
+  const quickLinks = [
+    { label: 'Maintenance mode', href: '#maintenance-mode', note: 'Turn the system on or off for non-admin users.' },
+    { label: 'Payment settings', href: '#payment-settings', note: 'Adjust surcharge and installment stages.' },
+    { label: 'Lifecycle analytics', href: '#lifecycle-analytics', note: 'Control lifecycle insights shown in reports.' },
+    { label: 'System defaults', href: '#general-configuration', note: 'Use Easy Settings for common values and Advanced only when needed.' },
+  ];
 
   const maintenanceEnabled = configs?.find((c) => c.key === 'maintenance_mode')?.value === true;
+  const lifecycleAnalyticsEnabled = (() => {
+    const config = configs?.find((c) => c.key === 'feature_lifecycle_mismatch_analytics');
+    return typeof config?.value === 'boolean' ? config.value : true;
+  })();
+
+  const generalConfigs = (configs || []).filter(
+    (config) =>
+      config.key !== 'maintenance_mode' &&
+      config.key !== 'feature_lifecycle_mismatch_analytics' &&
+      !config.key.startsWith('installment_'),
+  );
+  const simpleConfigs = generalConfigs.filter((config) => config.key in SIMPLE_CONFIG_FIELDS);
+  const advancedConfigs = generalConfigs.filter((config) => !(config.key in SIMPLE_CONFIG_FIELDS));
+  const groupedSimpleConfigs = SIMPLE_CONFIG_GROUPS.map((group) => ({
+    ...group,
+    configs: simpleConfigs.filter((config) => SIMPLE_CONFIG_FIELDS[config.key]?.group === group.id),
+  })).filter((group) => group.configs.length > 0);
 
   // Load payment settings from configs when available
   useEffect(() => {
@@ -94,6 +281,26 @@ export function SettingsPage() {
     }
     setPaymentSettingsLoaded(true);
   }, [configs, paymentSettingsLoaded]);
+
+  useEffect(() => {
+    if (!configs) return;
+    const nextValues: Record<string, string> = {};
+    for (const config of configs) {
+      if (!(config.key in SIMPLE_CONFIG_FIELDS)) continue;
+      if (typeof config.value === 'number' || typeof config.value === 'string') {
+        nextValues[config.key] = String(config.value);
+      }
+    }
+    setSimpleConfigValues((previous) => {
+      const previousKeys = Object.keys(previous);
+      const nextKeys = Object.keys(nextValues);
+      if (previousKeys.length !== nextKeys.length) return nextValues;
+      for (const key of nextKeys) {
+        if (previous[key] !== nextValues[key]) return nextValues;
+      }
+      return previous;
+    });
+  }, [configs]);
 
   const handleSavePaymentSettings = async () => {
     const splits = splitValues.map(Number);
@@ -157,22 +364,110 @@ export function SettingsPage() {
     setEditConfig(cfg);
     setConfigValue(typeof cfg.value === 'string' ? cfg.value : JSON.stringify(cfg.value));
     setConfigDesc(cfg.description || '');
+    setConfigImpact(null);
+  };
+
+  const parseConfigInputValue = () => {
+    let parsed: unknown = configValue;
+    try { parsed = JSON.parse(configValue); } catch { /* keep as raw string */ }
+    return parsed;
+  };
+
+  const handlePreviewConfigImpact = async () => {
+    if (!editConfig) return;
+    try {
+      const preview = await previewConfigImpact.mutateAsync({
+        key: editConfig.key,
+        value: parseConfigInputValue(),
+      });
+      setConfigImpact(preview);
+      if (preview.riskLevel === 'high') {
+        toast.error('High-risk config change detected. Review impact warnings before saving.');
+      }
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to preview config impact'));
+    }
+  };
+
+  const handleRollbackConfigVersion = async (versionId: string) => {
+    if (!editConfig) return;
+    try {
+      const rolledBack = await rollbackConfigVersion.mutateAsync({
+        key: editConfig.key,
+        versionId,
+      });
+      setConfigValue(
+        typeof rolledBack.value === 'string'
+          ? rolledBack.value
+          : JSON.stringify(rolledBack.value),
+      );
+      setConfigDesc(rolledBack.description || '');
+      setConfigImpact(null);
+      toast.success('Config rolled back to selected version');
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to rollback config version'));
+    }
   };
 
   const handleSaveConfig = async () => {
     if (!editConfig) return;
     try {
-      let parsed: unknown = configValue;
-      try { parsed = JSON.parse(configValue); } catch { /* keep as string */ }
+      const parsed = parseConfigInputValue();
       await updateConfig.mutateAsync({
         key: editConfig.key,
         value: parsed,
         description: configDesc || undefined,
       });
       toast.success('Config updated');
+      setConfigImpact(null);
       setEditConfig(null);
     } catch (err) {
       toast.error(extractErrorMessage(err, 'Failed to update config'));
+    }
+  };
+
+  const isSimpleConfigChanged = (config: ConfigItem) => {
+    const draft = simpleConfigValues[config.key];
+    if (draft === undefined) return false;
+    const current = typeof config.value === 'number' || typeof config.value === 'string'
+      ? String(config.value)
+      : '';
+    return draft.trim() !== current.trim();
+  };
+
+  const handleSaveSimpleConfig = async (config: ConfigItem) => {
+    const field = SIMPLE_CONFIG_FIELDS[config.key];
+    if (!field) return;
+
+    const draft = simpleConfigValues[config.key];
+    if (draft === undefined) return;
+
+    let nextValue: string | number = draft.trim();
+    if (field.inputType === 'number') {
+      const parsed = Number(draft);
+      if (Number.isNaN(parsed)) {
+        toast.error('Please enter a valid number.');
+        return;
+      }
+      if (field.min !== undefined && parsed < field.min) {
+        toast.error(`Value must be at least ${field.min}.`);
+        return;
+      }
+      nextValue = parsed;
+    }
+
+    try {
+      setSimpleConfigSavingKey(config.key);
+      await updateConfig.mutateAsync({
+        key: config.key,
+        value: nextValue,
+        description: config.description || undefined,
+      });
+      toast.success(`${field.label} saved.`);
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to save setting'));
+    } finally {
+      setSimpleConfigSavingKey(null);
     }
   };
 
@@ -185,35 +480,21 @@ export function SettingsPage() {
     }
   };
 
-  const handleAddHoliday = async (data: HolidayFormData) => {
+  const handleToggleLifecycleAnalytics = async () => {
     try {
-      await createHoliday.mutateAsync(data);
-      toast.success('Holiday added');
-      setAddHolidayOpen(false);
-      holidayForm.reset();
+      await updateConfig.mutateAsync({
+        key: 'feature_lifecycle_mismatch_analytics',
+        value: !lifecycleAnalyticsEnabled,
+        description: 'Enable lifecycle mismatch analytics, hotspot reports, and operational alerting surfaces.',
+      });
+      toast.success(
+        lifecycleAnalyticsEnabled
+          ? 'Lifecycle analytics disabled'
+          : 'Lifecycle analytics enabled',
+      );
     } catch (err) {
-      toast.error(extractErrorMessage(err, 'Failed to add holiday'));
+      toast.error(extractErrorMessage(err, 'Failed to toggle lifecycle analytics'));
     }
-  };
-
-  const handleDeleteHoliday = async () => {
-    if (!deleteHoliday.holiday) return;
-    try {
-      await deleteHolidayMut.mutateAsync(deleteHoliday.holiday._id);
-      toast.success('Holiday removed');
-      setDeleteHoliday({ open: false, holiday: null });
-    } catch (err) {
-      toast.error(extractErrorMessage(err, 'Failed to delete holiday'));
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
   };
 
   if (configsError) return <PageError message="Failed to load settings" onRetry={refetchConfigs} />;
@@ -221,18 +502,98 @@ export function SettingsPage() {
   const inputClasses = 'metal-input h-11';
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto">
+    <div className="mx-auto max-w-6xl space-y-8">
       {/* Header */}
-      <div className="metal-panel rounded-[1.75rem] p-5">
-        <h1 className="text-2xl font-bold tracking-tight text-[#171b21] dark:text-slate-100">System Settings</h1>
-        <p className="mt-1 text-sm text-[#616a74] dark:text-slate-400">
-          Manage global configuration, holidays, and maintenance mode.
-        </p>
+      <div className="metal-panel rounded-[1.75rem] p-5 sm:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 max-w-2xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7b8490] dark:text-slate-400">
+              Admin workspace
+            </p>
+            <h1 className="mt-2 text-2xl font-bold tracking-tight text-[#171b21] dark:text-slate-100 sm:text-3xl">
+              System Settings
+            </h1>
+            <p className="mt-2 text-sm leading-6 text-[#616a74] dark:text-slate-400">
+              Use this page to manage system behavior with clear controls and short guides for each section.
+            </p>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2 lg:w-[28rem]">
+            {quickLinks.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                className="metal-pill group rounded-2xl border border-[color:var(--color-border)]/70 p-3 text-left transition-colors hover:border-sky-300/70 hover:bg-sky-50/60 dark:hover:border-sky-400/40 dark:hover:bg-sky-400/10"
+              >
+                <p className="text-sm font-semibold text-[#171b21] dark:text-slate-100 group-hover:text-sky-700 dark:group-hover:text-sky-200">
+                  {link.label}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-[#616a74] dark:text-slate-400">
+                  {link.note}
+                </p>
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="metal-panel rounded-[1.5rem] border border-[color:var(--color-border)]/60 p-5 sm:p-6">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7b8490] dark:text-slate-400">
+            Start here
+          </p>
+          <ol className="mt-3 space-y-3 text-sm text-[#434c56] dark:text-slate-300">
+            <li className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                1
+              </span>
+              <span>
+                Use <strong className="text-[#171b21] dark:text-slate-100">Maintenance Mode</strong> when you need to pause public access.
+              </span>
+            </li>
+            <li className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                2
+              </span>
+              <span>
+                Update <strong className="text-[#171b21] dark:text-slate-100">Payment & Installment Settings</strong> only if the billing policy changes.
+              </span>
+            </li>
+            <li className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                3
+              </span>
+              <span>
+                Review <strong className="text-[#171b21] dark:text-slate-100">Lifecycle Analytics</strong> and <strong className="text-[#171b21] dark:text-slate-100">System Defaults</strong> only when policy or operations need to change.
+              </span>
+            </li>
+          </ol>
+        </div>
+
+        <div className="metal-panel rounded-[1.5rem] border border-[color:var(--color-border)]/60 p-5 sm:p-6">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7b8490] dark:text-slate-400">
+            What this page changes
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-[color:var(--color-border)]/60 bg-white/65 p-3 dark:bg-slate-950/40">
+              <p className="text-sm font-semibold text-[#171b21] dark:text-slate-100">Safe controls</p>
+              <p className="mt-1 text-xs leading-5 text-[#616a74] dark:text-slate-400">
+                Maintenance mode and payment settings are the most common day-to-day admin controls.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-[color:var(--color-border)]/60 bg-white/65 p-3 dark:bg-slate-950/40">
+              <p className="text-sm font-semibold text-[#171b21] dark:text-slate-100">Higher risk values</p>
+              <p className="mt-1 text-xs leading-5 text-[#616a74] dark:text-slate-400">
+                System Defaults can affect pricing, reminders, and map behavior. Change only what you understand.
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Maintenance Toggle */}
-        <div className="md:col-span-2">
+        <div id="maintenance-mode" className="md:col-span-2 scroll-mt-24">
           <Card
             className={`border-l-4 rounded-xl ${
               maintenanceEnabled ? 'border-l-red-500 bg-red-50/50' : 'border-l-emerald-500'
@@ -258,6 +619,7 @@ export function SettingsPage() {
                       {maintenanceEnabled
                         ? 'The system is currently unavailable to non-admin users.'
                         : 'The system is fully operational and accessible to all users.'}
+                      {' '}Use this during planned maintenance or emergency fixes.
                     </CardDescription>
                   </div>
                 </div>
@@ -281,7 +643,7 @@ export function SettingsPage() {
         </div>
 
         {/* Payment Settings */}
-        <div className="md:col-span-2">
+        <div id="payment-settings" className="md:col-span-2 scroll-mt-24">
           <Card className="rounded-xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl text-[#171b21] dark:text-slate-100">
@@ -289,7 +651,7 @@ export function SettingsPage() {
                 Payment &amp; Installment Settings
               </CardTitle>
               <CardDescription className="text-[#616a74] dark:text-slate-400">
-                Configure installment surcharge and stage split for project payments.
+                Configure installment surcharge and stage split for project payments. Use this when payment terms change.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -413,16 +775,60 @@ export function SettingsPage() {
           </Card>
         </div>
 
+        {/* Lifecycle Analytics Feature Toggle */}
+        <div id="lifecycle-analytics" className="md:col-span-2 scroll-mt-24">
+          <Card
+            className={`border-l-4 rounded-xl ${
+              lifecycleAnalyticsEnabled ? 'border-l-emerald-500' : 'border-l-amber-500 bg-amber-50/40'
+            }`}
+          >
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="text-lg text-gray-900 dark:text-slate-100">
+                    Lifecycle Analytics Rollout
+                  </CardTitle>
+                  <CardDescription className="text-gray-500 dark:text-slate-400">
+                    Controls reports lifecycle mismatch hotspots, trend analytics, and alert banners. Keep enabled for normal monitoring.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant={lifecycleAnalyticsEnabled ? 'default' : 'outline'}
+                  onClick={handleToggleLifecycleAnalytics}
+                  disabled={updateConfig.isPending}
+                  className={`rounded-xl ${lifecycleAnalyticsEnabled ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
+                >
+                  {updateConfig.isPending ? (
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  ) : lifecycleAnalyticsEnabled ? (
+                    'Disable Lifecycle Analytics'
+                  ) : (
+                    'Enable Lifecycle Analytics'
+                  )}
+                </Button>
+              </div>
+            </CardHeader>
+          </Card>
+        </div>
+
         {/* Config Values */}
-        <Card className="h-full flex flex-col rounded-xl">
+        <Card id="general-configuration" className="h-full flex flex-col rounded-xl scroll-mt-24 md:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl text-[#171b21] dark:text-slate-100">
               <Settings className="h-5 w-5 text-[#8a939d] dark:text-slate-400" />
               General Configuration
             </CardTitle>
             <CardDescription className="text-[#616a74] dark:text-slate-400">
-              Technical settings and global constants.
+              Use Easy Settings for day-to-day changes. Use Advanced Settings only for technical or JSON values.
             </CardDescription>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 font-semibold text-emerald-700 dark:text-emerald-200">
+                Core: safer numeric values
+              </span>
+              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 font-semibold text-amber-700 dark:text-amber-200">
+                Advanced: content or file-based settings
+              </span>
+            </div>
           </CardHeader>
           <CardContent className="flex-1">
             {configsLoading ? (
@@ -439,128 +845,186 @@ export function SettingsPage() {
                 No configuration entries found.
               </div>
             ) : (
-              <div className="space-y-4">
-                {configs
-                  .filter((c) => c.key !== 'maintenance_mode' && !c.key.startsWith('installment_'))
-                  .map((cfg) => (
-                    <div
-                      key={cfg._id}
-                      className="metal-panel group rounded-xl p-4 transition-colors hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_18px_28px_rgba(18,22,27,0.08)]"
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <p className="font-mono text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
-                            {cfg.key}
-                          </p>
-                          {cfg.description && (
-                            <p className="text-sm text-gray-600 dark:text-slate-300 mt-1">{cfg.description}</p>
-                          )}
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEditConfig(cfg)}
-                          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <Settings className="h-4 w-4 text-gray-400 dark:text-slate-500" />
-                          <span className="sr-only">Edit</span>
-                        </Button>
-                      </div>
-                      <div className="metal-pill break-all rounded-lg border border-[#d6dce3] dark:border-slate-700 p-2 font-mono text-sm text-[#434c56] dark:text-slate-300">
-                        {typeof cfg.value === 'string' ? cfg.value : JSON.stringify(cfg.value)}
-                      </div>
-                    </div>
-                  ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Holidays */}
-        <Card className="h-full flex flex-col rounded-xl">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-xl text-[#171b21] dark:text-slate-100">
-                  <Calendar className="h-5 w-5 text-[#8a939d] dark:text-slate-400" />
-                  Holiday Calendar
-                </CardTitle>
-                <CardDescription className="text-[#616a74] dark:text-slate-400">
-                  Manage blocked dates for appointments.
-                </CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  value={holidayYear}
-                  onChange={(e) => setHolidayYear(e.target.value)}
-                  className="metal-input h-8 w-20 text-sm"
-                  min={2020}
-                  max={2050}
-                />
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="flex-1">
-            <div className="mb-4">
-              <Button
-                size="sm"
-                onClick={() => {
-                  holidayForm.reset();
-                  setAddHolidayOpen(true);
-                }}
-                className="w-full rounded-xl border-2 border-dashed border-[#cfd6dd] bg-transparent text-[#616a74] hover:bg-white/20 hover:text-[#434c56]"
-                variant="outline"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Add New Holiday
-              </Button>
-            </div>
-
-            {holidaysLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-              </div>
-            ) : !holidays || holidays.length === 0 ? (
-              <div className="text-center py-12 text-gray-400 dark:text-slate-500">
-                <Calendar className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                <p>No holidays set for {holidayYear}.</p>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
-                {holidays.map((h) => (
-                  <div
-                    key={h._id}
-                    className="metal-panel group flex items-center justify-between rounded-xl p-3 transition-colors hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_18px_28px_rgba(18,22,27,0.08)]"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="metal-pill flex h-10 w-10 flex-col items-center justify-center rounded-lg font-bold text-xs uppercase text-[#616a74]">
-                        <span>
-                          {new Date(h.date).toLocaleString('default', { month: 'short' })}
-                        </span>
-                        <span>{new Date(h.date).getDate()}</span>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-slate-100">{h.name}</p>
-                        <p className="text-xs text-gray-500 dark:text-slate-400">{formatDate(h.date)}</p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDeleteHoliday({ open: true, holiday: h })}
-                      className="text-gray-400 dark:text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+              <div className="space-y-6">
+                <section className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#171b21] dark:text-slate-100">Easy Settings</h3>
+                    <p className="text-xs text-[#616a74] dark:text-slate-400">
+                      Clear labels for common values. Edit and save each field directly.
+                    </p>
                   </div>
-                ))}
+
+                  {simpleConfigs.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-gray-300 px-4 py-3 text-xs text-gray-600 dark:border-slate-700 dark:text-slate-400">
+                      No easy settings are configured yet.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {groupedSimpleConfigs.map((group) => (
+                        <div key={group.id} className="rounded-2xl border border-[color:var(--color-border)]/70 bg-[var(--color-card)]/55 p-4">
+                          <div>
+                            <p className="text-sm font-semibold text-[#171b21] dark:text-slate-100">{group.title}</p>
+                            <p className="mt-1 text-xs text-[#616a74] dark:text-slate-400">{group.description}</p>
+                          </div>
+
+                          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                            {group.configs.map((cfg) => {
+                              const field = SIMPLE_CONFIG_FIELDS[cfg.key];
+                              if (!field) return null;
+                              const isSaving = simpleConfigSavingKey === cfg.key && updateConfig.isPending;
+                              const changed = isSimpleConfigChanged(cfg);
+
+                              return (
+                                <div
+                                  key={cfg._id}
+                                  className="rounded-2xl border border-[color:var(--color-border)]/70 bg-[var(--color-card)]/80 p-4"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <p className="text-sm font-semibold text-[#171b21] dark:text-slate-100">{field.label}</p>
+                                      <p className="mt-1 text-xs leading-5 text-[#616a74] dark:text-slate-400">{field.help}</p>
+                                    </div>
+                                    <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#7b8490] dark:text-slate-500">{cfg.key}</p>
+                                  </div>
+
+                                  <div className="mt-3 flex items-end gap-2">
+                                    <div className="flex-1">
+                                      <Input
+                                        type={field.inputType}
+                                        value={simpleConfigValues[cfg.key] ?? ''}
+                                        min={field.min}
+                                        step={field.step}
+                                        onChange={(event) =>
+                                          setSimpleConfigValues((previous) => ({
+                                            ...previous,
+                                            [cfg.key]: event.target.value,
+                                          }))
+                                        }
+                                        className="metal-input h-10"
+                                      />
+                                    </div>
+                                    {field.unit ? (
+                                      <span className="mb-2 whitespace-nowrap text-xs font-medium text-[#616a74] dark:text-slate-400">
+                                        {field.unit}
+                                      </span>
+                                    ) : null}
+                                  </div>
+
+                                  <div className="mt-3 flex items-center justify-end">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => void handleSaveSimpleConfig(cfg)}
+                                      disabled={!changed || isSaving}
+                                      className="h-8 rounded-lg px-3 text-xs"
+                                    >
+                                      {isSaving ? 'Saving...' : 'Save'}
+                                    </Button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                <section className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-[#171b21] dark:text-slate-100">Advanced Settings</h3>
+                    <p className="text-xs text-[#616a74] dark:text-slate-400">
+                      For technical values and JSON content. If unsure, leave unchanged and consult your technical lead.
+                    </p>
+                  </div>
+
+                  {advancedConfigs.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-gray-300 px-4 py-3 text-xs text-gray-600 dark:border-slate-700 dark:text-slate-400">
+                      No advanced settings available.
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {advancedConfigs.map((cfg) => {
+                        const tier = getConfigTier(cfg.key);
+                        const preview = getConfigPreview(cfg.value, cfg.key);
+
+                        return (
+                          <div
+                            key={cfg._id}
+                            className="metal-panel rounded-2xl border border-[color:var(--color-border)]/60 p-4 transition-colors hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_18px_28px_rgba(18,22,27,0.08)]"
+                          >
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="font-mono text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400">
+                                    {cfg.key}
+                                  </p>
+                                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${
+                                    tier.tone === 'warning'
+                                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200'
+                                      : tier.tone === 'success'
+                                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
+                                        : tier.tone === 'info'
+                                          ? 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-200'
+                                          : 'border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-200'
+                                  }`}>
+                                    {tier.label}
+                                  </span>
+                                </div>
+                                {cfg.description && (
+                                  <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-slate-300">{cfg.description}</p>
+                                )}
+                                {!cfg.description && (
+                                  <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-slate-300">
+                                    Technical system value. Open to review before editing.
+                                  </p>
+                                )}
+                              </div>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openEditConfig(cfg)}
+                                  className="h-8 rounded-lg border-[color:var(--color-border)]/70 bg-white/90 px-3 text-xs text-[var(--color-card-foreground)] hover:bg-white dark:border-slate-600/80 dark:bg-slate-900/75 dark:text-slate-100 dark:hover:bg-slate-800/90"
+                                >
+                                  <Settings className="mr-1.5 h-3.5 w-3.5" />
+                                  Edit value
+                                </Button>
+                              </div>
+                            </div>
+
+                            <div className="mt-3 rounded-xl border border-[color:var(--color-border)]/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.72)_0%,rgba(248,250,252,0.92)_100%)] p-3 dark:border-slate-700/70 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.78)_0%,rgba(15,23,42,0.94)_100%)]">
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#7b8490] dark:text-slate-400">
+                                Current value
+                              </p>
+                              <div className="mt-2 space-y-2 font-mono text-sm leading-6 text-[#434c56] dark:text-slate-200">
+                                {preview.kind === 'text' ? (
+                                  <p className="break-all">{preview.summary}</p>
+                                ) : (
+                                  <>
+                                    <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#171b21] dark:text-slate-100">
+                                      <span>{preview.summary}</span>
+                                      {preview.details && <span className="text-[#7b8490] dark:text-slate-400">{preview.details}</span>}
+                                    </div>
+                                    <p className="line-clamp-3 break-words text-xs leading-5 text-[#616a74] dark:text-slate-400">
+                                      {preview.excerpt}
+                                    </p>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
               </div>
             )}
           </CardContent>
         </Card>
+
       </div>
 
       {/* Edit Config Dialog */}
@@ -600,6 +1064,78 @@ export function SettingsPage() {
                 className={`font-mono ${inputClasses}`}
               />
               <p className="text-xs text-gray-400 dark:text-slate-300">JSON objects are supported.</p>
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePreviewConfigImpact}
+                  disabled={previewConfigImpact.isPending}
+                  className="rounded-lg"
+                >
+                  {previewConfigImpact.isPending ? (
+                    <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <AlertTriangle className="mr-2 h-3.5 w-3.5" />
+                  )}
+                  Preview Impact
+                </Button>
+                {configImpact?.riskLevel && (
+                  <span className={`text-xs font-semibold uppercase tracking-wide ${getRiskLabelClass(configImpact.riskLevel)}`}>
+                    Risk: {configImpact.riskLevel}
+                  </span>
+                )}
+              </div>
+            </div>
+            {configImpact && (
+              <div className={`rounded-xl border p-3 ${getRiskPanelClass(configImpact.riskLevel)}`}>
+                <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">Impact Preview</p>
+                <p className="mt-1 text-xs text-gray-700 dark:text-slate-300">{getImpactSummaryText(configImpact)}</p>
+                {configImpact.warnings.length > 0 ? (
+                  <ul className="mt-2 space-y-1 text-xs text-gray-700 dark:text-slate-300">
+                    {configImpact.warnings.map((warning, idx) => (
+                      <li key={idx}>- {warning}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            )}
+
+            <div className="space-y-2 rounded-xl border border-gray-200 dark:border-slate-700 p-3">
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-gray-500 dark:text-slate-400" />
+                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-gray-600 dark:text-slate-300">Version History</p>
+              </div>
+              {getVersionHistoryStatus(configVersionsLoading, configVersionHistory?.versions?.length || 0) === 'loading' ? (
+                <p className="text-xs text-gray-500 dark:text-slate-400">Loading previous versions...</p>
+              ) : getVersionHistoryStatus(configVersionsLoading, configVersionHistory?.versions?.length || 0) === 'empty' ? (
+                <p className="text-xs text-gray-500 dark:text-slate-400">No previous versions available yet.</p>
+              ) : (
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                  {configVersionHistory?.versions?.map((version) => (
+                    <div key={version._id} className="rounded-lg border border-gray-200 dark:border-slate-700 p-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] text-gray-600 dark:text-slate-300">
+                          {new Date(version.updatedAt).toLocaleString()}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleRollbackConfigVersion(version._id)}
+                          disabled={rollbackConfigVersion.isPending}
+                          className="h-6 rounded-md text-[10px]"
+                        >
+                          Rollback
+                        </Button>
+                      </div>
+                      <p className="mt-1 font-mono text-[11px] text-gray-700 dark:text-slate-300 break-all">
+                        {typeof version.value === 'string' ? version.value : JSON.stringify(version.value)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label
@@ -640,90 +1176,6 @@ export function SettingsPage() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Add Holiday Dialog */}
-      <Dialog open={addHolidayOpen} onOpenChange={setAddHolidayOpen}>
-        <DialogContent className="metal-panel max-w-sm rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-[#171b21]">Add Holiday</DialogTitle>
-            <DialogDescription className="text-[#616a74]">
-              Block appointments for a specific date.
-            </DialogDescription>
-          </DialogHeader>
-          <form
-            onSubmit={holidayForm.handleSubmit(handleAddHoliday)}
-            className="space-y-4 mt-2"
-          >
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="h-name"
-                className="text-[13px] font-medium text-gray-700"
-              >
-                Holiday Name
-              </Label>
-              <Input
-                id="h-name"
-                placeholder="e.g. New Year's Day"
-                {...holidayForm.register('name')}
-                className={inputClasses}
-              />
-              {holidayForm.formState.errors.name && (
-                <p className="text-xs text-red-500">
-                  {holidayForm.formState.errors.name.message}
-                </p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="h-date"
-                className="text-[13px] font-medium text-gray-700"
-              >
-                Date
-              </Label>
-              <Input
-                id="h-date"
-                type="date"
-                {...holidayForm.register('date')}
-                className={inputClasses}
-              />
-              {holidayForm.formState.errors.date && (
-                <p className="text-xs text-red-500">
-                  {holidayForm.formState.errors.date.message}
-                </p>
-              )}
-            </div>
-            <DialogFooter className="pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setAddHolidayOpen(false)}
-                className="rounded-lg"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                className="rounded-lg"
-                disabled={createHoliday.isPending}
-              >
-                {createHoliday.isPending ? 'Adding...' : 'Add Holiday'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Holiday Confirm */}
-      <ConfirmDialog
-        open={deleteHoliday.open}
-        title="Remove Holiday"
-        description={`Are you sure you want to remove "${deleteHoliday.holiday?.name}"? Appointments will be allowed on this date.`}
-        confirmLabel="Remove Holiday"
-        destructive
-        loading={deleteHolidayMut.isPending}
-        onConfirm={handleDeleteHoliday}
-        onCancel={() => setDeleteHoliday({ open: false, holiday: null })}
-      />
     </div>
   );
 }

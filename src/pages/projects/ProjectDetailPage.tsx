@@ -12,6 +12,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { FileUpload } from '@/components/shared/FileUpload';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import {
@@ -30,6 +39,8 @@ import {
   useReviewInitialDesign,
   useResubmitInitialDesign,
   useBackfillInitialDesign,
+  useSubmitProjectReview,
+  useSkipProjectReview,
 } from '@/hooks/useProjects';
 import { useLatestBlueprint } from '@/hooks/useBlueprints';
 import { usePaymentPlan, usePaymentsByProject } from '@/hooks/usePayments';
@@ -280,6 +291,8 @@ export function ProjectDetailPage() {
   const reviewInitialDesign = useReviewInitialDesign();
   const resubmitInitialDesign = useResubmitInitialDesign();
   const backfillInitialDesign = useBackfillInitialDesign();
+  const submitProjectReview = useSubmitProjectReview();
+  const skipProjectReview = useSkipProjectReview();
 
   // ── Auth ──
   const user = useAuthStore((s) => s.user);
@@ -303,6 +316,11 @@ export function ProjectDetailPage() {
   const [fabLeadId, setFabLeadId] = useState('');
   const [fabAssistantIds, setFabAssistantIds] = useState<string[]>([]);
   const [designReviewNotes, setDesignReviewNotes] = useState('');
+  const [projectReviewRating, setProjectReviewRating] = useState('5');
+  const [projectReviewComment, setProjectReviewComment] = useState('');
+  const [projectReviewSkipReason, setProjectReviewSkipReason] = useState('');
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [showSkipReviewDialog, setShowSkipReviewDialog] = useState(false);
   const [initialDesignKeys, setInitialDesignKeys] = useState<string[]>([]);
   const [initialDesignNotes, setInitialDesignNotes] = useState('');
   const [initialDesignBackfillReason, setInitialDesignBackfillReason] = useState('Synthetic demo backfill for a historical project that originally skipped the initial design step.');
@@ -369,6 +387,9 @@ export function ProjectDetailPage() {
   const canEngineerClaimProject = Boolean(
     isEngineer && project?.status === 'submitted' && project.engineerIds.length === 0 && !isAssignedEngineer,
   );
+  const hasProjectReviewSubmitted = Boolean(project?.customerReview?.submittedAt);
+  const hasProjectReviewSkipped = Boolean(project?.customerReview?.skippedAt);
+  const canPromptProjectReview = Boolean(isCustomer && project?.status === 'completed' && !hasProjectReviewSubmitted && !hasProjectReviewSkipped);
 
   useEffect(() => {
     setInitialDesignKeys(project?.initialDesignKeys || []);
@@ -561,6 +582,44 @@ export function ProjectDetailPage() {
     setFabAssistantIds((prev) =>
       prev.includes(staffId) ? prev.filter((id) => id !== staffId) : [...prev, staffId],
     );
+  };
+
+  const handleSubmitProjectReview = async () => {
+    const rating = Number(projectReviewRating);
+    if (!rating || rating < 1 || rating > 5) {
+      toast.error('Please select a valid rating');
+      return;
+    }
+
+    try {
+      await submitProjectReview.mutateAsync({
+        projectId: id!,
+        rating,
+        comment: projectReviewComment.trim() || undefined,
+      });
+      toast.success('Thanks for your review. Your feedback was saved.');
+      setShowReviewForm(false);
+      setProjectReviewComment('');
+      setProjectReviewSkipReason('');
+      refetch();
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to submit review'));
+    }
+  };
+
+  const handleSkipProjectReview = async () => {
+    try {
+      await skipProjectReview.mutateAsync({
+        projectId: id!,
+        reason: projectReviewSkipReason.trim() || undefined,
+      });
+      toast.success('No problem. You can continue using your project dashboard.');
+      setShowSkipReviewDialog(false);
+      setProjectReviewSkipReason('');
+      refetch();
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to skip review'));
+    }
   };
 
   if (isLoading) return <PageLoader />;
@@ -774,6 +833,112 @@ export function ProjectDetailPage() {
               <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">Project Complete</p>
               <p className="text-xs text-emerald-700 dark:text-emerald-200 mt-0.5">Your project has been completed. Thank you for choosing our services!</p>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {isCustomer && project.status === 'completed' && (
+        <Card className="rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x border-[color:var(--color-border)]/60">
+          <CardContent className="space-y-3 py-4 px-4">
+            <div className="flex items-start gap-2">
+              <Info className="h-4 w-4 mt-0.5 text-[var(--text-metal-color)] dark:text-slate-300 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-[var(--color-card-foreground)] dark:text-slate-100">
+                  Post-Project Review
+                </p>
+                <p className="text-xs text-[var(--text-metal-color)] dark:text-slate-300 mt-0.5">
+                  This feedback is for internal service improvement and quality tracking only.
+                </p>
+              </div>
+            </div>
+
+            {canPromptProjectReview && !showReviewForm && (
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => setShowReviewForm(true)} className="rounded-lg">
+                  Leave Review
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setShowSkipReviewDialog(true)}
+                  className="rounded-lg"
+                >
+                  Skip for now
+                </Button>
+              </div>
+            )}
+
+            {canPromptProjectReview && showReviewForm && (
+              <div className="space-y-3 rounded-xl border border-[color:var(--color-border)]/60 p-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="project-review-rating" className="text-xs font-medium">Rating</Label>
+                  <Select value={projectReviewRating} onValueChange={setProjectReviewRating}>
+                    <SelectTrigger id="project-review-rating" className="h-9 rounded-lg">
+                      <SelectValue placeholder="Select rating" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5 - Excellent</SelectItem>
+                      <SelectItem value="4">4 - Very Good</SelectItem>
+                      <SelectItem value="3">3 - Good</SelectItem>
+                      <SelectItem value="2">2 - Fair</SelectItem>
+                      <SelectItem value="1">1 - Poor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="project-review-comment" className="text-xs font-medium">Comment (optional)</Label>
+                  <Textarea
+                    id="project-review-comment"
+                    value={projectReviewComment}
+                    onChange={(event) => setProjectReviewComment(event.target.value)}
+                    placeholder="Share what went well and what can be improved"
+                    className="min-h-[88px]"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleSubmitProjectReview}
+                    disabled={submitProjectReview.isPending}
+                    className="rounded-lg"
+                  >
+                    {submitProjectReview.isPending ? 'Submitting...' : 'Submit Review'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowReviewForm(false)}
+                    className="rounded-lg"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {hasProjectReviewSubmitted && (
+              <div className="rounded-xl border border-emerald-200 dark:border-emerald-800/70 bg-emerald-50/60 dark:bg-emerald-950/30 p-3">
+                <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+                  Review submitted: {project.customerReview?.rating}/5
+                </p>
+                {project.customerReview?.comment && (
+                  <p className="mt-1 text-xs text-emerald-800 dark:text-emerald-200">
+                    {project.customerReview.comment}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {hasProjectReviewSkipped && (
+              <div className="rounded-xl border border-[color:var(--color-border)]/60 p-3">
+                <p className="text-sm font-medium text-[var(--color-card-foreground)] dark:text-slate-100">Review skipped</p>
+                {project.customerReview?.skippedReason && (
+                  <p className="mt-1 text-xs text-[var(--text-metal-color)] dark:text-slate-300">
+                    Note: {project.customerReview.skippedReason}
+                  </p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -2065,6 +2230,39 @@ export function ProjectDetailPage() {
           </p>
         )}
       </ConfirmDialog>
+
+      <Dialog open={showSkipReviewDialog} onOpenChange={setShowSkipReviewDialog}>
+        <DialogContent className="rounded-xl sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Skip project review?</DialogTitle>
+            <DialogDescription>
+              You can skip now, or leave a short note to help our internal team improve.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="skip-project-review-reason" className="text-xs font-medium">Reason (optional)</Label>
+            <Textarea
+              id="skip-project-review-reason"
+              value={projectReviewSkipReason}
+              onChange={(event) => setProjectReviewSkipReason(event.target.value)}
+              placeholder="Example: Busy right now, will review later"
+              className="min-h-[90px]"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="rounded-lg" onClick={() => setShowSkipReviewDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="rounded-lg"
+              onClick={handleSkipProjectReview}
+              disabled={skipProjectReview.isPending}
+            >
+              {skipProjectReview.isPending ? 'Saving...' : 'Skip Review'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

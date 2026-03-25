@@ -8,6 +8,7 @@ interface RouteRule {
 const PROTECTED_ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/dashboard\/?$/i, allowedRoles: null },
   { pattern: /^\/notifications\/?$/i, allowedRoles: null },
+  { pattern: /^\/help(?:\/.*)?\/?$/i, allowedRoles: null },
   { pattern: /^\/account(?:\/.*)?$/i, allowedRoles: null },
   { pattern: /^\/profile\/?$/i, allowedRoles: null },
   { pattern: /^\/change-password\/?$/i, allowedRoles: null },
@@ -23,6 +24,7 @@ const PROTECTED_ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/payments\/?$/i, allowedRoles: [Role.CUSTOMER, Role.CASHIER, Role.SALES_STAFF, Role.ADMIN] },
   { pattern: /^\/cashier-queue\/?$/i, allowedRoles: [Role.CASHIER, Role.ADMIN] },
   { pattern: /^\/refund-requests\/?$/i, allowedRoles: [Role.CASHIER, Role.ADMIN] },
+  { pattern: /^\/my-refunds\/?$/i, allowedRoles: [Role.CUSTOMER] },
   { pattern: /^\/cash\/?$/i, allowedRoles: [Role.SALES_STAFF, Role.CASHIER, Role.ADMIN] },
   { pattern: /^\/reports\/?$/i, allowedRoles: [Role.CASHIER, Role.ADMIN] },
   { pattern: /^\/users\/?$/i, allowedRoles: [Role.ADMIN] },

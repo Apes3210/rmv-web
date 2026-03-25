@@ -101,6 +101,7 @@ export enum RefundRequestStatus {
   PENDING = 'pending',
   APPROVED = 'approved',
   DENIED = 'denied',
+  CANCELLED = 'cancelled',
 }
 
 // ── Notification ──
