@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { LocationPicker } from '@/components/maps/LocationPicker';
 import {
   Dialog,
   DialogContent,
@@ -32,6 +33,7 @@ import {
   useToggleMaintenance,
 } from '@/hooks/useConfig';
 import type { ConfigImpactPreview, ConfigItem } from '@/hooks/useConfig';
+import type { MapPoint } from '@/lib/maps';
 
 function getConfigTier(key: string) {
   if (key === 'help_center_content' || key === 'ncrPolygonFile') {
@@ -130,8 +132,8 @@ const SIMPLE_CONFIG_GROUPS: Array<{
   },
   {
     id: 'mapping',
-    title: 'NCR Mapping',
-    description: 'Controls map references used in NCR location checks.',
+    title: 'Office Location & Mapping',
+    description: 'Controls office origin and map references used in NCR checks.',
   },
 ];
 
@@ -154,7 +156,7 @@ const SIMPLE_CONFIG_FIELDS: Record<string, SimpleConfigField> = {
     min: 0,
     step: 1,
   },
-  extraFeePerKm: {
+  perKmRate: {
     label: 'Extra Fee Per Kilometer',
     help: 'Additional fee charged per kilometer beyond the base distance.',
     group: 'pricing',
@@ -190,27 +192,23 @@ const SIMPLE_CONFIG_FIELDS: Record<string, SimpleConfigField> = {
     min: 1,
     step: 1,
   },
-  ncrCenterLat: {
-    label: 'NCR Center Latitude',
-    help: 'Reference latitude used in NCR distance calculations.',
+  shopLatitude: {
+    label: 'Office Latitude',
+    help: 'Latitude of the office pin used as the distance origin for ocular fees.',
     group: 'mapping',
     inputType: 'number',
     step: 0.000001,
   },
-  ncrCenterLng: {
-    label: 'NCR Center Longitude',
-    help: 'Reference longitude used in NCR distance calculations.',
+  shopLongitude: {
+    label: 'Office Longitude',
+    help: 'Longitude of the office pin used as the distance origin for ocular fees.',
     group: 'mapping',
     inputType: 'number',
     step: 0.000001,
-  },
-  ncrPolygonFile: {
-    label: 'NCR Boundary File Path',
-    help: 'GeoJSON file path used to validate if an address point is inside NCR.',
-    group: 'mapping',
-    inputType: 'text',
   },
 };
+
+const OFFICE_LOCATION_KEYS = ['shopLatitude', 'shopLongitude'] as const;
 
 export function SettingsPage() {
   const [editConfig, setEditConfig] = useState<ConfigItem | null>(null);
@@ -219,6 +217,8 @@ export function SettingsPage() {
   const [configImpact, setConfigImpact] = useState<ConfigImpactPreview | null>(null);
   const [simpleConfigValues, setSimpleConfigValues] = useState<Record<string, string>>({});
   const [simpleConfigSavingKey, setSimpleConfigSavingKey] = useState<string | null>(null);
+  const [officeLocation, setOfficeLocation] = useState<MapPoint | null>(null);
+  const [officeLocationSaving, setOfficeLocationSaving] = useState(false);
 
   // Payment settings state
   const [surchargePercent, setSurchargePercent] = useState('10');
@@ -262,7 +262,11 @@ export function SettingsPage() {
   const advancedConfigs = generalConfigs.filter((config) => !(config.key in SIMPLE_CONFIG_FIELDS));
   const groupedSimpleConfigs = SIMPLE_CONFIG_GROUPS.map((group) => ({
     ...group,
-    configs: simpleConfigs.filter((config) => SIMPLE_CONFIG_FIELDS[config.key]?.group === group.id),
+    configs: simpleConfigs.filter(
+      (config) =>
+        SIMPLE_CONFIG_FIELDS[config.key]?.group === group.id &&
+        !OFFICE_LOCATION_KEYS.includes(config.key as (typeof OFFICE_LOCATION_KEYS)[number]),
+    ),
   })).filter((group) => group.configs.length > 0);
 
   // Load payment settings from configs when available
@@ -299,6 +303,24 @@ export function SettingsPage() {
         if (previous[key] !== nextValues[key]) return nextValues;
       }
       return previous;
+    });
+  }, [configs]);
+
+  useEffect(() => {
+    if (!configs) return;
+    const latitudeConfig = configs.find((config) => config.key === 'shopLatitude');
+    const longitudeConfig = configs.find((config) => config.key === 'shopLongitude');
+    if (!latitudeConfig || !longitudeConfig) return;
+
+    const latitude = Number(latitudeConfig.value);
+    const longitude = Number(longitudeConfig.value);
+    if (Number.isNaN(latitude) || Number.isNaN(longitude)) return;
+
+    setOfficeLocation((previous) => {
+      if (previous && previous.lat === latitude && previous.lng === longitude) {
+        return previous;
+      }
+      return { lat: latitude, lng: longitude };
     });
   }, [configs]);
 
@@ -468,6 +490,39 @@ export function SettingsPage() {
       toast.error(extractErrorMessage(err, 'Failed to save setting'));
     } finally {
       setSimpleConfigSavingKey(null);
+    }
+  };
+
+  const handleSaveOfficeLocation = async () => {
+    if (!officeLocation) {
+      toast.error('Pin your office location on the map first.');
+      return;
+    }
+
+    if (officeLocation.lat < -90 || officeLocation.lat > 90 || officeLocation.lng < -180 || officeLocation.lng > 180) {
+      toast.error('Pinned coordinates are invalid. Please select a valid location.');
+      return;
+    }
+
+    try {
+      setOfficeLocationSaving(true);
+      await Promise.all([
+        updateConfig.mutateAsync({
+          key: 'shopLatitude',
+          value: officeLocation.lat,
+          description: 'Office latitude used as the origin for ocular distance and fee calculations.',
+        }),
+        updateConfig.mutateAsync({
+          key: 'shopLongitude',
+          value: officeLocation.lng,
+          description: 'Office longitude used as the origin for ocular distance and fee calculations.',
+        }),
+      ]);
+      toast.success('Office location saved. Ocular fee calculations will use this pinned location.');
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to save office location'));
+    } finally {
+      setOfficeLocationSaving(false);
     }
   };
 
@@ -860,6 +915,30 @@ export function SettingsPage() {
                     </div>
                   ) : (
                     <div className="space-y-4">
+                      <div className="rounded-2xl border border-[color:var(--color-border)]/70 bg-[var(--color-card)]/55 p-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-[#171b21] dark:text-slate-100">Office Location Pin</p>
+                            <p className="mt-1 text-xs leading-5 text-[#616a74] dark:text-slate-400">
+                              Pin your office location on the map. This pinned point becomes the standard origin for ocular visit distance and fee computation.
+                            </p>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void handleSaveOfficeLocation()}
+                            disabled={!officeLocation || officeLocationSaving}
+                            className="h-8 rounded-lg px-3 text-xs"
+                          >
+                            {officeLocationSaving ? 'Saving...' : 'Save office location'}
+                          </Button>
+                        </div>
+
+                        <div className="mt-3 rounded-xl border border-[color:var(--color-border)]/65 bg-[var(--metal-panel-background)] p-3">
+                          <LocationPicker value={officeLocation} onChange={(location) => setOfficeLocation(location)} />
+                        </div>
+                      </div>
+
                       {groupedSimpleConfigs.map((group) => (
                         <div key={group.id} className="rounded-2xl border border-[color:var(--color-border)]/70 bg-[var(--color-card)]/55 p-4">
                           <div>

@@ -910,7 +910,7 @@ export function AppLayout() {
           </div>
         </header>
 
-        <div className="animate-page px-3 pb-28 pt-[4.5rem] py-4 sm:px-4 md:px-8 md:pb-8 md:pt-6 md:py-6">
+        <div className="animate-page px-3 pt-[4.5rem] pb-[calc(6.75rem+env(safe-area-inset-bottom))] sm:px-4 md:px-8 md:pt-6 md:pb-8">
           <Outlet />
         </div>
 

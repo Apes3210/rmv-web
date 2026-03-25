@@ -68,6 +68,7 @@ import { Role } from '@/lib/constants';
 import type { User } from '@/lib/types';
 
 const ROLES: { value: Role; label: string }[] = [
+  { value: Role.CUSTOMER, label: 'Customer' },
   { value: Role.APPOINTMENT_AGENT, label: 'Appointment Agent' },
   { value: Role.SALES_STAFF, label: 'Sales Staff' },
   { value: Role.ENGINEER, label: 'Engineer' },
@@ -257,7 +258,7 @@ export function UsersPage() {
       {/* Toolbar */}
       <CollectionToolbar
         title="Find the right account fast"
-        description="Search staff records and narrow by role before making access changes."
+        description="Search account records and narrow by role before making access changes."
         searchPlaceholder="Search users"
         searchValue={search}
         onSearchChange={setSearch}

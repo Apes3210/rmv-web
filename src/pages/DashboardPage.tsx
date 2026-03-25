@@ -447,7 +447,7 @@ export function DashboardPage() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-2">
         {isLoading
           ? Array.from({ length: 2 }).map((_, i) => (
               <Card key={i} className="overflow-hidden">
@@ -465,12 +465,12 @@ export function DashboardPage() {
                     className="group relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_22px_36px_rgba(18,22,27,0.12)] focus-within:ring-2 focus-within:ring-[#c7d0da]"
                   >
                     <div className="absolute inset-x-0 top-0 h-16 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.95),transparent_68%)] sm:hidden" />
-                    <CardContent className="relative flex min-h-[196px] flex-col p-5 sm:min-h-0 sm:p-6">
-                      <div className="mb-5 flex flex-col items-start gap-3 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between sm:mb-4">
+                    <CardContent className="relative flex min-h-[172px] flex-col p-4 sm:min-h-0 sm:p-6">
+                      <div className="mb-4 flex flex-col items-start gap-2.5 min-[420px]:flex-row min-[420px]:items-start min-[420px]:justify-between sm:mb-4">
                         <div
-                          className="silver-sheen flex h-12 w-12 items-center justify-center rounded-[1.35rem] ring-1 ring-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.78),0_10px_24px_rgba(18,22,27,0.12)] transition-transform group-hover:scale-[1.03] sm:h-11 sm:w-11 sm:rounded-2xl dark:ring-white/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.48),0_12px_26px_rgba(0,0,0,0.26)]"
+                          className="silver-sheen flex h-10 w-10 items-center justify-center rounded-2xl ring-1 ring-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.78),0_10px_24px_rgba(18,22,27,0.12)] transition-transform group-hover:scale-[1.03] sm:h-11 sm:w-11 sm:rounded-2xl dark:ring-white/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.48),0_12px_26px_rgba(0,0,0,0.26)]"
                         >
-                          <item.icon className="h-5 w-5 text-[#2b3138]" />
+                          <item.icon className="h-4.5 w-4.5 text-[#2b3138] sm:h-5 sm:w-5" />
                         </div>
                         {item.description && (
                           <span className={`hidden whitespace-nowrap rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.01em] backdrop-blur-sm sm:inline-flex sm:self-auto sm:text-[11px] ${getKpiBadgeClass(item.badgeTone)}`}>
@@ -481,10 +481,10 @@ export function DashboardPage() {
                       <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#7a838d] sm:text-[11px]">
                         {item.label}
                       </p>
-                      <div className="mt-3 text-[2.35rem] font-bold tracking-[-0.03em] text-[#171b21] dark:text-slate-100 sm:mt-2 sm:text-4xl">
+                      <div className="mt-2 text-[clamp(1.95rem,7.4vw,2.25rem)] font-bold leading-none tracking-[-0.035em] text-[#171b21] dark:text-slate-100 sm:mt-2 sm:text-4xl">
                         {item.value}
                       </div>
-                      <div className="mt-auto pt-4 sm:mt-0 sm:pt-0">
+                      <div className="mt-auto pt-3 sm:mt-0 sm:pt-0">
                         <div className="h-px w-full bg-[linear-gradient(90deg,rgba(29,29,31,0.08),rgba(29,29,31,0))] sm:hidden" />
                       </div>
                       <p className="mt-2 hidden max-w-sm text-sm leading-6 text-[#616a74] sm:block">
@@ -500,7 +500,7 @@ export function DashboardPage() {
       </div>
 
       {secondaryKpis.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-2.5 sm:gap-4 xl:grid-cols-4">
           {secondaryKpis.map((item, i) => {
             return (
               <Link key={`${item.label}-${i}`} to={item.path} className="block">
@@ -508,14 +508,14 @@ export function DashboardPage() {
                   className="group relative overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_20px_34px_rgba(18,22,27,0.1)] focus-within:ring-2 focus-within:ring-[#c7d0da]"
                 >
                   <div className="absolute inset-x-0 top-0 h-14 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.9),transparent_70%)] sm:hidden" />
-                  <CardContent className="relative flex min-h-[152px] flex-col p-4 sm:min-h-0 sm:p-4">
-                    <div className="mb-4 flex items-start justify-between">
-                      <div className="silver-sheen flex h-11 w-11 items-center justify-center rounded-2xl ring-1 ring-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.78),0_10px_22px_rgba(18,22,27,0.1)] transition-transform group-hover:scale-[1.03] sm:h-9 sm:w-9 sm:rounded-xl dark:ring-white/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.48),0_12px_24px_rgba(0,0,0,0.24)]">
+                  <CardContent className="relative flex min-h-[142px] flex-col p-3.5 sm:min-h-0 sm:p-4">
+                    <div className="mb-3 flex items-start justify-between">
+                      <div className="silver-sheen flex h-10 w-10 items-center justify-center rounded-xl ring-1 ring-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.78),0_10px_22px_rgba(18,22,27,0.1)] transition-transform group-hover:scale-[1.03] sm:h-9 sm:w-9 sm:rounded-xl dark:ring-white/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.48),0_12px_24px_rgba(0,0,0,0.24)]">
                         <item.icon className="h-4.5 w-4.5 text-[#2b3138] sm:h-4 sm:w-4" />
                       </div>
                     </div>
-                    <div className="text-[2rem] font-bold tracking-[-0.03em] text-[#171b21] dark:text-slate-100 sm:text-2xl">{item.value}</div>
-                    <div className="mt-auto pt-4">
+                    <div className="text-[clamp(1.55rem,6.1vw,1.95rem)] font-bold leading-none tracking-[-0.03em] text-[#171b21] dark:text-slate-100 sm:text-2xl">{item.value}</div>
+                    <div className="mt-auto pt-3">
                       <p className="text-[12px] font-semibold text-[#434c56] dark:text-slate-300 sm:text-[11px]">{item.label}</p>
                       {item.description && <p className="mt-1 text-[11px] leading-5 text-[#7a838d] sm:text-[10px]">{item.description}</p>}
                     </div>
@@ -615,19 +615,19 @@ export function DashboardPage() {
                         <p className="text-sm font-medium text-[var(--color-card-foreground)] truncate">
                           {display.label}
                         </p>
-                        <p className="text-xs text-[var(--text-metal-muted-color)] truncate">
+                        <p className="text-xs text-[#6b7480] dark:text-slate-300 truncate">
                           {actorName}
                           {log.targetType && (
-                            <span className="text-[var(--color-border)]"> · {log.targetType}</span>
+                            <span className="text-[#8a94a3] dark:text-slate-400"> · {log.targetType}</span>
                           )}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-[11px] text-[var(--text-metal-muted-color)]">
+                        <span className="text-[11px] text-[#7b8592] dark:text-slate-300">
                           {formatDistanceToNowStrict(new Date(log.createdAt), { addSuffix: true })}
                         </span>
                         {navPath && (
-                          <Eye className="h-3.5 w-3.5 text-[var(--color-border)]" />
+                          <Eye className="h-3.5 w-3.5 text-[#8a94a3] dark:text-slate-400" />
                         )}
                       </div>
                     </div>
@@ -667,12 +667,12 @@ export function DashboardPage() {
                         <p className={`text-sm font-medium truncate ${notif.isRead ? 'text-[var(--text-metal-color)]' : 'text-[var(--color-card-foreground)]'}`}>
                           {notif.title}
                         </p>
-                        <p className="text-xs text-[var(--text-metal-muted-color)] truncate">
+                        <p className="text-xs text-[#6b7480] dark:text-slate-300 truncate">
                           {notif.message}
                         </p>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-[11px] text-[var(--text-metal-muted-color)]">
+                        <span className="text-[11px] text-[#7b8592] dark:text-slate-300">
                           {formatDistanceToNowStrict(new Date(notif.createdAt), { addSuffix: true })}
                         </span>
                         {!notif.isRead && (

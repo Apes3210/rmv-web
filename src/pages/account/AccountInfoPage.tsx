@@ -67,44 +67,44 @@ export function AccountInfoPage() {
   return (
     <div className="space-y-6">
       {/* Account Information */}
-      <Card className="border-[#d2d2d7]/50 shadow-sm rounded-2xl bg-white/80 backdrop-blur-sm">
+      <Card className="border-[#d2d2d7]/50 dark:border-white/10 shadow-sm rounded-2xl bg-white/80 dark:bg-slate-900/70 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-[#1d1d1f] flex items-center gap-2">
-            <UserCircle className="h-5 w-5 text-[#6e6e73]" />
+          <CardTitle className="text-lg font-semibold text-[#1d1d1f] dark:text-slate-100 flex items-center gap-2">
+            <UserCircle className="h-5 w-5 text-[#6e6e73] dark:text-slate-400" />
             Account Information
           </CardTitle>
-          <CardDescription className="text-[#86868b]">
+          <CardDescription className="text-[#86868b] dark:text-slate-300/90">
             Your account details and membership information.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Email */}
-          <div className="flex items-center justify-between gap-3 p-4 border border-[#d2d2d7]/50 rounded-xl bg-white/60">
+          <div className="flex items-center justify-between gap-3 p-4 border border-[#d2d2d7]/50 dark:border-white/10 rounded-xl bg-white/60 dark:bg-slate-800/70">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="p-2 bg-[#f0f0f5] rounded-lg shrink-0">
-                <Mail className="h-4 w-4 text-[#6e6e73]" />
+              <div className="p-2 bg-[#f0f0f5] dark:bg-slate-700/70 rounded-lg shrink-0">
+                <Mail className="h-4 w-4 text-[#6e6e73] dark:text-slate-300" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs text-[#86868b] font-medium">Email Address</p>
-                <p className="text-sm font-medium text-[#1d1d1f] truncate">{user?.email}</p>
+                <p className="text-xs text-[#86868b] dark:text-slate-300 font-medium">Email Address</p>
+                <p className="text-sm font-medium text-[#1d1d1f] dark:text-slate-100 truncate">{user?.email}</p>
               </div>
             </div>
             {user?.isEmailVerified && (
-              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] shrink-0">
+              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-400/40 text-[10px] shrink-0">
                 Verified
               </Badge>
             )}
           </div>
 
           {/* User ID */}
-          <div className="flex items-center justify-between gap-3 p-4 border border-[#d2d2d7]/50 rounded-xl bg-white/60">
+          <div className="flex items-center justify-between gap-3 p-4 border border-[#d2d2d7]/50 dark:border-white/10 rounded-xl bg-white/60 dark:bg-slate-800/70">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="p-2 bg-[#f0f0f5] rounded-lg shrink-0">
-                <Shield className="h-4 w-4 text-[#6e6e73]" />
+              <div className="p-2 bg-[#f0f0f5] dark:bg-slate-700/70 rounded-lg shrink-0">
+                <Shield className="h-4 w-4 text-[#6e6e73] dark:text-slate-300" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs text-[#86868b] font-medium">User ID</p>
-                <p className="text-sm font-mono text-[#6e6e73] truncate">
+                <p className="text-xs text-[#86868b] dark:text-slate-300 font-medium">User ID</p>
+                <p className="text-sm font-mono text-[#6e6e73] dark:text-slate-200 truncate">
                   #{user?._id?.substring(0, 8)}...
                 </p>
               </div>
@@ -112,7 +112,7 @@ export function AccountInfoPage() {
             <Button
               variant="ghost"
               size="sm"
-              className="text-gray-400 hover:text-[#1d1d1f] shrink-0"
+              className="text-gray-400 hover:text-[#1d1d1f] dark:text-slate-400 dark:hover:text-slate-100 shrink-0"
               onClick={handleCopyId}
             >
               <Copy className="h-4 w-4" />
@@ -120,14 +120,14 @@ export function AccountInfoPage() {
           </div>
 
           {/* Member Since */}
-          <div className="flex items-center justify-between gap-3 p-4 border border-[#d2d2d7]/50 rounded-xl bg-white/60">
+          <div className="flex items-center justify-between gap-3 p-4 border border-[#d2d2d7]/50 dark:border-white/10 rounded-xl bg-white/60 dark:bg-slate-800/70">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="p-2 bg-[#f0f0f5] rounded-lg shrink-0">
-                <CalendarDays className="h-4 w-4 text-[#6e6e73]" />
+              <div className="p-2 bg-[#f0f0f5] dark:bg-slate-700/70 rounded-lg shrink-0">
+                <CalendarDays className="h-4 w-4 text-[#6e6e73] dark:text-slate-300" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs text-[#86868b] font-medium">Member Since</p>
-                <p className="text-sm font-medium text-[#1d1d1f]">
+                <p className="text-xs text-[#86868b] dark:text-slate-300 font-medium">Member Since</p>
+                <p className="text-sm font-medium text-[#1d1d1f] dark:text-slate-100">
                   {user?.createdAt ? format(new Date(user.createdAt), 'MMMM d, yyyy') : '—'}
                 </p>
               </div>
@@ -135,14 +135,14 @@ export function AccountInfoPage() {
           </div>
 
           {/* Roles */}
-          <div className="p-4 border border-[#d2d2d7]/50 rounded-xl bg-white/60">
-            <p className="text-xs text-[#86868b] font-medium mb-2">Roles</p>
+          <div className="p-4 border border-[#d2d2d7]/50 dark:border-white/10 rounded-xl bg-white/60 dark:bg-slate-800/70">
+            <p className="text-xs text-[#86868b] dark:text-slate-300 font-medium mb-2">Roles</p>
             <div className="flex flex-wrap gap-2">
               {user?.roles?.map((role) => (
                 <Badge
                   key={role}
                   variant="secondary"
-                  className="px-2.5 py-1 bg-[#f0f0f5] text-[#3a3a3e] border border-[#d2d2d7]/50 uppercase text-[10px] tracking-wider font-semibold rounded-md"
+                  className="px-2.5 py-1 bg-[#f0f0f5] text-[#3a3a3e] border border-[#d2d2d7]/50 dark:bg-slate-700/80 dark:text-slate-100 dark:border-white/15 uppercase text-[10px] tracking-wider font-semibold rounded-md"
                 >
                   {role.replace(/_/g, ' ')}
                 </Badge>
@@ -153,21 +153,21 @@ export function AccountInfoPage() {
       </Card>
 
       {/* Danger Zone */}
-      <Card className="border-red-200 shadow-sm rounded-2xl bg-white/80 backdrop-blur-sm">
+      <Card className="border-red-200 dark:border-red-400/30 shadow-sm rounded-2xl bg-white/80 dark:bg-slate-900/70 backdrop-blur-sm">
         <CardHeader>
-          <CardTitle className="text-lg font-semibold text-red-600 flex items-center gap-2">
+          <CardTitle className="text-lg font-semibold text-red-600 dark:text-red-400 flex items-center gap-2">
             <AlertTriangle className="h-5 w-5" />
             Danger Zone
           </CardTitle>
-          <CardDescription className="text-[#86868b]">
+          <CardDescription className="text-[#86868b] dark:text-slate-300/90">
             Irreversible actions that permanently affect your account.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="p-4 border border-red-100 rounded-xl bg-red-50/60 space-y-3">
+          <div className="p-4 border border-red-100 dark:border-red-400/30 rounded-xl bg-red-50/60 dark:bg-red-500/10 space-y-3">
             <div>
-              <p className="text-sm font-medium text-[#1d1d1f]">Delete Account</p>
-              <p className="text-xs text-[#86868b] mt-0.5">
+              <p className="text-sm font-medium text-[#1d1d1f] dark:text-slate-100">Delete Account</p>
+              <p className="text-xs text-[#86868b] dark:text-slate-300 mt-0.5">
                 Permanently deactivates your account and removes your sessions, notifications, and
                 tokens. This action cannot be undone.
               </p>
@@ -177,7 +177,7 @@ export function AccountInfoPage() {
               <Button
                 variant="outline"
                 size="sm"
-                className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 rounded-xl text-xs"
+                className="border-red-300 text-red-600 hover:bg-red-50 hover:border-red-400 dark:border-red-400/40 dark:text-red-300 dark:hover:bg-red-500/20 dark:hover:border-red-300 rounded-xl text-xs"
                 onClick={() => setShowDeleteForm(true)}
               >
                 Delete my account
@@ -186,9 +186,9 @@ export function AccountInfoPage() {
               <div className="space-y-3 pt-1">
                 {/* Google info banner */}
                 {isGoogleUser && (
-                  <div className="flex items-start gap-2 p-3 bg-[#f0f0f5] border border-[#d2d2d7]/60 rounded-xl">
-                    <Shield className="h-4 w-4 text-[#6e6e73] mt-0.5 shrink-0" />
-                    <p className="text-xs text-[#6e6e73]">
+                  <div className="flex items-start gap-2 p-3 bg-[#f0f0f5] dark:bg-slate-800/70 border border-[#d2d2d7]/60 dark:border-white/10 rounded-xl">
+                    <Shield className="h-4 w-4 text-[#6e6e73] dark:text-slate-300 mt-0.5 shrink-0" />
+                    <p className="text-xs text-[#6e6e73] dark:text-slate-300">
                       Your account is managed by Google — no password needed to confirm.
                     </p>
                   </div>
@@ -197,7 +197,7 @@ export function AccountInfoPage() {
                 {/* Password (local users only) */}
                 {!isGoogleUser && (
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-[#3a3a3e]">
+                    <label className="text-xs font-medium text-[#3a3a3e] dark:text-slate-200">
                       Confirm your password
                     </label>
                     <input
@@ -205,23 +205,23 @@ export function AccountInfoPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
-                      className="w-full px-3 py-2 text-sm border border-[#d2d2d7] rounded-xl bg-white placeholder:text-[#aeaeb2] focus:outline-none focus:ring-2 focus:ring-[#1d1d1f]/10"
+                      className="w-full px-3 py-2 text-sm border border-[#d2d2d7] dark:border-white/15 rounded-xl bg-white dark:bg-slate-800/80 text-[#1d1d1f] dark:text-slate-100 placeholder:text-[#aeaeb2] dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#1d1d1f]/10 dark:focus:ring-slate-400/30"
                     />
                   </div>
                 )}
 
                 {/* Confirmation text */}
                 <div className="space-y-1">
-                  <label className="text-xs font-medium text-[#3a3a3e]">
+                  <label className="text-xs font-medium text-[#3a3a3e] dark:text-slate-200">
                     Type{' '}
-                    <span className="font-mono font-semibold text-red-600">DELETE</span> to confirm
+                    <span className="font-mono font-semibold text-red-600 dark:text-red-300">DELETE</span> to confirm
                   </label>
                   <input
                     type="text"
                     value={confirmation}
                     onChange={(e) => setConfirmation(e.target.value)}
                     placeholder="DELETE"
-                    className="w-full px-3 py-2 text-sm border border-[#d2d2d7] rounded-xl bg-white placeholder:text-[#aeaeb2] focus:outline-none focus:ring-2 focus:ring-red-500/20 font-mono"
+                    className="w-full px-3 py-2 text-sm border border-[#d2d2d7] dark:border-white/15 rounded-xl bg-white dark:bg-slate-800/80 text-[#1d1d1f] dark:text-slate-100 placeholder:text-[#aeaeb2] dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-red-500/20 font-mono"
                   />
                 </div>
 
@@ -242,7 +242,7 @@ export function AccountInfoPage() {
                       setConfirmation('');
                       setPassword('');
                     }}
-                    className="text-[#6e6e73] hover:text-[#1d1d1f] rounded-xl text-xs"
+                    className="text-[#6e6e73] hover:text-[#1d1d1f] dark:text-slate-300 dark:hover:text-slate-100 rounded-xl text-xs"
                   >
                     Cancel
                   </Button>

@@ -79,13 +79,13 @@ export function AccountNotificationsPage() {
 
   if (visiblePrefs.length === 0) {
     return (
-      <Card className="border-[#d2d2d7]/50 shadow-sm rounded-2xl bg-white/80 backdrop-blur-sm">
+      <Card className="border-[#d2d2d7]/50 dark:border-white/10 shadow-sm rounded-2xl bg-white/80 dark:bg-slate-900/70 backdrop-blur-sm">
         <CardContent className="flex flex-col items-center justify-center py-12">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#f0f0f5] mb-3">
-            <Bell className="h-5 w-5 text-[#c8c8cd]" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#f0f0f5] dark:bg-slate-800/80 mb-3">
+            <Bell className="h-5 w-5 text-[#c8c8cd] dark:text-slate-400" />
           </div>
-          <p className="text-sm font-medium text-[#86868b]">No notification settings available</p>
-          <p className="text-xs text-[#c8c8cd] mt-1">
+          <p className="text-sm font-medium text-[#86868b] dark:text-slate-200">No notification settings available</p>
+          <p className="text-xs text-[#c8c8cd] dark:text-slate-400 mt-1">
             Your role doesn't have configurable notification preferences.
           </p>
         </CardContent>
@@ -94,13 +94,13 @@ export function AccountNotificationsPage() {
   }
 
   return (
-    <Card className="border-[#d2d2d7]/50 shadow-sm rounded-2xl bg-white/80 backdrop-blur-sm">
+    <Card className="border-[#d2d2d7]/50 dark:border-white/10 shadow-sm rounded-2xl bg-white/80 dark:bg-slate-900/70 backdrop-blur-sm">
       <CardHeader>
-        <CardTitle className="text-lg font-semibold text-[#1d1d1f] flex items-center gap-2">
-          <Bell className="h-5 w-5 text-[#6e6e73]" />
+        <CardTitle className="text-lg font-semibold text-[#1d1d1f] dark:text-slate-100 flex items-center gap-2">
+          <Bell className="h-5 w-5 text-[#6e6e73] dark:text-slate-400" />
           Notification Preferences
         </CardTitle>
-        <CardDescription className="text-[#86868b]">
+        <CardDescription className="text-[#86868b] dark:text-slate-300/90">
           Choose which notifications you'd like to receive. This controls push and email
           notifications — your notification inbox is not affected.
         </CardDescription>
@@ -113,11 +113,11 @@ export function AccountNotificationsPage() {
           return (
             <div
               key={pref.key}
-              className="flex items-center justify-between p-4 border border-[#d2d2d7]/50 rounded-xl bg-white/60"
+              className="flex items-center justify-between p-4 border border-[#d2d2d7]/50 dark:border-white/10 rounded-xl bg-white/60 dark:bg-slate-800/70"
             >
               <div>
-                <p className="font-medium text-[#1d1d1f] text-sm">{pref.label}</p>
-                <p className="text-xs text-[#86868b] mt-0.5">{pref.description}</p>
+                <p className="font-medium text-[#1d1d1f] dark:text-slate-100 text-sm">{pref.label}</p>
+                <p className="text-xs text-[#86868b] dark:text-slate-300 mt-0.5">{pref.description}</p>
               </div>
               <Switch
                 checked={checked}

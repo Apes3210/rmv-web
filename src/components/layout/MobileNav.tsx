@@ -287,7 +287,9 @@ export function MobileNav() {
                 to={item.path}
                 className={cn(
                   'flex-1 flex flex-col items-center justify-center py-2.5 text-[10px] font-semibold transition-all relative min-w-0',
-                  isActive ? 'text-[#171b21]' : 'text-[#77818c] active:text-[#5f6872]',
+                  isActive
+                    ? 'text-[#171b21] dark:text-slate-100'
+                    : 'text-[#77818c] dark:text-slate-400 active:text-[#5f6872] dark:active:text-slate-300',
                 )}
               >
                 {isActive && (
