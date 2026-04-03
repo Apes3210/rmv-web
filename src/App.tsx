@@ -8,6 +8,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { PageLoader } from '@/components/shared/PageLoader';
 import { LandingPageLoader } from '@/components/shared/LandingPageLoader';
+import { AuthPageLoader } from '@/components/shared/AuthPageLoader';
 import { Role } from '@/lib/constants';
 
 const LoginPage = lazy(() =>
@@ -266,13 +267,13 @@ export default function App() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<Suspense fallback={<LandingPageLoader />}><LandingPage /></Suspense>} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
-          <Route path="/verify-otp" element={<VerifyOTPPage />} />
-          <Route path="/verify-2fa" element={<VerifyTwoFactorPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/reset-password" element={<ResetPasswordPage />} />
-          <Route path="/complete-profile" element={<CompleteProfilePage />} />
+          <Route path="/login" element={<Suspense fallback={<AuthPageLoader />}><LoginPage /></Suspense>} />
+          <Route path="/register" element={<Suspense fallback={<AuthPageLoader />}><RegisterPage /></Suspense>} />
+          <Route path="/verify-otp" element={<Suspense fallback={<AuthPageLoader />}><VerifyOTPPage /></Suspense>} />
+          <Route path="/verify-2fa" element={<Suspense fallback={<AuthPageLoader />}><VerifyTwoFactorPage /></Suspense>} />
+          <Route path="/forgot-password" element={<Suspense fallback={<AuthPageLoader />}><ForgotPasswordPage /></Suspense>} />
+          <Route path="/reset-password" element={<Suspense fallback={<AuthPageLoader />}><ResetPasswordPage /></Suspense>} />
+          <Route path="/complete-profile" element={<Suspense fallback={<AuthPageLoader />}><CompleteProfilePage /></Suspense>} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
           <Route path="/terms" element={<TermsOfServicePage />} />
 
