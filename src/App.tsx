@@ -188,7 +188,7 @@ const UnauthorizedPage = lazy(() =>
   })),
 );
 
-const REPORT_ROLES = [Role.CASHIER, Role.ADMIN];
+const REPORT_ROLES = [Role.CASHIER, Role.ENGINEER, Role.ADMIN];
 const ADMIN_ROLES = [Role.ADMIN];
 const SLOT_MGMT_ROLES = [Role.ADMIN, Role.APPOINTMENT_AGENT];
 const AGENT_ROLES = [Role.APPOINTMENT_AGENT, Role.SALES_STAFF];
@@ -352,7 +352,7 @@ export default function App() {
               <Route
                 element={
                   <ProtectedRoute
-                    allowedRoles={[Role.SALES_STAFF, Role.ENGINEER, Role.ADMIN]}
+                    allowedRoles={[Role.SALES_STAFF, Role.ENGINEER, Role.ADMIN, Role.FABRICATION_STAFF]}
                   />
                 }
               >

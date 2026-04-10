@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   CheckCircle,
   Clock,
-  Flame,
   Utensils,
 
   ShoppingBag,
@@ -86,170 +85,131 @@ const HERO_SIGNAL_CARDS: HeroSignalCard[] = [
 
 const SHOWCASE_COLLECTIONS: CollectionData[] = [
   {
-    id: 'commercial-kitchens',
-    label: 'Commercial Kitchens',
-    headline: 'Kitchen Stainless Steel Fabrication',
-    shortDescription: 'Food-grade counters, prep lines, sinks, and service stations built for heavy daily operations.',
-    capabilityDescription: 'This collection focuses on full stainless-steel kitchen packages for restaurants and production spaces, combining layout planning, custom fabrication, and workflow-ready installation.',
-    bestFor: 'Restaurants, commissaries, and high-volume prep kitchens.',
-    scopeNote: 'Built around clean zoning, durable surfaces, and efficient service circulation.',
-    coverImage: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?q=80&w=2932&auto=format&fit=crop',
-    tags: ['Food Grade', 'Custom Fit', 'Production Ready'],
-    systems: ['Custom counters', 'Prep tables', 'Sink systems', 'Service lines'],
+    id: 'completed-works',
+    label: 'Completed Works',
+    headline: 'Commercial Kitchens & HVAC Systems',
+    shortDescription: 'Professional stainless steel fabrication for kitchens, ductwork, and overhead ventilation systems.',
+    capabilityDescription: 'Complete commercial kitchen installations featuring custom fabrication, professional-grade ductwork, and full HVAC integration for restaurants and commercial food operations.',
+    bestFor: 'Restaurants, commercial kitchens, and hospitality establishments.',
+    scopeNote: 'From design through installation, including stainless counters, exhaust systems, and integrated ventilation.',
+    coverImage: '/landing/completed-works/cover.png',
+    tags: ['Commercial Grade', 'Ventilation Ready', 'Installation Included'],
+    systems: ['Stainless counters', 'Ductwork fabrication', 'Exhaust hoods', 'Ventilation integration'],
     icon: Layers,
     projects: [
       {
-        title: 'Le Grand Prei',
-        location: 'General Santos City',
-        image: 'https://images.unsplash.com/photo-1556910103-1c02745aae4d?q=80&w=2932&auto=format&fit=crop',
-        description: 'Complete commercial kitchen fabrication for Le Grand Prei, featuring custom stainless steel countertops, exhaust hoods, and a full equipment layout designed for fast restaurant operations.',
+        title: 'Professional Exhaust & Ducting',
+        location: 'Commercial Kitchen',
+        image: '/landing/completed-works/cover.png',
+        description: 'Comprehensive overhead ventilation and ductwork installation, featuring custom-fabricated stainless steel hoods and professional-grade air extraction systems.',
       },
       {
-        title: "Primo's Restaurant",
-        location: 'Ligao, Albay',
-        image: 'https://images.unsplash.com/photo-1583847268964-b28dc8f51f92?q=80&w=2874&auto=format&fit=crop',
-        description: 'End-to-end kitchen design and stainless steel fabrication for Primo\'s Restaurant, using a tighter prep-to-plating flow that improves daily kitchen movement without sacrificing build quality.',
-      },
-      {
-        title: 'Production Kitchen Line',
+        title: 'Commercial Kitchen Workstations',
         location: 'Metro Manila',
-        image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2940&auto=format&fit=crop',
-        description: 'A commercial kitchen line arranged for volume cooking, built with coordinated prep zones, washable stainless worktops, and durable service counters for continuous use.',
-      },
-    ],
-  },
-  {
-    id: 'grill-concepts',
-    label: 'Grill Concepts',
-    headline: 'Kitchen Planning, Ventilation, and Hot-Line Buildouts',
-    shortDescription: 'Purpose-built stainless packages for grill-heavy concepts that need airflow, heat control, and tough prep zones.',
-    capabilityDescription: 'Focused on Korean BBQ, grill restaurants, and high-heat concepts where stainless fabrication, exhaust routing, and cooking flow need to work together as one system.',
-    bestFor: 'Korean BBQ, grill houses, and smoke-heavy kitchens.',
-    scopeNote: 'Combines fabrication, hood planning, duct support, and prep-line organization.',
-    coverImage: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?q=80&w=2940&auto=format&fit=crop',
-    tags: ['Ventilation', 'High Heat', 'Workflow Driven'],
-    systems: ['Exhaust hood runs', 'Grilling stations', 'Cold storage fit-outs', 'Drainage planning'],
-    icon: Flame,
-    projects: [
-      {
-        title: 'Kko Kko Korean Restaurant',
-        location: 'Cubao, Quezon City',
-        image: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?q=80&w=2940&auto=format&fit=crop',
-        description: 'A full stainless kitchen fit-out with grilling stations, prep tables, cold storage, and ventilation support designed for Korean BBQ service.',
+        image: '/landing/completed-works/project-1.jpg',
+        description: 'Complete commercial kitchen layout featuring heavy-duty stainless steel shelving, custom workstations, and integrated stove units for high-efficiency food production.',
       },
       {
-        title: '8 Danji Korean Resto',
-        location: 'Araneta, Cubao',
-        image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=2940&auto=format&fit=crop',
-        description: 'Custom fabrication for specialized prep stations, dual-purpose cooking areas, and integrated drainage that supports a compact but busy grill concept.',
-      },
-      {
-        title: 'Open Grill Service Line',
+        title: 'Ceiling & Ventilation Infrastructure',
         location: 'Quezon City',
-        image: 'https://images.unsplash.com/photo-1552566626-52f8b828add9?q=80&w=2940&auto=format&fit=crop',
-        description: 'An open-kitchen grill line with stainless surrounds, coordinated hood coverage, and durable prep surfaces designed for front-facing service.',
+        image: '/landing/completed-works/project-2.png',
+        description: 'Advanced kitchen ventilation setup featuring professional-grade exhaust hoods, ceiling-integrated ductwork, and specialized air filtration systems.',
+      },
+      {
+        title: 'Stainless Steel Kitchen Build',
+        location: 'Laguna',
+        image: '/landing/completed-works/project-3.png',
+        description: 'Full-scale stainless steel fabrication for industrial kitchens, including custom preparation tables, wall shelving, and integrated safety equipment.',
       },
     ],
   },
   {
-    id: 'hotel-banquet',
-    label: 'Hotel Kitchens',
-    headline: 'Banquet Production and Back-of-House Systems',
-    shortDescription: 'Larger stainless packages for hotels and hospitality kitchens that need separate zones and dependable throughput.',
-    capabilityDescription: 'Designed for back-of-house teams that operate at banquet scale, with stainless work lines, dedicated prep areas, and production layouts that stay manageable under pressure.',
-    bestFor: 'Hotels, resorts, and large hospitality food operations.',
-    scopeNote: 'Supports plating, wash, prep, and cooking zones without crowding the kitchen core.',
-    coverImage: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2940&auto=format&fit=crop',
-    tags: ['Banquet Ready', 'Zone Planning', 'Heavy Duty'],
-    systems: ['Prep zoning', 'Wash areas', 'Large cooklines', 'Holding stations'],
-    icon: Hotel,
-    projects: [
-      {
-        title: 'Elkan Hotel',
-        location: 'Ligao, Albay',
-        image: 'https://images.unsplash.com/photo-1566073771259-6a8506099945?q=80&w=2940&auto=format&fit=crop',
-        description: 'Large-scale hotel kitchen fabrication designed for banquet-level production with separated prep, cooking, plating, and wash zones in premium stainless steel.',
-      },
-      {
-        title: 'Hospitality Service Kitchen',
-        location: 'Bicol Region',
-        image: 'https://images.unsplash.com/photo-1520250497591-112f2f40a3f4?q=80&w=2940&auto=format&fit=crop',
-        description: 'A hospitality-focused kitchen layout built for steady daily output, with cleaner movement between receiving, prep, plating, and washdown spaces.',
-      },
-      {
-        title: 'Banquet Prep Line',
-        location: 'South Luzon',
-        image: 'https://images.unsplash.com/photo-1519167758481-83f550bb49b3?q=80&w=2940&auto=format&fit=crop',
-        description: 'A banquet support line configured for larger batch work, featuring expanded stainless prep surfaces and clearer service transitions during peak events.',
-      },
-    ],
-  },
-  {
-    id: 'food-stall-systems',
-    label: 'Food Stall Systems',
-    headline: 'Compact Counters and Service-Focused Fabrication',
-    shortDescription: 'Smart stainless assemblies for smaller footprints where every surface has to work harder.',
-    capabilityDescription: 'Built for food stalls and service counters that need efficient prep, storage, and customer-facing presentation without wasting floor area.',
-    bestFor: 'Food courts, kiosks, and compact retail food spaces.',
-    scopeNote: 'Compact layouts with storage, service counters, and durable stainless finishes.',
-    coverImage: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=2874&auto=format&fit=crop',
-    tags: ['Compact Layout', 'Fast Service', 'Flexible Build'],
-    systems: ['Serving counters', 'Storage integration', 'Compact cook stations', 'Washable finishes'],
+    id: 'food-stall-works',
+    label: 'Food Stall Works',
+    headline: 'Food Stalls & Retail Food Service',
+    shortDescription: 'Compact, efficient stainless steel food service counters and stall systems for food courts and retail operations.',
+    capabilityDescription: 'Purpose-built food stall and kiosk solutions featuring branded signage, display cases, serving counters, and storage integration for maximum functionality in minimal space.',
+    bestFor: 'Food courts, shopping malls, street vendors, and small food service operations.',
+    scopeNote: 'Complete stall setup including counter fabrication, branding, and customer-facing design.',
+    coverImage: '/landing/food-stall-works/cover.png',
+    tags: ['Retail Ready', 'Branded Design', 'Compact Layout'],
+    systems: ['Service counters', 'Display cases', 'Stainless fabrication', 'Custom signage'],
     icon: Store,
     projects: [
       {
-        title: 'Food Stall Works',
-        location: 'Fairview, Quezon City',
-        image: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=2874&auto=format&fit=crop',
-        description: 'Multiple compact stall fabrication packages featuring stainless service counters, storage, and cooking stations tailored for high-turnover food court operations.',
+        title: 'Hungry Bik Food Stall',
+        location: 'Food Court',
+        image: '/landing/food-stall-works/cover.png',
+        description: 'Complete branded food stall featuring vibrant signage, professional serving counter with integrated storage, and custom stainless steel food preparation areas.',
       },
       {
-        title: 'Mall Kiosk Counter',
-        location: 'Metro Manila',
-        image: 'https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?q=80&w=2940&auto=format&fit=crop',
-        description: 'A compact kiosk fit-out with durable stainless worktops, built-in storage, and a frontage designed to support fast service in a tight retail footprint.',
+        title: 'Mango on the Go Kiosk',
+        location: 'Shopping Mall',
+        image: '/landing/food-stall-works/project-1.png',
+        description: 'Vibrant branded kiosk featuring custom serving counters, integrated display areas, and stainless steel preparation surfaces for specialty beverage service.',
       },
       {
-        title: 'Quick-Service Stall Line',
-        location: 'Quezon City',
-        image: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=2940&auto=format&fit=crop',
-        description: 'A quick-service line organized around order flow, with stainless workstations arranged to reduce congestion between prep, cook, and handoff areas.',
+        title: 'Pamiyan\'s Burmese Food Stall',
+        location: 'Food Center',
+        image: '/landing/food-stall-works/project-2.png',
+        description: 'Professional retail food stall featuring high-contrast branding, custom-fabricated stainless service counters, and integrated overhead lighting for maximum visibility.',
+      },
+      {
+        title: 'Ranile\'s Best Bulaluhan',
+        location: 'Retail Location',
+        image: '/landing/food-stall-works/project-3.png',
+        description: 'Full-service food stall setup featuring an expansive menu board system, custom stainless workstations, and integrated storage for high-volume retail environments.',
       },
     ],
   },
   {
-    id: 'custom-metalworks',
-    label: 'Custom Metalworks',
-    headline: 'Railings, Architectural Stainless, and Bespoke Fabrication',
-    shortDescription: 'Beyond kitchens: polished stainless details and architectural fabrications for commercial and residential spaces.',
-    capabilityDescription: 'This collection covers stainless railings and custom-built metal elements where finish, detailing, and visual presence matter as much as durability.',
-    bestFor: 'Commercial lobbies, staircases, balconies, and premium residential work.',
-    scopeNote: 'Ideal when the project needs both structural confidence and a cleaner modern finish.',
-    coverImage: 'https://images.unsplash.com/photo-1511818966892-d7d671e672a2?q=80&w=2940&auto=format&fit=crop',
-    tags: ['Architectural', 'Polished Finish', 'Bespoke'],
-    systems: ['Railing fabrication', 'Stair details', 'Custom brackets', 'Architectural trim'],
+    id: 'gasline-fire-suppression',
+    label: 'Gasline & Fire Suppression',
+    headline: 'Gasline, Fire Suppression & Industrial Installation',
+    shortDescription: 'Expert fabrication and installation of gas systems, fire suppression equipment, and specialized industrial piping.',
+    capabilityDescription: 'Complete utility infrastructure solutions including certified gasline installations, fire suppression system setup, and industrial piping fabrication for commercial and industrial facilities.',
+    bestFor: 'Commercial buildings, restaurants, kitchens, and industrial facilities requiring safety systems.',
+    scopeNote: 'Certified installations meeting all safety codes and regulations for gas and fire suppression systems.',
+    coverImage: '/landing/gasline-fire-suppression/cover.png',
+    tags: ['Safety Certified', 'Industrial Grade', 'Code Compliant'],
+    systems: ['Gasline installation', 'Fire suppression setup', 'Pressure piping', 'Safety systems'],
     icon: Maximize,
     projects: [
       {
-        title: 'Lobby Stair Rail System',
-        location: 'Davao Region',
-        image: 'https://images.unsplash.com/photo-1511818966892-d7d671e672a2?q=80&w=2940&auto=format&fit=crop',
-        description: 'A polished stainless stair rail package designed for a modern lobby setting, balancing visual refinement with long-term durability in a high-traffic interior.',
+        title: 'Internal Gasline Distribution',
+        location: 'Commercial Kitchen',
+        image: '/landing/gasline-fire-suppression/cover.png',
+        description: 'Precision-engineered internal gas distribution system featuring low-profile piping, professional surface mounting, and integrated safety shut-off controls.',
       },
       {
-        title: 'Balcony Guardrail Collection',
-        location: 'South Cotabato',
-        image: 'https://images.unsplash.com/photo-1505693416388-ac5ce068fe85?q=80&w=2940&auto=format&fit=crop',
-        description: 'Custom stainless guardrails fabricated for a residential project, emphasizing clean lines, stable hand feel, and a brighter architectural finish.',
+        title: 'Exterior Gasline Installation',
+        location: 'Industrial Site',
+        image: '/landing/gasline-fire-suppression/project-1.png',
+        description: 'Professional-grade exterior gasline fabrication using heavy-duty piping and certified mounting systems, ensuring full compliance with safety standards.',
       },
       {
-        title: 'Commercial Entry Detail',
-        location: 'General Santos City',
-        image: 'https://images.unsplash.com/photo-1494526585095-c41746248156?q=80&w=2940&auto=format&fit=crop',
-        description: 'A bespoke stainless entry detail package with coordinated rails and trim elements that sharpen the visual identity of the space while staying easy to maintain.',
+        title: 'Industrial Pressure Testing',
+        location: 'Testing Phase',
+        image: '/landing/gasline-fire-suppression/project-2.png',
+        description: 'Rigorous pressure testing and calibration for gas and liquid distribution systems, using certified gauges to ensure system integrity and safety.',
+      },
+      {
+        title: 'Automated Fire Suppression',
+        location: 'Operational Area',
+        image: '/landing/gasline-fire-suppression/project-3.png',
+        description: 'Specialized fire suppression system featuring high-capacity pressure vessels, professional mounting, and integrated piping for high-risk commercial environments.',
       },
     ],
   }
+
+
+];
+
+/** Labels match on-page headings (Fabrication Collections cards, workflow, sectors). */
+const FOOTER_SERVICE_LINKS: { label: string; href: string }[] = [
+  ...SHOWCASE_COLLECTIONS.map((c) => ({ label: c.label, href: `#${c.id}` })),
+  { label: 'Streamlined Workflow', href: '#workflow' },
+  { label: 'Sectors We Serve', href: '#sectors' },
 ];
 
 export function LandingPage() {
@@ -619,16 +579,18 @@ export function LandingPage() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.8 }}
-              className="mb-16 md:mb-24"
+              className="mb-16 text-center md:mb-24"
             >
-              <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-[#c9a96f]/30 bg-[#c9a96f]/10 px-4 py-1.5 text-xs font-semibold tracking-widest text-[#c9a96f] uppercase">
-                <Sparkles className="h-3.5 w-3.5" />
-                Client Portal
+              <div className="mb-6 flex justify-center">
+                <div className="inline-flex items-center gap-2 rounded-full border border-[#c9a96f]/30 bg-[#c9a96f]/10 px-4 py-1.5 text-xs font-semibold tracking-widest text-[#c9a96f] uppercase">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Client Portal
+                </div>
               </div>
-              <h2 className="max-w-3xl text-3xl font-bold tracking-tight text-white sm:text-4xl md:text-5xl lg:text-5xl">
+              <h2 className="mx-auto max-w-3xl text-3xl font-bold tracking-tight text-white sm:text-4xl md:text-5xl lg:text-5xl">
                 Stay informed from drawing approval to final installation.
               </h2>
-              <p className="mt-6 max-w-2xl text-lg leading-relaxed text-white/60">
+              <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-white/60">
                 The RMV client portal helps you review drawings, track payments, and follow project progress without relying on scattered messages or manual follow-ups.
               </p>
             </motion.div>
@@ -743,7 +705,7 @@ export function LandingPage() {
         </section>
 
         {/* Streamlined Workflow */}
-        <section ref={workflowRef} id="workflow" style={{ background: 'linear-gradient(180deg, #f7f1e1 0%, #fdfbf7 50%, #ffffff 100%)' }} className="relative border-t border-[#e2cba1]/30 py-24 md:py-32">
+        <section ref={workflowRef} id="workflow" style={{ background: 'linear-gradient(180deg, #f7f1e1 0%, #fdfbf7 50%, #ffffff 100%)' }} className="relative scroll-mt-24 border-t border-[#e2cba1]/30 py-24 md:py-32 md:scroll-mt-28">
           
           <div className="mx-auto max-w-7xl px-6 lg:px-8">
             <div className="grid gap-10 md:gap-16 lg:grid-cols-3">
@@ -813,7 +775,7 @@ export function LandingPage() {
         </section>
 
         {/* Fabrication Collections */}
-        <section ref={capabilitiesRef} id="capabilities" className="relative border-t border-white/10 bg-[#12181f] py-24 md:py-32">
+        <section ref={capabilitiesRef} id="capabilities" className="relative scroll-mt-24 border-t border-white/10 bg-[#12181f] py-24 md:py-32 md:scroll-mt-28">
           <div ref={projectsRef} id="projects" className="absolute inset-x-0 top-20 h-px" />
           
           <div className="mx-auto max-w-7xl px-6 lg:px-8">
@@ -837,12 +799,16 @@ export function LandingPage() {
             </motion.div>
 
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {SHOWCASE_COLLECTIONS.map((collection, index) => {
-                  const isActiveCollection = index === activeCollectionIndex;
+              {SHOWCASE_COLLECTIONS.map((collection, index) => {
+                const isActiveCollection = index === activeCollectionIndex;
 
-                  return (
+                return (
+                  <div
+                    key={collection.id}
+                    id={collection.id}
+                    className="scroll-mt-24 md:scroll-mt-28"
+                  >
                     <motion.button
-                      key={collection.id}
                       type="button"
                       initial={{ opacity: 0, y: 30 }}
                       whileInView={{ opacity: 1, y: 0 }}
@@ -852,11 +818,11 @@ export function LandingPage() {
                         setActiveCollectionIndex(index);
                         setActiveProjectIndex(0);
                       }}
-                      className={`group relative aspect-[4/3] overflow-hidden rounded-2xl border text-left transition-all ${isActiveCollection ? 'border-[#c9a96f] ring-1 ring-[#c9a96f]/50' : 'border-white/10 hover:-translate-y-1 hover:border-white/30'}`}
+                      className={`group relative aspect-[4/3] w-full overflow-hidden rounded-2xl border text-left transition-all ${isActiveCollection ? 'border-[#c9a96f] ring-1 ring-[#c9a96f]/50' : 'border-white/10 hover:-translate-y-1 hover:border-white/30'}`}
                     >
                       <img src={collection.coverImage} alt={collection.label} className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105" />
                       <div className="absolute inset-0 bg-gradient-to-t from-[#0f1419]/90 via-[#0f1419]/20 to-transparent" />
-                      
+
                       <div className="absolute bottom-6 left-6 rounded-full border border-white/20 bg-black/40 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white backdrop-blur-md">
                         {collection.label}
                       </div>
@@ -864,9 +830,10 @@ export function LandingPage() {
                         <ArrowRight className="h-4 w-4" />
                       </div>
                     </motion.button>
-                  );
-                })}
-              </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </section>
 
@@ -973,7 +940,7 @@ export function LandingPage() {
         </AnimatePresence>
 
         {/* Sectors We Serve */}
-        <section ref={sectorsRef} className="relative border-t border-white/10 bg-[#0f1419] py-24 md:py-32">
+        <section ref={sectorsRef} id="sectors" className="relative scroll-mt-24 border-t border-white/10 bg-[#0f1419] py-24 md:py-32 md:scroll-mt-28">
           
           <div className="mx-auto max-w-7xl px-6 text-center lg:px-8">
             <motion.div
@@ -1175,8 +1142,12 @@ export function LandingPage() {
               <div>
                 <h4 className="mb-4 text-xs font-bold uppercase tracking-widest text-[#c9a96f] md:mb-6">Services</h4>
                 <ul className="space-y-4">
-                  {['Kitchen SS Fabrication', 'Kitchen Remodeling', 'LPG Gas Pipeline', 'Fire Suppression', 'Exhaust Systems', 'Railings'].map(link => (
-                    <li key={link}><button type="button" onClick={() => document.getElementById('services')?.scrollIntoView({ behavior: 'smooth' })} className="cursor-pointer text-sm font-medium text-white/60 transition-colors hover:text-white">{link}</button></li>
+                  {FOOTER_SERVICE_LINKS.map(({ label, href }) => (
+                    <li key={label}>
+                      <a href={href} className="text-sm font-medium text-white/60 transition-colors hover:text-white">
+                        {label}
+                      </a>
+                    </li>
                   ))}
                 </ul>
               </div>
