@@ -25,6 +25,7 @@ export interface User {
   mustChangePassword: boolean;
   twoFactorEnabled?: boolean;
   provider?: 'local' | 'google';
+  firebaseUid?: string | null;
   photoURL?: string;
   notificationPreferences?: {
     appointment: boolean;
@@ -32,6 +33,7 @@ export interface User {
     blueprint: boolean;
     fabrication: boolean;
     project: boolean;
+    emailNotifications?: boolean;
   };
   themePreference?: 'light' | 'dark' | 'system';
   createdAt: string;

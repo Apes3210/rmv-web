@@ -48,6 +48,15 @@ const ALL_NOTIF_PREFS = [
   },
 ];
 
+const DEFAULT_NOTIFICATION_PREFERENCES = {
+  appointment: true,
+  payment: true,
+  blueprint: true,
+  fabrication: true,
+  project: true,
+  emailNotifications: true,
+};
+
 export function AccountNotificationsPage() {
   const { user } = useAuthStore();
   const updateProfile = useUpdateProfile();
@@ -57,20 +66,17 @@ export function AccountNotificationsPage() {
     [user?.roles],
   );
 
-  const handleToggle = async (key: string, val: boolean) => {
+  const prefs = user?.notificationPreferences ?? DEFAULT_NOTIFICATION_PREFERENCES;
+
+  const handleToggle = async (key: keyof typeof DEFAULT_NOTIFICATION_PREFERENCES, val: boolean) => {
     try {
-      const prefs = user?.notificationPreferences ?? {
-        appointment: true,
-        payment: true,
-        blueprint: true,
-        fabrication: true,
-        project: true,
-      };
       const updated = { ...prefs, [key]: val };
       await updateProfile.mutateAsync({ notificationPreferences: updated });
       // fetchMe is called by the hook automatically
       toast.success(
-        `${ALL_NOTIF_PREFS.find((p) => p.key === key)?.label ?? key} notifications ${val ? 'enabled' : 'disabled'}`,
+        key === 'emailNotifications'
+          ? `Email notifications ${val ? 'enabled' : 'disabled'}`
+          : `${ALL_NOTIF_PREFS.find((p) => p.key === key)?.label ?? key} notifications ${val ? 'enabled' : 'disabled'}`,
       );
     } catch {
       // Error handled by hook
@@ -101,13 +107,24 @@ export function AccountNotificationsPage() {
           Notification Preferences
         </CardTitle>
         <CardDescription className="text-[#86868b] dark:text-slate-300/90">
-          Choose which notifications you'd like to receive. This controls push and email
-          notifications — your notification inbox is not affected.
+          Choose which notifications you'd like to receive. This controls push and inbox notifications
+          — your notification inbox is not affected.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-1">
+        <div className="mb-3 flex items-center justify-between gap-4 rounded-xl border border-[#d2d2d7]/50 bg-[#eef7ff]/70 p-4 dark:border-white/10 dark:bg-slate-800/70">
+          <div>
+            <p className="font-medium text-[#1d1d1f] dark:text-slate-100 text-sm">Email notifications</p>
+            <p className="mt-0.5 text-xs text-[#86868b] dark:text-slate-300">
+              Turn this off to stop outbound notification emails. Sign-in, verification, and password reset emails still send.
+            </p>
+          </div>
+          <Switch
+            checked={prefs.emailNotifications ?? true}
+            onCheckedChange={(val) => handleToggle('emailNotifications', val)}
+          />
+        </div>
         {visiblePrefs.map((pref) => {
-          const prefs = user?.notificationPreferences;
           const checked = prefs ? prefs[pref.key] : true;
 
           return (

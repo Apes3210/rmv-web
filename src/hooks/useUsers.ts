@@ -136,6 +136,7 @@ interface UpdateProfilePayload {
     blueprint?: boolean;
     fabrication?: boolean;
     project?: boolean;
+    emailNotifications?: boolean;
   };
   themePreference?: 'light' | 'dark' | 'system';
 }

@@ -175,18 +175,24 @@ export function AccountSecurityPage() {
   const [disablePassword, setDisablePassword] = useState('');
   const [disabling2FA, setDisabling2FA] = useState(false);
   const [showDisableForm, setShowDisableForm] = useState(false);
+  const [twoFactorNotice, setTwoFactorNotice] = useState('');
   const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const isGoogleAccount = user?.provider === 'google' || Boolean(user?.firebaseUid);
 
   const handleEnable2FA = async () => {
     setEnabling2FA(true);
+    setTwoFactorNotice('');
     try {
       await api.post('/auth/2fa/enable');
-      toast.success('Verification code sent to your email');
+      const notice = 'Verification code sent to your email. Enter it below to finish enabling two-factor authentication.';
+      toast.success(notice);
+      setTwoFactorNotice(notice);
       setShowOtpInput(true);
       setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: { message?: string } } } };
       toast.error(error.response?.data?.error?.message || 'Failed to send verification code');
+      setTwoFactorNotice('');
     } finally {
       setEnabling2FA(false);
     }
@@ -240,7 +246,7 @@ export function AccountSecurityPage() {
   }, [otp2fa, showOtpInput, confirmEnable2FA]);
 
   const handleDisable2FA = async () => {
-    const isGoogleUser = user?.provider === 'google';
+    const isGoogleUser = isGoogleAccount;
     if (!isGoogleUser && !disablePassword) {
       toast.error('Password is required');
       return;
@@ -252,6 +258,7 @@ export function AccountSecurityPage() {
       toast.success('Two-factor authentication disabled');
       setShowDisableForm(false);
       setDisablePassword('');
+      setTwoFactorNotice('');
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: { message?: string } } } };
       toast.error(error.response?.data?.error?.message || 'Failed to disable 2FA');
@@ -491,9 +498,9 @@ export function AccountSecurityPage() {
         <Card className="rounded-2xl border border-[color:var(--color-border)]/60 bg-[var(--metal-panel-background)] backdrop-blur-sm shadow-sm">
           <CardHeader className="pb-3">
             <div className="flex items-start gap-3">
-              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${user?.twoFactorEnabled ? 'bg-[#1d1d1f]' : 'bg-[#f0f0f5]'}`}>
+              <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${user?.twoFactorEnabled ? 'bg-emerald-100 dark:bg-emerald-500/15' : 'bg-[#f0f0f5] dark:bg-slate-800'}`}>
                 {user?.twoFactorEnabled ? (
-                  <Shield className="h-5 w-5 text-white" />
+                  <Shield className="h-5 w-5 text-emerald-700 dark:text-emerald-300" />
                 ) : (
                   <ShieldOff className="h-5 w-5 text-[#86868b] dark:text-slate-300" />
                 )}
@@ -510,13 +517,14 @@ export function AccountSecurityPage() {
                 <button
                   role="switch"
                   aria-checked={user?.twoFactorEnabled}
+                  aria-label={user?.twoFactorEnabled ? 'Disable two-factor authentication' : 'Enable two-factor authentication'}
                   onClick={() => {
                     if (user?.twoFactorEnabled) setShowDisableForm(true);
                     else handleEnable2FA();
                   }}
                   disabled={enabling2FA}
                   className={`relative shrink-0 inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
-                    user?.twoFactorEnabled ? 'bg-[#1d1d1f]' : 'bg-[#d2d2d7]'
+                    user?.twoFactorEnabled ? 'bg-emerald-500 dark:bg-emerald-500' : 'bg-[#d2d2d7] dark:bg-slate-600'
                   }`}
                 >
                   <span
@@ -534,15 +542,18 @@ export function AccountSecurityPage() {
                 <p className="text-sm text-[#86868b] dark:text-slate-400">
                   Receive a 6-digit code via email each time you sign in.
                 </p>
-                <Button
-                  onClick={handleEnable2FA}
-                  disabled={enabling2FA}
-                  variant="prominent"
-                  className="w-full sm:w-auto"
-                >
-                  {enabling2FA && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Enable Two-Factor
-                </Button>
+                {enabling2FA && (
+                  <div className="flex items-center gap-2 text-xs text-[#6e6e73] dark:text-slate-400">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Sending verification code...
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!user?.twoFactorEnabled && !showOtpInput && twoFactorNotice && (
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-3 text-sm text-emerald-800 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200">
+                {twoFactorNotice}
               </div>
             )}
 
@@ -588,20 +599,20 @@ export function AccountSecurityPage() {
             )}
 
             {user?.twoFactorEnabled && !showDisableForm && (
-              <div className="flex items-center gap-3 rounded-xl bg-[#f0f0f5] px-3.5 py-3 dark:bg-slate-800/65">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1d1d1f] dark:bg-slate-100">
-                  <ShieldCheck className="h-4 w-4 text-white dark:text-slate-900" />
+              <div className="flex items-center gap-3 rounded-xl bg-emerald-50 px-3.5 py-3 dark:bg-emerald-500/10">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-500/20">
+                  <ShieldCheck className="h-4 w-4 text-emerald-700 dark:text-emerald-200" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[13px] font-semibold text-[#1d1d1f] dark:text-slate-100">Protected</p>
-                  <p className="text-xs leading-snug text-[#6e6e73] dark:text-slate-400">Code sent to your email on every sign-in</p>
+                  <p className="text-[13px] font-semibold text-emerald-900 dark:text-emerald-100">Protected</p>
+                  <p className="text-xs leading-snug text-emerald-700 dark:text-emerald-200">Code sent to your email on every sign-in</p>
                 </div>
               </div>
             )}
 
             {showDisableForm && (
               <div className="space-y-4">
-                {user?.provider === 'google' ? (
+                {isGoogleAccount ? (
                   <div className="flex items-start gap-3 rounded-xl bg-[#f0f0f5] px-3.5 py-3 dark:bg-slate-800/65">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#6e6e73] dark:text-slate-300" />
                     <p className="text-sm text-[#3a3a3e] dark:text-slate-300">
@@ -626,7 +637,7 @@ export function AccountSecurityPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={handleDisable2FA}
-                    disabled={disabling2FA || (user?.provider !== 'google' && !disablePassword)}
+                    disabled={disabling2FA || (!isGoogleAccount && !disablePassword)}
                     className="inline-flex items-center gap-1.5 rounded-xl bg-[#1d1d1f] px-3.5 py-2 text-sm font-medium text-white transition-colors active:scale-[0.98] hover:bg-[#2d2d2f] disabled:opacity-50 dark:!bg-slate-100 dark:!text-slate-900 dark:hover:!bg-white"
                   >
                     {disabling2FA && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
