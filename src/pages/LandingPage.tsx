@@ -263,7 +263,7 @@ export function LandingPage() {
 
   return (
     <LazyMotion features={domAnimation} strict>
-      <div className="min-h-screen bg-gradient-to-b from-[#0f1419] to-[#1a202a] font-sans text-white/90 selection:bg-white/20 selection:text-white">
+      <div className="min-h-screen bg-gradient-to-b from-[#0f1419] to-[#1a202a] font-sans text-white/90 selection:bg-white/20 selection:text-white overflow-x-hidden">
         
         {/* Navigation */}
         <PublicNavbar />
@@ -384,7 +384,7 @@ export function LandingPage() {
               initial={{ opacity: 0, y: 80, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               transition={{ duration: 1.4, ease: SMOOTH_240 }}
-              className="headline-font mb-12 py-2 text-[clamp(2.5rem,10.2vw,8.3rem)] font-bold leading-[0.86] tracking-[-0.02em] gpu-reveal"
+              className="headline-font mb-12 py-2 text-[clamp(2rem,10.2vw,8.3rem)] font-bold leading-[0.86] tracking-[-0.02em] gpu-reveal break-words"
             >
               <span className="bg-gradient-to-b from-white via-zinc-100 to-zinc-400 bg-clip-text text-transparent drop-shadow-sm">Precision</span><br />
               <span className="text-shimmer italic font-light">Engineering</span>
@@ -394,7 +394,7 @@ export function LandingPage() {
               initial={{ opacity: 0, y: 60 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 1, delay: 0.25, ease: SMOOTH_240 }}
-              className="mb-3 max-w-2xl px-2 text-[18px] md:text-[22px] font-medium tracking-normal text-white/90 gpu-reveal"
+              className="mb-3 max-w-[90vw] px-2 text-[15px] md:text-[22px] font-medium tracking-normal leading-snug text-white/90 gpu-reveal sm:max-w-2xl"
             >
               Uncompromising quality in every weld.
             </motion.p>
@@ -511,7 +511,7 @@ export function LandingPage() {
                 <p className="label-font mb-8 text-[10px] font-black uppercase tracking-[0.58em] text-[#d4af37]">
                   The Legacy of RMV
                 </p>
-                <h2 className="headline-font mb-10 text-5xl font-bold leading-[1.05] tracking-tighter text-white md:text-7xl">
+                <h2 className="headline-font mb-10 text-3xl font-bold leading-[1.05] tracking-tighter text-white sm:text-4xl md:text-7xl">
                   Built on Trust, Delivered with <br />
                   <span className="text-shimmer italic font-light">
                     Precision
@@ -564,7 +564,7 @@ export function LandingPage() {
           <div className="marquee-container py-4">
             <div className="marquee-content">
             {[...Array(3)].map((_, setIndex) => (
-              <div key={setIndex} className="flex items-center gap-20 md:gap-32">
+              <div key={setIndex} className="flex items-center gap-10 sm:gap-20 md:gap-32">
                 {[
                   { icon: 'Utensils', label: 'Cuisine' },
                   { icon: 'ShoppingBag', label: 'Retail Centers' },
@@ -577,7 +577,7 @@ export function LandingPage() {
                   
                   return (
                     <div key={i} className="flex flex-col items-center gap-6 group cursor-default">
-                      <Icon className="h-8 w-8 text-[#FFD700] gold-glow transition-transform duration-500 group-hover:scale-110" />
+                      <Icon className="h-6 w-6 sm:h-8 sm:w-8 text-[#FFD700] gold-glow transition-transform duration-500 group-hover:scale-110" />
                       <span className="label-font text-[9px] font-black uppercase tracking-[0.45em] text-white/50 transition-colors duration-300 group-hover:text-[#FFD700] group-hover:opacity-100">
                         {sector.label}
                       </span>
@@ -604,7 +604,7 @@ export function LandingPage() {
               <h2 className="headline-font text-4xl font-bold tracking-tight text-white sm:text-5xl">The Engineered Workflow</h2>
             </motion.div>
 
-            <div className="relative grid gap-6 md:grid-cols-4 md:items-start">
+            <div className="relative grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 md:grid-cols-4 md:items-start">
               <div className="pointer-events-none absolute left-0 right-0 top-1/2 hidden h-px -translate-y-1/2 bg-[#d4af37]/10 md:block" />
               {[
                 { step: '01', title: 'Consultation', desc: 'Defining technical requirements and structural constraints for the build.' },
@@ -618,7 +618,7 @@ export function LandingPage() {
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ duration: 0.8, delay: 0.08 * idx, ease: SMOOTH_240 }}
-                  className={`group relative z-10 border border-[#d4af37]/25 bg-[#0f0f11] p-8 shadow-none transition-all duration-300 ease-out hover:-translate-y-1 hover:border-[#FFD700] hover:shadow-[0_0_24px_rgba(255,215,0,0.14)] ${idx % 2 === 1 ? 'md:mt-12' : ''}`}
+                  className={`group relative z-10 border border-[#d4af37]/25 bg-[#0f0f11] p-5 sm:p-8 shadow-none transition-all duration-300 ease-out hover:-translate-y-1 hover:border-[#FFD700] hover:shadow-[0_0_24px_rgba(255,215,0,0.14)] ${idx % 2 === 1 ? 'md:mt-12' : ''}`}
                 >
                   <span className="absolute right-4 top-4 text-4xl font-black text-[#c9a227] opacity-20 transition-all duration-300 group-hover:text-[#5c4f12] group-hover:opacity-90">
                     {item.step}
@@ -649,8 +649,8 @@ export function LandingPage() {
               <div>
                 <p className="label-font mb-5 text-[10px] font-black uppercase tracking-[0.48em] text-[#d4af37]">Portfolio</p>
                 <h2 className="headline-font leading-[0.95]">
-                  <span className="block text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl">Design</span>
-                  <span className="text-shimmer mt-1 block text-4xl font-light italic tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
+                  <span className="block text-3xl font-bold tracking-tight text-white sm:text-4xl md:text-6xl lg:text-7xl">Design</span>
+                  <span className="text-shimmer mt-1 block text-3xl font-light italic tracking-tight sm:text-4xl md:text-6xl lg:text-7xl">
                     Collections
                   </span>
                 </h2>
@@ -854,7 +854,7 @@ export function LandingPage() {
                           <motion.h3 
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="headline-font text-4xl font-bold leading-[1.1] tracking-tight text-white md:text-5xl lg:text-6xl"
+                            className="headline-font text-2xl font-bold leading-[1.1] tracking-tight text-white sm:text-3xl md:text-5xl lg:text-6xl"
                           >
                             {activeProject.title}
                           </motion.h3>
@@ -952,7 +952,7 @@ export function LandingPage() {
               transition={{ duration: 0.8 }}
               className="text-center mb-16 md:mb-24"
             >
-              <h2 className="headline-font text-5xl font-bold tracking-tight text-white mb-4">
+              <h2 className="headline-font text-3xl font-bold tracking-tight text-white mb-4 sm:text-4xl md:text-5xl">
                 Voices of <span className="text-shimmer italic font-light">Partnership</span>
               </h2>
               <p className="landing-copy text-lg">Hear from business owners who trust RMV for their fabrication needs.</p>
@@ -1063,7 +1063,7 @@ export function LandingPage() {
                 Ready to Build
               </p>
               
-              <h2 className="label-font mb-16 text-6xl font-bold tracking-tight text-white sm:text-8xl lg:text-9xl">
+              <h2 className="label-font mb-16 text-4xl font-bold tracking-tight text-white sm:text-6xl lg:text-9xl">
                 Start your build
               </h2>
               
@@ -1079,7 +1079,7 @@ export function LandingPage() {
         {/* Global Footer — Technical Precision Style */}
         <footer id="contact" className="relative border-t border-white/5 bg-[#0a0a0b] py-24 text-[#919097] md:pb-16 md:pt-32">
           <div className="mx-auto max-w-7xl px-6 lg:px-8">
-            <div className="mb-20 grid grid-cols-2 gap-12 md:grid-cols-4 md:gap-16">
+            <div className="mb-20 grid grid-cols-1 gap-10 sm:grid-cols-2 sm:gap-12 md:grid-cols-4 md:gap-16">
               
               <div className="col-span-2 space-y-10 md:col-span-1">
                 <div className="flex flex-col gap-4">

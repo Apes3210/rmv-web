@@ -854,7 +854,7 @@ export function ProjectDetailPage() {
 
             {canPromptProjectReview && !showReviewForm && (
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" onClick={() => setShowReviewForm(true)} className="rounded-lg">
+                <Button size="sm" onClick={() => setShowReviewForm(true)} className="rounded-lg bg-[linear-gradient(180deg,#c49a62_0%,#a07d4a_100%)] hover:bg-[linear-gradient(180deg,#d4aa72_0%,#b08d5a_100%)] text-white border-0 shadow-[0_2px_8px_rgba(196,154,98,0.3)]">
                   Leave Review
                 </Button>
                 <Button
@@ -900,7 +900,7 @@ export function ProjectDetailPage() {
                     size="sm"
                     onClick={handleSubmitProjectReview}
                     disabled={submitProjectReview.isPending}
-                    className="rounded-lg"
+                    className="rounded-lg bg-[linear-gradient(180deg,#c49a62_0%,#a07d4a_100%)] hover:bg-[linear-gradient(180deg,#d4aa72_0%,#b08d5a_100%)] text-white border-0 shadow-[0_2px_8px_rgba(196,154,98,0.3)]"
                   >
                     {submitProjectReview.isPending ? 'Submitting...' : 'Submit Review'}
                   </Button>

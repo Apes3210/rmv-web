@@ -32,6 +32,7 @@ export function useCreateUser() {
       lastName: string;
       phone?: string;
       roles: string[];
+      expiresAt?: string;
     }) => {
       const { data } = await api.post<ApiResponse<User>>('/users/admin/users', body);
       return data.data;
@@ -54,6 +55,7 @@ export function useUpdateUser() {
       lastName?: string;
       phone?: string;
       roles?: string[];
+      expiresAt?: string | null;
     }) => {
       const { data } = await api.patch<ApiResponse<User>>(`/users/admin/users/${id}`, body);
       return data.data;

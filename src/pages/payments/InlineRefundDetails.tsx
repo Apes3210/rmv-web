@@ -45,7 +45,7 @@ export function InlineRefundDetails({ payment }: InlineRefundDetailsProps) {
 
   if (refundReq) {
     return (
-      <div className="mt-6 border-t border-gray-200 pt-5">
+      <div className="mt-6 border-t border-[color:var(--color-border)] pt-5">
         <h3 className="text-sm font-semibold flex items-center gap-2 mb-4 dark:text-slate-100">
           <RotateCcw className="h-4 w-4" /> Refund Status
         </h3>
@@ -100,8 +100,8 @@ export function InlineRefundDetails({ payment }: InlineRefundDetailsProps) {
   // Not requested yet, enable requesting
   if (!isRequesting) {
     return (
-      <div className="mt-6 pt-5 flex justify-center">
-        <Button variant="outline" className="text-[#1d1d1f] group dark:text-slate-100 hover:bg-gray-100" onClick={() => setIsRequesting(true)}>
+      <div className="mt-6 border-t border-[color:var(--color-border)] pt-5 flex justify-center">
+        <Button variant="outline" className="text-[#1d1d1f] group dark:text-slate-100 hover:bg-gray-100 dark:hover:bg-slate-800" onClick={() => setIsRequesting(true)}>
           <RotateCcw className="h-4 w-4 mr-2 group-hover:-rotate-90 transition-transform" />
           Request Refund
         </Button>
@@ -127,12 +127,12 @@ export function InlineRefundDetails({ payment }: InlineRefundDetailsProps) {
   };
 
   return (
-    <div className="mt-6 border-t border-gray-200 pt-5 space-y-4">
-      <h3 className="text-sm font-semibold flex items-center gap-2 dark:text-slate-100 mb-3">
+    <div className="mt-6 border-t border-[color:var(--color-border)] pt-5">
+      <h3 className="text-sm font-semibold flex items-center gap-2 dark:text-slate-100 mb-4">
         <RotateCcw className="h-4 w-4" /> Request Refund
       </h3>
 
-      <div className="space-y-3">
+      <div className="space-y-4 rounded-xl border border-[color:var(--color-border)]/60 p-4">
         <div>
           <Label className="text-xs text-gray-500">Refund Method</Label>
           <div className="flex gap-2 mt-1">

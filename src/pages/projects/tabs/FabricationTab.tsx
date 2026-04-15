@@ -408,7 +408,7 @@ export function FabricationTab({
             </div>
             <Button
               size="sm"
-              className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl shrink-0"
+              className="bg-[linear-gradient(180deg,#c49a62_0%,#a07d4a_100%)] hover:bg-[linear-gradient(180deg,#d4aa72_0%,#b08d5a_100%)] text-white rounded-xl shrink-0 shadow-[0_2px_8px_rgba(196,154,98,0.3)]"
               disabled={confirmInstallationMutation.isPending}
               onClick={handleConfirmInstallation}
             >

@@ -12,6 +12,7 @@ import {
   Eye,
   EyeOff,
   Wand2,
+  CalendarClock,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -94,6 +95,8 @@ const userSchema = z.object({
   ).optional().or(z.literal('')),
   role: z.nativeEnum(Role),
   password: z.string().optional(),
+  employmentType: z.enum(['permanent', 'contract']),
+  expiresAt: z.string().optional(),
 });
 
 type UserFormData = z.infer<typeof userSchema>;
@@ -137,6 +140,8 @@ export function UsersPage() {
       phone: '',
       role: Role.APPOINTMENT_AGENT,
       password: '',
+      employmentType: 'permanent' as const,
+      expiresAt: '',
     },
   });
 
@@ -150,6 +155,8 @@ export function UsersPage() {
       phone: '',
       role: Role.APPOINTMENT_AGENT,
       password: '',
+      employmentType: 'permanent',
+      expiresAt: '',
     });
     setDialogOpen(true);
   };
@@ -164,6 +171,8 @@ export function UsersPage() {
       phone: user.phone || '',
       role: (user.roles[0] as Role) || Role.CUSTOMER,
       password: '',
+      employmentType: (user as any).expiresAt ? 'contract' : 'permanent',
+      expiresAt: (user as any).expiresAt ? new Date((user as any).expiresAt).toISOString().split('T')[0] : '',
     });
     setDialogOpen(true);
   };
@@ -177,6 +186,9 @@ export function UsersPage() {
           lastName: data.lastName,
           phone: data.phone || undefined,
           roles: [data.role],
+          expiresAt: data.employmentType === 'contract' && data.expiresAt
+            ? new Date(data.expiresAt).toISOString()
+            : data.employmentType === 'permanent' ? null : undefined,
         });
         toast.success('User updated successfully');
       } else {
@@ -194,6 +206,9 @@ export function UsersPage() {
           lastName: data.lastName,
           phone: data.phone || undefined,
           roles: [data.role],
+          expiresAt: data.employmentType === 'contract' && data.expiresAt
+            ? new Date(data.expiresAt).toISOString()
+            : undefined,
         });
         toast.success('User created successfully');
       }
@@ -379,6 +394,12 @@ export function UsersPage() {
                     label={u.isActive ? 'Active' : 'Disabled'}
                     className="h-5 px-1.5 py-0 text-[10px] font-bold uppercase tracking-wider"
                   />
+                  {(u as any).expiresAt && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                      <CalendarClock className="h-3 w-3" />
+                      Expires {new Date((u as any).expiresAt).toLocaleDateString()}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -609,6 +630,56 @@ export function UsersPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Employment Type Toggle */}
+            <div className="space-y-1.5">
+              <Label className="text-gray-700 text-[13px] font-medium dark:text-slate-300">
+                Employment Type
+              </Label>
+              <div className="flex rounded-lg overflow-hidden border border-gray-200 dark:border-slate-700 h-11">
+                <button
+                  type="button"
+                  onClick={() => {
+                    form.setValue('employmentType', 'permanent');
+                    form.setValue('expiresAt', '');
+                  }}
+                  className={`flex-1 text-sm font-medium transition-colors ${
+                    form.watch('employmentType') === 'permanent'
+                      ? 'bg-gray-900 text-white dark:bg-slate-200 dark:text-slate-900'
+                      : 'bg-gray-50 text-gray-500 hover:bg-gray-100 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  Permanent
+                </button>
+                <button
+                  type="button"
+                  onClick={() => form.setValue('employmentType', 'contract')}
+                  className={`flex-1 text-sm font-medium transition-colors ${
+                    form.watch('employmentType') === 'contract'
+                      ? 'bg-gray-900 text-white dark:bg-slate-200 dark:text-slate-900'
+                      : 'bg-gray-50 text-gray-500 hover:bg-gray-100 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  Contract-Based
+                </button>
+              </div>
+            </div>
+
+            {/* Expiration Date (only for contract) */}
+            {form.watch('employmentType') === 'contract' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="expiresAt" className="text-gray-700 text-[13px] font-medium dark:text-slate-300">
+                  Contract Expiration Date
+                </Label>
+                <Input
+                  id="expiresAt"
+                  type="date"
+                  {...form.register('expiresAt')}
+                  min={new Date().toISOString().split('T')[0]}
+                  className={inputClasses}
+                />
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">

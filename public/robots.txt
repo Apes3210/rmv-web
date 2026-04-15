@@ -1,0 +1,24 @@
+# RMV Stainless Steel Fabrication - robots.txt
+User-agent: *
+Allow: /
+Allow: /privacy
+Allow: /terms
+
+# Disallow authenticated / internal routes
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /payments
+Disallow: /projects
+Disallow: /appointments
+Disallow: /login
+Disallow: /register
+Disallow: /verify-otp
+Disallow: /verify-2fa
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /complete-profile
+Disallow: /help
+Disallow: /settings
+
+# Sitemap
+Sitemap: https://rmvfabrication.app/sitemap.xml
