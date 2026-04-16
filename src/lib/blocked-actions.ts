@@ -32,18 +32,6 @@ export type BlockedActionInfo = {
 };
 
 const BLOCKED_CODE_MAP: Record<string, Omit<BlockedActionInfo, 'reason' | 'actionPath'>> = {
-  REFUND_NOT_PENDING: {
-    title: 'Request already processed',
-    actionLabel: 'View refund guidance',
-  },
-  REFUND_ALREADY_PENDING: {
-    title: 'Request already pending',
-    actionLabel: 'View refund guidance',
-  },
-  REFUND_NOT_ALLOWED: {
-    title: 'Refund action unavailable',
-    actionLabel: 'View refund guidance',
-  },
   PAYMENT_STAGE_NOT_ACCEPTING: {
     title: 'Payment stage unavailable',
     actionLabel: 'View payment guidance',
@@ -105,7 +93,7 @@ function buildBlockedReason(payload?: ApiErrorPayload): string {
 
 export function resolveBlockedAction(
   error: unknown,
-  fallbackHelpPath = '/help/payments-refunds/refunds#checklist',
+  fallbackHelpPath = '/help/payments/payment-stage-status-reference#overview',
 ): BlockedActionInfo | null {
   const payload = (error as AxiosLikeError)?.response?.data?.error;
   const code = payload?.code;

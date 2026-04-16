@@ -58,7 +58,7 @@ const STATUS_COLOR_MAP: Record<string, StatusColor> = {
   verified: 'green',
   declined: 'red',
   awaiting_proof: 'yellow',
-  refunded: 'purple',
+
   enabled: 'green',
   disabled: 'red',
   inactive: 'gray',

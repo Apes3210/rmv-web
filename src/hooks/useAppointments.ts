@@ -407,21 +407,6 @@ export function useSkipSiteDetails() {
   });
 }
 
-export function useRefundOcularFee() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
-      const { data } = await api.post<ApiResponse<Appointment>>(
-        `/appointments/${id}/refund-ocular-fee`,
-        { reason },
-      );
-      return data.data;
-    },
-    onSuccess: (appointment) => {
-      syncAppointmentCaches(qc, appointment);
-    },
-  });
-}
 
 // ── Agent: Create Ocular (from consultation context) ──
 export function useAgentCreateOcular() {

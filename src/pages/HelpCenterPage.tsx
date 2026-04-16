@@ -89,8 +89,8 @@ const FALLBACK_HELP: HelpContent = {
       body: 'Use the Appointments page to create, reschedule, or monitor your visits.',
     },
     {
-      heading: 'Payments and refunds',
-      body: 'Use Payments for stage payments and My Refunds for your refund request timeline.',
+      heading: 'Payments',
+      body: 'Use Payments to monitor stage payments and view your payment history.',
     },
     {
       heading: 'Project tracking',
@@ -111,7 +111,7 @@ const FALLBACK_HELP: HelpContent = {
     [Role.CASHIER]: [
       {
         heading: 'Cashier queue',
-        body: 'Use Cashier Queue to verify customer payments and review refund requests.',
+        body: 'Use Cashier Queue to verify customer payments.',
       },
     ],
   },
@@ -414,9 +414,9 @@ const KNOWLEDGE_BASE: HelpCategory[] = [
     ],
   },
   {
-    slug: 'payments-refunds',
-    title: 'Payments and Refunds',
-    description: 'Rules for staged payments, cashier verification, and refund tracking.',
+    slug: 'payments',
+    title: 'Payments',
+    description: 'Rules for staged payments and cashier verification.',
     roles: PAYMENT_HELP_ROLES,
     articles: [
       {
@@ -482,35 +482,7 @@ const KNOWLEDGE_BASE: HelpCategory[] = [
           { label: 'Cash Flow', path: '/cash' },
         ],
       },
-      {
-        slug: 'refunds',
-        title: 'Refund Request Workflow',
-        summary: 'How refund requests are filed, reviewed, updated, and resolved.',
-        roles: [Role.CUSTOMER, Role.CASHIER, Role.ADMIN],
-        keywords: ['refund', 'refund request', 'cancel refund', 'denied refund', 'approved refund'],
-        body: [
-          'Refund requests should include complete account details, reason context, and the correct refund method.',
-          {
-            media: {
-              type: 'image',
-              title: 'Refund Requests Queue Snapshot',
-              url: '/help-media/refund-requests-queue.png',
-              caption: 'Live screenshot of refund queue filtering and status review in the Refund Requests workspace.',
-            },
-          },
-          'Cashiers and admins review queue items and progress statuses until closure.',
-          'Use timeline details for transparent history and audit readiness.',
-        ],
-        checklist: [
-          'Ensure complete account and refund details',
-          'Track the current refund status before following up',
-          'Document the final disposition in the queue workflow',
-        ],
-        systemLinks: [
-          { label: 'Payments Workspace', path: '/payments' },
-          { label: 'Refunds Tab', path: '/payments' },
-        ],
-      },
+
       {
         slug: 'payment-stage-status-reference',
         title: 'Payment Stage Status Reference',
@@ -558,6 +530,22 @@ const KNOWLEDGE_BASE: HelpCategory[] = [
     description: 'Role-restricted controls for schedules, reporting, and platform governance.',
     roles: OPERATIONS_HELP_ROLES,
     articles: [
+      {
+        slug: 'customer-reviews-management',
+        title: 'Customer Reviews Management',
+        summary: 'View and manage customer feedback for completed projects.',
+        roles: [Role.ADMIN],
+        body: [
+          'The Reviews page (located in the Administration sidebar) centralizes all feedback submitted by customers after project completion.',
+          'Use the integrated search functionality to track ratings and comments referencing specific projects or clients.',
+          'Review comments help identify trends in the fabrication and installation phases.',
+        ],
+        checklist: [
+          'Regularly monitor new reviews',
+          'Search for specific projects to review feedback',
+        ],
+        systemLinks: [{ label: 'Reviews', path: '/admin/reviews' }],
+      },
       {
         slug: 'system-settings',
         title: 'System Settings and Content Controls',
@@ -659,7 +647,7 @@ const KNOWLEDGE_BASE: HelpCategory[] = [
         summary: 'Use reporting and audit traces to validate operations and exceptions.',
         roles: REPORTING_HELP_ROLES,
         body: [
-          'Operational reporting should align with verified payments, refunds, cash handling, and status transitions across the system.',
+          'Operational reporting should align with verified payments, cash handling, and status transitions across the system.',
           {
             media: {
               type: 'image',
@@ -733,14 +721,14 @@ const CUSTOMER_CATEGORY_SLUGS = new Set([
   'getting-started',
   'appointments-visits',
   'projects-fabrication',
-  'payments-refunds',
+  'payments',
   'support-and-troubleshooting',
 ]);
 
 const INTERNAL_CATEGORY_SLUGS = new Set([
   'appointments-visits',
   'projects-fabrication',
-  'payments-refunds',
+  'payments',
   'operations-admin',
   'support-and-troubleshooting',
 ]);
@@ -874,7 +862,7 @@ function getArticleToc(article: HelpArticle) {
 
 const SEARCH_SYNONYMS: Record<string, string[]> = {
   account: ['account', 'accounts', 'profile', 'login', 'password', 'security', 'session', 'access', 'recovery'],
-  refund: ['refund', 'refunds', 'cancel', 'denied', 'approved', 'reversal'],
+
   payment: ['payment', 'payments', 'invoice', 'proof', 'verify', 'verified', 'declined'],
   cashier: ['cashier', 'queue', 'verification', 'proof review'],
   booking: ['booking', 'book', 'appointment', 'schedule', 'reschedule', 'visit'],
@@ -888,7 +876,7 @@ const CUSTOMER_QUICK_TOPICS: QuickTopic[] = [
   { label: 'Account', query: 'account' },
   { label: 'Booking', query: 'booking' },
   { label: 'Payments', query: 'payment' },
-  { label: 'Refunds', query: 'refund' },
+
   { label: 'Projects', query: 'project' },
   { label: 'Troubleshooting', query: 'troubleshooting' },
 ];
@@ -897,7 +885,7 @@ const INTERNAL_QUICK_TOPICS: QuickTopic[] = [
   { label: 'Account', query: 'account' },
   { label: 'Appointment Queue', query: 'appointment queue' },
   { label: 'Payments', query: 'cashier payment verification' },
-  { label: 'Refunds', query: 'refund' },
+
   { label: 'Projects', query: 'project blueprint fabrication' },
   { label: 'Troubleshooting', query: 'troubleshooting' },
 ];
@@ -977,7 +965,7 @@ function getSearchMatches(query: string, visibleKnowledgeBase: HelpCategory[]): 
 
 function getSectionIcon(heading: string) {
   const normalized = heading.toLowerCase();
-  if (normalized.includes('payment') || normalized.includes('refund')) return CreditCard;
+  if (normalized.includes('payment')) return CreditCard;
   if (normalized.includes('book') || normalized.includes('appointment') || normalized.includes('visit')) return CalendarCheck;
   if (normalized.includes('project') || normalized.includes('fabrication')) return FolderOpen;
   if (normalized.includes('support') || normalized.includes('troubleshoot') || normalized.includes('help')) return HelpCircle;
@@ -1397,7 +1385,7 @@ export function HelpCenterPage() {
             </CardTitle>
             <CardDescription className="mt-1 text-[var(--text-metal-color)]">
               {isCustomerView
-                ? 'Find answers about bookings, payments, refunds, account setup, and project tracking.'
+                ? 'Find answers about bookings, payments, account setup, and project tracking.'
                 : 'Find internal guidance for queues, approvals, controls, operations, and troubleshooting.'}
             </CardDescription>
           </div>
@@ -1411,7 +1399,7 @@ export function HelpCenterPage() {
                 className="h-11 rounded-xl pl-9 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
                 placeholder={
                   isCustomerView
-                    ? 'Search topics like account, booking, payments, refunds...'
+                    ? 'Search topics like account, booking, payments...'
                     : 'Search workflows, queues, approvals, troubleshooting...'
                 }
               />
@@ -1536,7 +1524,7 @@ export function HelpCenterPage() {
                       {isCustomerView ? 'Customer Knowledge Map' : 'Internal Knowledge Map'}
                     </CardTitle>
                     <CardDescription className="text-[var(--text-metal-color)]">
-                      Use layered routes like /help/getting-started/account-setup or /help/payments-refunds/refunds.
+                      Use layered routes like /help/getting-started/account-setup or /help/payments/customer-payments.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -1545,7 +1533,7 @@ export function HelpCenterPage() {
                         'getting-started': BookOpen,
                         'appointments-visits': CalendarCheck,
                         'projects-fabrication': FolderOpen,
-                        'payments-refunds': CreditCard,
+                        'payments': CreditCard,
                         'operations-admin': Settings,
                         'support-and-troubleshooting': HelpCircle,
                       };
@@ -1825,7 +1813,7 @@ export function HelpCenterPage() {
 
       <Separator className="my-1" />
       <p className="text-xs text-[var(--text-metal-muted-color)]">
-        Tip: Share deep links directly to a topic using URLs like /help/payments-refunds/cashier-verification.
+        Tip: Share deep links directly to a topic using URLs like /help/payments/cashier-verification.
       </p>
     </div>
   );

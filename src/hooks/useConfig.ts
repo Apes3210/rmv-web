@@ -151,6 +151,18 @@ export function useToggleMaintenance() {
   });
 }
 
+export function useScheduleMaintenance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { scheduledAt: string; reason?: string }) => {
+      const { data } = await api.post('/config/maintenance/schedule', body);
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['configs'] }),
+  });
+}
+
+
 // ─── Blocked Slots ────────────────────────────────────────────
 export function useBlockedSlots(date?: string) {
   return useQuery<BlockedSlot[]>({

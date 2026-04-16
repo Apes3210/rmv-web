@@ -302,7 +302,6 @@ export function AppLayout() {
     const handlePaymentsQueueUpdate = (payload: { type?: string; amountPaid?: number }) => {
       queryClientRef.current.invalidateQueries({ queryKey: ['payments', 'pending'] });
       queryClientRef.current.invalidateQueries({ queryKey: ['payments', 'overdue'] });
-      queryClientRef.current.invalidateQueries({ queryKey: ['refunds'] });
       queryClientRef.current.invalidateQueries({ queryKey: ['dashboard-summary'] });
 
       if (!user.roles.includes(Role.CASHIER)) return;
@@ -312,9 +311,6 @@ export function AppLayout() {
         payment_verified: 'A payment was verified. Queue has been updated.',
         payment_declined: 'A payment was declined. Queue has been updated.',
         cash_payment_recorded: 'A cash payment was recorded.',
-        refund_submitted: 'New refund request is waiting for review.',
-        refund_approved: 'A refund request was approved.',
-        refund_denied: 'A refund request was denied.',
       };
 
       const message = payload.type ? messageByType[payload.type] ?? 'Cashier queue was updated.' : 'Cashier queue was updated.';

@@ -80,7 +80,7 @@ export function CashierQueuePage() {
       setVerifySignatureKey('');
       setUseNewVerifySignature(false);
     } catch (err) {
-      setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
+      setBlockedAction(resolveBlockedAction(err, '/help/payments/payment-stage-status-reference#overview'));
       toast.error(extractErrorMessage(err, 'Verification failed'));
     }
   };
@@ -97,7 +97,7 @@ export function CashierQueuePage() {
       setDeclineDialog({ open: false, id: '' });
       setDeclineReason('');
     } catch (err) {
-      setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
+      setBlockedAction(resolveBlockedAction(err, '/help/payments/payment-stage-status-reference#overview'));
       toast.error(extractErrorMessage(err, 'Decline failed'));
     }
   };

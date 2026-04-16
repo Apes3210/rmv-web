@@ -96,13 +96,6 @@ export enum OcularFeePaymentChoice {
   CASH = 'cash',
 }
 
-// ── Refund Request Status ──
-export enum RefundRequestStatus {
-  PENDING = 'pending',
-  APPROVED = 'approved',
-  DENIED = 'denied',
-  CANCELLED = 'cancelled',
-}
 
 // ── Notification ──
 export enum NotificationCategory {

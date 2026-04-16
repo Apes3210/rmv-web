@@ -50,8 +50,7 @@ import {
 } from '@/components/ui/dialog';
 import { useUnpaidOcularFees } from '@/hooks/useAppointments';
 
-import { InlineRefundDetails } from './InlineRefundDetails';
-import { RefundQueueList } from './components/RefundQueueList';
+
 import { CashierQueuePage } from './CashierQueuePage';
 import { OcularFeeQueuePage } from '../appointments/OcularFeeQueuePage';
 
@@ -131,7 +130,7 @@ export function PaymentsPage() {
       setVerifySignatureKey('');
       setUseNewVerifySignature(false);
     } catch (err) {
-      setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
+      setBlockedAction(resolveBlockedAction(err, '/help/payments/payment-stage-status-reference#overview'));
       toast.error(extractErrorMessage(err, 'Verification failed'));
     }
   };
@@ -166,7 +165,7 @@ export function PaymentsPage() {
   // Handle ?tab= query param for deep linking
   useEffect(() => {
     const tab = searchParams.get('tab');
-    if (tab && ['payments', 'cashier-queue', 'ocular-fees', 'refunds'].includes(tab)) {
+    if (tab && ['payments', 'cashier-queue', 'ocular-fees'].includes(tab)) {
       setActiveTab(tab);
       // If we switched to a tab, clear project selection to show the tab content
       if (tab !== 'payments') {
@@ -228,7 +227,7 @@ export function PaymentsPage() {
         { duration: 6000 },
       );
     } catch (err) {
-      setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
+      setBlockedAction(resolveBlockedAction(err, '/help/payments/payment-stage-status-reference#overview'));
       toast.error(extractErrorMessage(err, 'Failed to create checkout session'));
     }
   };
@@ -239,7 +238,7 @@ export function PaymentsPage() {
       await simulatePayment.mutateAsync(stageId);
       toast.success('Payment simulated — awaiting cashier verification');
     } catch (err) {
-      setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
+      setBlockedAction(resolveBlockedAction(err, '/help/payments/payment-stage-status-reference#overview'));
       toast.error(extractErrorMessage(err, 'Simulation failed'));
     }
   };
@@ -252,7 +251,7 @@ export function PaymentsPage() {
         duration: 5000,
       });
     } catch (err) {
-      setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
+      setBlockedAction(resolveBlockedAction(err, '/help/payments/payment-stage-status-reference#overview'));
       toast.error(extractErrorMessage(err, 'Failed to request cash payment'));
     }
   };
@@ -273,7 +272,7 @@ export function PaymentsPage() {
       setCashDialog({ open: false, stageId: '', amount: 0 });
       setCashAmount('');
     } catch (err) {
-      setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
+      setBlockedAction(resolveBlockedAction(err, '/help/payments/payment-stage-status-reference#overview'));
       toast.error(extractErrorMessage(err, 'Failed to record cash payment'));
     }
   };
@@ -314,7 +313,6 @@ export function PaymentsPage() {
               { key: 'payments', label: 'Payments', show: true },
               { key: 'cashier-queue', label: 'Cashier Queue', show: !!isCashier },
               { key: 'ocular-fees', label: 'Ocular Fees', show: !!isCashier },
-              { key: 'refunds', label: isCustomer ? 'My Refunds' : 'Refunds', show: true },
             ]
               .filter((tab) => tab.show)
               .map((tab) => (
@@ -595,27 +593,7 @@ export function PaymentsPage() {
             <OcularFeeQueuePage isEmbedded />
           )}
 
-          {/* ── TAB: Refunds ── */}
-          {activeTab === 'refunds' && (
-            <>
-              {isCashier && <RefundQueueList />}
-              {isCustomer && (
-                <Card className="rounded-none overflow-hidden border-x-0 sm:rounded-xl sm:border-x border-cyan-200/60 bg-gradient-to-r from-cyan-50/60 to-sky-50/50 dark:border-cyan-800/40 dark:from-cyan-950/30 dark:to-sky-950/20">
-                  <CardContent className="flex items-start gap-3 px-4 py-3 sm:px-6">
-                    <ScrollText className="mt-0.5 h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400" />
-                    <div>
-                      <p className="text-sm font-medium text-cyan-900 dark:text-cyan-200">
-                        How to request a refund
-                      </p>
-                      <p className="mt-0.5 text-xs text-cyan-700 dark:text-cyan-300">
-                        Go to the <strong>Payments</strong> tab, tap on any <strong>paid</strong> payment in your history, and use the refund form at the bottom of the details dialog.
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </>
-          )}
+
         </>
       ) : (
         /* ═══════════════════════════════════════════════════════
@@ -1275,9 +1253,7 @@ export function PaymentsPage() {
                   </div>
                 )}
               </div>
-              <InlineRefundDetails
-                payment={selectedHistoryPayment}
-              />
+
             </div>
           )}
         </DialogContent>

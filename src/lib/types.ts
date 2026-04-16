@@ -131,10 +131,8 @@ export interface Appointment {
   ocularFeePaid?: boolean;
   ocularFeeProofKey?: string;
   ocularFeeReferenceNumber?: string;
-  ocularFeeStatus?: 'pending' | 'cash_pending' | 'proof_submitted' | 'verified' | 'declined' | 'refunded';
+  ocularFeeStatus?: 'pending' | 'cash_pending' | 'proof_submitted' | 'verified' | 'declined';
   ocularFeeDeclineReason?: string;
-  ocularFeeRefundReason?: string;
-  ocularFeeRefundedAt?: string;
   paymongoCheckoutSessionId?: string;
   paymongoCheckoutUrl?: string;
   rescheduleCount: number;
@@ -146,33 +144,6 @@ export interface Appointment {
   initialDesignNotes?: string;
   initialDesignStatus?: 'pending' | 'submitted' | 'skipped';
   consultationReportSubmitted?: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
-
-// ── Refund Request ──
-export interface RefundRequest {
-  _id: string;
-  appointmentId: string | Appointment;
-  customerId: string | { _id: string; firstName: string; lastName: string; email?: string; phone?: string };
-  reason: string;
-  refundMethod: 'gcash' | 'bank_transfer';
-  accountName: string;
-  accountNumber: string;
-  bankName?: string;
-  amount: number;
-  status: 'pending' | 'approved' | 'denied' | 'cancelled';
-  reviewedBy?: string | { _id: string; firstName: string; lastName: string };
-  reviewedAt?: string;
-  denialReason?: string;
-  cancelledAt?: string;
-  cancelledReason?: string;
-  timeline?: Array<{
-    key: string;
-    label: string;
-    at: string;
-    note?: string;
-  }>;
   createdAt: string;
   updatedAt: string;
 }

@@ -44,7 +44,7 @@ export function getLifecycleHelpPath(
 
   // Transition-aware overrides first.
   if (normalized === 'projects' && from === 'approved' && to === 'payment_pending') {
-    return '/help/payments-refunds/payment-stage-status-reference#overview';
+    return '/help/payments/payment-stage-status-reference#overview';
   }
   if (normalized === 'projects' && from === 'payment_pending' && to === 'fabrication') {
     return '/help/projects-fabrication/fabrication-gates-and-payments#overview';
@@ -57,11 +57,9 @@ export function getLifecycleHelpPath(
   }
 
   if (normalized === 'payments' || normalized === 'cash') {
-    return '/help/payments-refunds/payment-stage-status-reference#overview';
+    return '/help/payments/payment-stage-status-reference#overview';
   }
-  if (normalized === 'refunds') {
-    return '/help/payments-refunds/refunds#checklist';
-  }
+
   if (normalized === 'fabrication') {
     return '/help/projects-fabrication/fabrication-gates-and-payments#overview';
   }

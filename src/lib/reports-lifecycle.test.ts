@@ -12,7 +12,7 @@ import {
 describe('reports-lifecycle helpers', () => {
   it('maps transition-aware help links for key transitions', () => {
     expect(getLifecycleHelpPath('projects', 'approved', 'payment_pending')).toBe(
-      '/help/payments-refunds/payment-stage-status-reference#overview',
+      '/help/payments/payment-stage-status-reference#overview',
     );
     expect(getLifecycleHelpPath('projects', 'payment_pending', 'fabrication')).toBe(
       '/help/projects-fabrication/fabrication-gates-and-payments#overview',
@@ -23,7 +23,7 @@ describe('reports-lifecycle helpers', () => {
   });
 
   it('falls back to module-based help links and default project status guide', () => {
-    expect(getLifecycleHelpPath('payments')).toBe('/help/payments-refunds/payment-stage-status-reference#overview');
+    expect(getLifecycleHelpPath('payments')).toBe('/help/payments/payment-stage-status-reference#overview');
     expect(getLifecycleHelpPath('appointments')).toBe('/help/appointments-visits/appointment-status-reference#overview');
     expect(getLifecycleHelpPath('unknown-module')).toBe('/help/projects-fabrication/project-statuses#overview');
   });

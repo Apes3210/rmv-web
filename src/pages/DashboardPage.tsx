@@ -187,7 +187,7 @@ function getRoleActionHeading(role: Role): { title: string; description: string 
     [Role.APPOINTMENT_AGENT]: { title: 'Scheduling actions', description: 'Prioritize booking flow and pending appointment requests first.' },
     [Role.SALES_STAFF]: { title: 'Sales actions', description: 'Focus on visits, reports, and cash handoff tasks tied to active customers.' },
     [Role.ENGINEER]: { title: 'Engineering actions', description: 'Review incoming technical work before project execution slows down.' },
-    [Role.CASHIER]: { title: 'Finance actions', description: 'Handle proofs, collections, and refund queues before reporting.' },
+    [Role.CASHIER]: { title: 'Finance actions', description: 'Handle proofs and collections before reporting.' },
     [Role.FABRICATION_STAFF]: { title: 'Workshop actions', description: 'Stay on top of active fabrication jobs and today’s completions.' },
     [Role.ADMIN]: { title: 'Operational actions', description: 'Use these shortcuts to resolve system bottlenecks quickly.' },
   };
@@ -316,8 +316,6 @@ function getRoleActions(role: Role): QuickAction[] {
     case Role.CASHIER:
       actions.push(
         { label: 'Cashier Queue', path: '/payments?tab=cashier-queue', icon: CreditCard, description: 'Verify payment proofs', color: 'from-[#1d1d1f] to-[#2d2d2f]' },
-        { label: 'Cash Flow', path: '/cash', icon: Banknote, description: 'Record cash collections', color: 'from-[#3a3a3e] to-[#2a2a2e]' },
-        { label: 'Refund Requests', path: '/payments', icon: Receipt, description: 'Pending refunds', color: 'from-[#4a4a4e] to-[#3a3a3e]' },
         { label: 'Reports', path: '/reports', icon: TrendingUp, description: 'Financial analytics', color: 'from-[#5a5a5e] to-[#4a4a4e]' },
       );
       break;

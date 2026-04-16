@@ -31,12 +31,12 @@ import {
   useCancelAppointment,
   useMarkNoShow,
   useUpdateVisitStatus,
-  useRefundOcularFee,
+  useUpdateVisitStatus,
   useAgentFinalizeOcular,
   useCustomerSubmitLocation,
 } from '@/hooks/useAppointments';
 import { useVisitReportsByAppointment } from '@/hooks/useVisitReports';
-import { useSubmitRefundRequest, useMyRefundRequests } from '@/hooks/useRefunds';
+
 import { useAuthStore } from '@/stores/auth.store';
 import { Role, AppointmentStatus } from '@/lib/constants';
 import { SERVICE_TYPE_LABELS } from '@/lib/constants';
@@ -69,7 +69,7 @@ export function AppointmentDetailPage() {
   const cancelMutation = useCancelAppointment();
   const noShowMutation = useMarkNoShow();
   const visitStatusMutation = useUpdateVisitStatus();
-  const refundMutation = useRefundOcularFee();
+
   const finalizeMutation = useAgentFinalizeOcular();
   const submitLocationMutation = useCustomerSubmitLocation();
 
@@ -96,24 +96,12 @@ export function AppointmentDetailPage() {
   const canSeeVisitReports = isSalesStaff || isAdmin || user?.roles.includes(Role.ENGINEER) || isAgent;
   const { data: visitReports } = useVisitReportsByAppointment(canSeeVisitReports ? id! : '');
 
-  // Refund request
-  const submitRefundMutation = useSubmitRefundRequest();
-  const { data: myRefundRequests } = useMyRefundRequests(!!isCustomer);
+
 
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
-  const [refundOpen, setRefundOpen] = useState(false);
-  const [refundReason, setRefundReason] = useState('');
-  const [selectedSalesStaff, setSelectedSalesStaff] = useState('');
   const [salesStaffList, setSalesStaffList] = useState<{ _id: string; firstName: string; lastName: string }[]>([]);
 
-  // Customer refund request form state
-  const [customerRefundOpen, setCustomerRefundOpen] = useState(false);
-  const [customerRefundReason, setCustomerRefundReason] = useState('');
-  const [customerRefundMethod, setCustomerRefundMethod] = useState<'gcash' | 'bank_transfer'>('gcash');
-  const [customerRefundAccountName, setCustomerRefundAccountName] = useState('');
-  const [customerRefundAccountNumber, setCustomerRefundAccountNumber] = useState('');
-  const [customerRefundBankName, setCustomerRefundBankName] = useState('');
 
   const canConfirmAppointment = !!(isAgent || isAdmin);
   const canFinalizeOcular = !!isSalesStaff;
@@ -555,27 +543,13 @@ export function AppointmentDetailPage() {
           <CardContent className="space-y-4">
             {appt.ocularFee != null && appt.ocularFee > 0 && (
               <div>
-                {appt.ocularFeeStatus === 'refunded' ? (
                   <>
                     <div className="flex items-center justify-between">
                       <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Ocular Fee</p>
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-full px-2.5 py-0.5">
-                        Refunded
-                      </span>
                     </div>
-                    <p className="text-lg font-semibold text-[#86868b] dark:text-slate-500 line-through mt-1">
-                      {formatCurrency(appt.ocularFee)}
-                    </p>
-                    {appt.ocularFeeRefundReason && (
-                      <p className="text-xs text-red-600 mt-1">Reason: {appt.ocularFeeRefundReason}</p>
-                    )}
-                    {appt.ocularFeeRefundedAt && (
-                      <p className="text-xs text-[#86868b] dark:text-slate-400 mt-0.5">
-                        Refunded on {format(new Date(appt.ocularFeeRefundedAt), 'MMM d, yyyy h:mm a')}
-                      </p>
-                    )}
                   </>
                 ) : appt.ocularFeePaid ? (
+
                   <>
                     <div className="flex items-center justify-between">
                       <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Ocular Fee</p>
@@ -586,17 +560,7 @@ export function AppointmentDetailPage() {
                     <p className="text-lg font-semibold text-[#1d1d1f] dark:text-slate-100 mt-1">
                       {formatCurrency(appt.ocularFee)}
                     </p>
-                    {/* Admin: Refund button */}
-                    {isAdmin && ![AppointmentStatus.ON_THE_WAY, AppointmentStatus.COMPLETED].includes(appt.status as AppointmentStatus) && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setRefundOpen(true)}
-                        className="mt-2 border-red-200 text-red-600 hover:bg-red-50 rounded-xl text-xs h-8"
-                      >
-                        Issue Refund
-                      </Button>
-                    )}
+
                   </>
                 ) : appt.ocularFeeStatus === 'pending' && isCustomer ? (
                   <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[linear-gradient(135deg,rgba(18,24,34,0.96)_0%,rgba(10,17,26,0.98)_100%)] p-4 space-y-3 shadow-md shadow-black/5">
@@ -1327,38 +1291,17 @@ export function AppointmentDetailPage() {
             </>
           )}
 
-        {/* Customer: Request Refund (when fee is verified and appointment is not on_the_way/completed) */}
-        {isCustomer && appt.ocularFeeStatus === 'verified' &&
-          ![AppointmentStatus.ON_THE_WAY, AppointmentStatus.COMPLETED].includes(appt.status as AppointmentStatus) &&
-          !myRefundRequests?.some(r => r.appointmentId === appt._id && r.status === 'pending') && (
-          <Button
-            variant="prominent"
-            onClick={() => setCustomerRefundOpen(true)}
-            className="rounded-xl h-10 px-6 shadow-sm"
-          >
-            <RotateCcw className="mr-2 h-4 w-4" />
-            Request Refund
-          </Button>
-        )}
-
-        {/* Customer: Show pending refund status */}
-        {isCustomer && myRefundRequests?.some(r => r.appointmentId === appt._id && r.status === 'pending') && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
-            Refund request pending review
-          </div>
-        )}
-
-        {/* Customer: Contact Admin card (on_the_way or completed) */}
-        {isCustomer && appt.ocularFeeStatus === 'verified' &&
+        {/* Customer: Reschedule guidance card (on_the_way or completed) */}
+        {isCustomer && appt.ocularFeePaid &&
           [AppointmentStatus.ON_THE_WAY, AppointmentStatus.COMPLETED].includes(appt.status as AppointmentStatus) && (
           <Card className="rounded-xl border-blue-200 bg-blue-50 w-full">
             <CardContent className="p-4">
               <div className="flex items-start gap-3">
-                <Mail className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+                <Info className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
                 <div className="text-sm text-blue-800">
-                  <p className="font-semibold">Need a refund?</p>
+                  <p className="font-semibold">Visit Information</p>
                   <p className="mt-1 text-blue-700">
-                    Since the visit is already in progress, please contact the admin directly:
+                    If you need to reschedule or have issues with the current visit, please contact us immediately:
                   </p>
                   <div className="mt-2 space-y-0.5 text-blue-600">
                     <p>Email: rmvstainless@gmail.com</p>
@@ -1422,170 +1365,7 @@ export function AppointmentDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Refund Ocular Fee dialog (Admin only) */}
-      <Dialog open={refundOpen} onOpenChange={(open) => { setRefundOpen(open); if (!open) setRefundReason(''); }}>
-        <DialogContent className="max-w-md rounded-2xl border border-[color:var(--color-border)]/65 bg-[var(--metal-panel-background)] text-[var(--color-card-foreground)] shadow-[0_28px_70px_rgba(15,23,42,0.4)]">
-          <DialogHeader>
-            <DialogTitle className="text-[#1d1d1f] dark:text-slate-100">Refund Ocular Fee</DialogTitle>
-            <DialogDescription className="text-[#6e6e73] dark:text-slate-400">
-              This will mark the ocular fee of {appt.ocularFee ? formatCurrency(appt.ocularFee) : ''} as refunded, record your reason on the appointment timeline, and notify the customer that finance follow-up will continue outside this booking.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <Label htmlFor="refund-reason" className="text-sm font-medium text-[#3a3a3e] dark:text-slate-300">Reason for refund</Label>
-            <Textarea
-              id="refund-reason"
-              placeholder="e.g., Customer cancelled before visit, duplicate payment..."
-              value={refundReason}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setRefundReason(e.target.value)}
-              className="min-h-[112px] rounded-2xl border border-[color:var(--color-border)]/70 bg-[color:var(--color-card)]/78 text-[var(--color-card-foreground)] placeholder:text-[var(--text-metal-muted-color)] focus-visible:ring-[var(--color-card-foreground)]/35"
-            />
-          </div>
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => { setRefundOpen(false); setRefundReason(''); }}
-              className="rounded-xl border-[color:var(--color-border)]/70 bg-[color:var(--color-card)]/55 text-[var(--color-card-foreground)] hover:bg-[color:var(--color-card)]/82 hover:text-[var(--color-card-foreground)]"
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={async () => {
-                try {
-                  await refundMutation.mutateAsync({ id: id!, reason: refundReason.trim() });
-                  toast.success('Ocular fee refunded successfully');
-                  setRefundOpen(false);
-                  setRefundReason('');
-                } catch (err) {
-                  toast.error(extractErrorMessage(err, 'Failed to process refund'));
-                }
-              }}
-              disabled={refundMutation.isPending || !refundReason.trim()}
-              className="rounded-xl"
-            >
-              {refundMutation.isPending ? 'Processing...' : 'Confirm Refund'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* Customer Refund Request dialog */}
-      <Dialog open={customerRefundOpen} onOpenChange={(open) => {
-        setCustomerRefundOpen(open);
-        if (!open) {
-          setCustomerRefundReason('');
-          setCustomerRefundMethod('gcash');
-          setCustomerRefundAccountName('');
-          setCustomerRefundAccountNumber('');
-          setCustomerRefundBankName('');
-        }
-      }}>
-        <DialogContent className="max-w-md rounded-2xl border border-[color:var(--color-border)]/65 bg-[var(--metal-panel-background)] text-[var(--color-card-foreground)] shadow-[0_28px_70px_rgba(15,23,42,0.4)]">
-          <DialogHeader>
-            <DialogTitle className="text-[#1d1d1f] dark:text-slate-100">Request Refund</DialogTitle>
-            <DialogDescription className="text-[#6e6e73] dark:text-slate-400">
-              Request a refund for the ocular fee of {appt.ocularFee ? formatCurrency(appt.ocularFee) : ''}. Your request will be reviewed by the cashier team, and the payout will be sent using the method you provide below if it is approved.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <Label htmlFor="cr-reason" className="text-sm font-medium text-[#3a3a3e] dark:text-slate-300">Reason for refund</Label>
-              <Textarea
-                id="cr-reason"
-                placeholder="e.g., Schedule conflict, changed plans..."
-                value={customerRefundReason}
-                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCustomerRefundReason(e.target.value)}
-                className="mt-1 min-h-[112px] rounded-2xl border border-[color:var(--color-border)]/70 bg-[color:var(--color-card)]/78 text-[var(--color-card-foreground)] placeholder:text-[var(--text-metal-muted-color)] focus-visible:ring-[var(--color-card-foreground)]/35"
-              />
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-[#3a3a3e] dark:text-slate-300">Refund Method</Label>
-              <div className="mt-1 flex gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={customerRefundMethod === 'gcash' ? 'default' : 'outline'}
-                  onClick={() => setCustomerRefundMethod('gcash')}
-                  className="rounded-xl flex-1"
-                >
-                  GCash
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={customerRefundMethod === 'bank_transfer' ? 'default' : 'outline'}
-                  onClick={() => setCustomerRefundMethod('bank_transfer')}
-                  className="rounded-xl flex-1"
-                >
-                  Bank Transfer
-                </Button>
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="cr-account-name" className="text-sm font-medium text-[#3a3a3e] dark:text-slate-300">Account Name</Label>
-              <Input
-                id="cr-account-name"
-                placeholder="Full name on account"
-                value={customerRefundAccountName}
-                onChange={(e) => setCustomerRefundAccountName(e.target.value)}
-                className="mt-1 bg-[#f5f5f7]/50 border-[#d2d2d7] rounded-xl"
-              />
-            </div>
-            <div>
-              <Label htmlFor="cr-account-number" className="text-sm font-medium text-[#3a3a3e] dark:text-slate-300">
-                {customerRefundMethod === 'gcash' ? 'GCash Number' : 'Account Number'}
-              </Label>
-              <Input
-                id="cr-account-number"
-                placeholder={customerRefundMethod === 'gcash' ? '09XX XXX XXXX' : 'Account number'}
-                value={customerRefundAccountNumber}
-                onChange={(e) => setCustomerRefundAccountNumber(e.target.value)}
-                className="mt-1 bg-[#f5f5f7]/50 border-[#d2d2d7] rounded-xl"
-              />
-            </div>
-            {customerRefundMethod === 'bank_transfer' && (
-              <div>
-                <Label htmlFor="cr-bank-name" className="text-sm font-medium text-[#3a3a3e] dark:text-slate-300">Bank Name</Label>
-                <Input
-                  id="cr-bank-name"
-                  placeholder="e.g., BDO, BPI, Metrobank..."
-                  value={customerRefundBankName}
-                  onChange={(e) => setCustomerRefundBankName(e.target.value)}
-                  className="mt-1 bg-[#f5f5f7]/50 border-[#d2d2d7] rounded-xl"
-                />
-              </div>
-            )}
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setCustomerRefundOpen(false)} className="rounded-xl border-[#d2d2d7]">
-              Cancel
-            </Button>
-            <Button
-              onClick={async () => {
-                try {
-                  await submitRefundMutation.mutateAsync({
-                    appointmentId: appt._id,
-                    reason: customerRefundReason.trim(),
-                    refundMethod: customerRefundMethod,
-                    accountName: customerRefundAccountName.trim(),
-                    accountNumber: customerRefundAccountNumber.trim(),
-                    ...(customerRefundMethod === 'bank_transfer' ? { bankName: customerRefundBankName.trim() } : {}),
-                  });
-                  toast.success('Refund request submitted successfully');
-                  setCustomerRefundOpen(false);
-                } catch (err) {
-                  toast.error(extractErrorMessage(err, 'Failed to submit refund request'));
-                }
-              }}
-              disabled={submitRefundMutation.isPending || !customerRefundReason.trim() || !customerRefundAccountName.trim() || !customerRefundAccountNumber.trim() || (customerRefundMethod === 'bank_transfer' && !customerRefundBankName.trim())}
-              className="rounded-xl bg-amber-600 hover:bg-amber-700 text-white"
-            >
-              {submitRefundMutation.isPending ? 'Submitting...' : 'Submit Request'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

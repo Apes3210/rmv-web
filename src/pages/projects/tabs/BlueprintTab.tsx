@@ -770,7 +770,7 @@ export function BlueprintTab({ projectId, onNavigateToDetails }: BlueprintTabPro
           refetchProject();
         },
         onError: (err) => {
-          setBlockedAction(resolveBlockedAction(err, '/help/payments-refunds/payment-stage-status-reference#overview'));
+          setBlockedAction(resolveBlockedAction(err, '/help/payments/payment-stage-status-reference#overview'));
           toast.error(extractErrorMessage(err, 'Failed to create payment plan'));
         },
       },
@@ -1131,7 +1131,7 @@ export function BlueprintTab({ projectId, onNavigateToDetails }: BlueprintTabPro
                 <h3 className="font-semibold text-slate-50">Design</h3>
               </div>
               {blueprint.blueprintApproved ? (
-                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 shadow-none hover:bg-emerald-100">
+                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/80 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30 shadow-none">
                   <CheckCircle className="mr-1 h-3 w-3" /> Approved
                 </Badge>
               ) : (
@@ -1316,7 +1316,7 @@ export function BlueprintTab({ projectId, onNavigateToDetails }: BlueprintTabPro
                   <h3 className={`font-semibold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>Design</h3>
                 </div>
                 {bp.blueprintApproved ? (
-                  <Badge className="border-emerald-200 bg-emerald-100 text-emerald-700 shadow-none hover:bg-emerald-100 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-300 dark:hover:bg-emerald-500/25">
+                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 shadow-none hover:bg-emerald-100/80 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-300 dark:hover:bg-emerald-500/25">
                     <CheckCircle className="mr-1 h-3 w-3" /> Approved
                   </Badge>
                 ) : (
@@ -1360,7 +1360,7 @@ export function BlueprintTab({ projectId, onNavigateToDetails }: BlueprintTabPro
                   <h3 className={`font-semibold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>Costing Sheet</h3>
                 </div>
                 {bp.costingApproved ? (
-                  <Badge className="border-emerald-200 bg-emerald-100 text-emerald-700 shadow-none hover:bg-emerald-100 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-300 dark:hover:bg-emerald-500/25">
+                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 shadow-none hover:bg-emerald-100/80 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-300 dark:hover:bg-emerald-500/25">
                     <CheckCircle className="mr-1 h-3 w-3" /> Approved
                   </Badge>
                 ) : (

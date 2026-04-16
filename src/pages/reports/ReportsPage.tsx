@@ -136,7 +136,6 @@ const STAGE_COLORS: Record<string, string> = {
   awaiting_proof: '#9aaabd',
   declined: '#f07167',
   overdue: '#e45151',
-  refunded: '#ab8cff',
 };
 
 /* ── Custom tooltip ── */

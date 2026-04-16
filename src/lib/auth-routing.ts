@@ -25,8 +25,8 @@ const PROTECTED_ROUTE_RULES: RouteRule[] = [
   { pattern: /^\/visit-reports(?:\/[^/]+)?\/?$/i, allowedRoles: [Role.SALES_STAFF, Role.ENGINEER, Role.ADMIN] },
   { pattern: /^\/payments\/?$/i, allowedRoles: [Role.CUSTOMER, Role.CASHIER, Role.SALES_STAFF, Role.ADMIN] },
   { pattern: /^\/cashier-queue\/?$/i, allowedRoles: [Role.CASHIER, Role.ADMIN] },
-  { pattern: /^\/refund-requests\/?$/i, allowedRoles: [Role.CASHIER, Role.ADMIN] },
-  { pattern: /^\/my-refunds\/?$/i, allowedRoles: [Role.CUSTOMER] },
+
+
   { pattern: /^\/cash\/?$/i, allowedRoles: [Role.SALES_STAFF, Role.CASHIER, Role.ADMIN] },
   { pattern: /^\/reports\/?$/i, allowedRoles: [Role.CASHIER, Role.ADMIN] },
   { pattern: /^\/users\/?$/i, allowedRoles: [Role.ADMIN] },

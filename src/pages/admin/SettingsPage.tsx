@@ -1,20 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Settings, Power, RefreshCw, Save, CreditCard, AlertTriangle, History } from 'lucide-react';
+import { Trash2, RefreshCw, Save, CreditCard, Activity, MapPin, BookOpen } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 import { extractErrorMessage } from '@/lib/utils';
-import {
-  getImpactSummaryText,
-  getRiskLabelClass,
-  getRiskPanelClass,
-  getVersionHistoryStatus,
-} from '@/lib/config-safety';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { LocationPicker } from '@/components/maps/LocationPicker';
+import { PageError } from '@/components/shared/PageError';
 import {
   Dialog,
   DialogContent,
@@ -22,516 +18,136 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogTrigger,
 } from '@/components/ui/dialog';
-import { PageError } from '@/components/shared/PageError';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
+import { format, addDays, isBefore, startOfDay } from 'date-fns';
 import {
   useConfigs,
   useUpdateConfig,
-  useConfigImpactPreview,
-  useConfigVersions,
-  useRollbackConfigVersion,
   useToggleMaintenance,
+  useScheduleMaintenance,
 } from '@/hooks/useConfig';
-import type { ConfigImpactPreview, ConfigItem } from '@/hooks/useConfig';
 import type { MapPoint } from '@/lib/maps';
 
-function getConfigTier(key: string) {
-  if (key === 'help_center_content' || key === 'ncrPolygonFile') {
-    return { label: 'Advanced', tone: 'warning' as const };
-  }
-
-  if (key.includes('maintenance') || key.includes('feature')) {
-    return { label: 'System', tone: 'info' as const };
-  }
-
-  if (key.includes('fee') || key.includes('distance') || key.includes('installment')) {
-    return { label: 'Core', tone: 'success' as const };
-  }
-
-  return { label: 'Config', tone: 'secondary' as const };
-}
-
-function getConfigPreview(value: unknown, key: string) {
-  if (key === 'help_center_content') {
-    const raw = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
-    try {
-      const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-      const title = typeof parsed === 'object' && parsed && 'title' in parsed ? String((parsed as Record<string, unknown>).title ?? 'Help Center') : 'Help Center';
-      const subtitle = typeof parsed === 'object' && parsed && 'subtitle' in parsed ? String((parsed as Record<string, unknown>).subtitle ?? '') : '';
-      const content = typeof parsed === 'object' && parsed && 'content' in parsed ? String((parsed as Record<string, unknown>).content ?? '') : raw;
-      const sectionCount = content.split(/\n\n+/).filter(Boolean).length;
-      const excerpt = content
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 180);
-
-      return {
-        kind: 'structured' as const,
-        summary: `${title}${subtitle ? ` • ${subtitle}` : ''}`,
-        details: `${sectionCount} content blocks`,
-        excerpt: excerpt + (content.length > 180 ? '…' : ''),
-      };
-    } catch {
-      const excerpt = raw.replace(/\s+/g, ' ').trim().slice(0, 180);
-      return {
-        kind: 'structured' as const,
-        summary: 'Help Center content',
-        details: 'JSON content used by the Help Center page',
-        excerpt: excerpt + (raw.length > 180 ? '…' : ''),
-      };
-    }
-  }
-
-  if (typeof value === 'string') {
-    return {
-      kind: 'text' as const,
-      summary: value,
-    };
-  }
-
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return {
-      kind: 'text' as const,
-      summary: String(value),
-    };
-  }
-
-  const raw = JSON.stringify(value, null, 2);
-  return {
-    kind: 'json' as const,
-    summary: 'JSON configuration',
-    details: 'Open the editor to inspect or change the full object',
-    excerpt: raw.replace(/\s+/g, ' ').trim().slice(0, 180) + (raw.length > 180 ? '…' : ''),
-  };
-}
-
-type SimpleConfigField = {
-  label: string;
-  help: string;
-  group: 'pricing' | 'payment' | 'mapping';
-  inputType: 'number' | 'text';
-  unit?: string;
-  step?: number;
-  min?: number;
-};
-
-const SIMPLE_CONFIG_GROUPS: Array<{
-  id: SimpleConfigField['group'];
-  title: string;
-  description: string;
-}> = [
-  {
-    id: 'pricing',
-    title: 'Ocular Fees',
-    description: 'Controls base fees, included distance, and distance limits.',
-  },
-  {
-    id: 'payment',
-    title: 'Payment Follow-up',
-    description: 'Controls reminder schedule and escalation timing.',
-  },
-  {
-    id: 'mapping',
-    title: 'Office Location & Mapping',
-    description: 'Controls office origin and map references used in NCR checks.',
-  },
-];
-
-const SIMPLE_CONFIG_FIELDS: Record<string, SimpleConfigField> = {
-  baseFee: {
-    label: 'Base Ocular Fee',
-    help: 'Starting transportation fee for outside-NCR ocular visits.',
-    group: 'pricing',
-    inputType: 'number',
-    unit: 'PHP',
-    min: 0,
-    step: 1,
-  },
-  baseCoveredKm: {
-    label: 'Base Distance Included',
-    help: 'Distance already covered by the base ocular fee.',
-    group: 'pricing',
-    inputType: 'number',
-    unit: 'km',
-    min: 0,
-    step: 1,
-  },
-  perKmRate: {
-    label: 'Extra Fee Per Kilometer',
-    help: 'Additional fee charged per kilometer beyond the base distance.',
-    group: 'pricing',
-    inputType: 'number',
-    unit: 'PHP/km',
-    min: 0,
-    step: 1,
-  },
-  maxDistanceKm: {
-    label: 'Maximum Service Distance',
-    help: 'Maximum distance the team accepts for ocular visits.',
-    group: 'pricing',
-    inputType: 'number',
-    unit: 'km',
-    min: 1,
-    step: 1,
-  },
-  paymentReminderDays: {
-    label: 'Payment Reminder Interval',
-    help: 'How many days between payment reminder notifications.',
-    group: 'payment',
-    inputType: 'number',
-    unit: 'days',
-    min: 1,
-    step: 1,
-  },
-  paymentEscalationAfterReminders: {
-    label: 'Escalate After Reminders',
-    help: 'Number of reminders before escalating to cashier/admin.',
-    group: 'payment',
-    inputType: 'number',
-    unit: 'reminders',
-    min: 1,
-    step: 1,
-  },
-  shopLatitude: {
-    label: 'Office Latitude',
-    help: 'Latitude of the office pin used as the distance origin for ocular fees.',
-    group: 'mapping',
-    inputType: 'number',
-    step: 0.000001,
-  },
-  shopLongitude: {
-    label: 'Office Longitude',
-    help: 'Longitude of the office pin used as the distance origin for ocular fees.',
-    group: 'mapping',
-    inputType: 'number',
-    step: 0.000001,
-  },
-};
-
-const OFFICE_LOCATION_KEYS = ['shopLatitude', 'shopLongitude'] as const;
-
 export function SettingsPage() {
-  const [editConfig, setEditConfig] = useState<ConfigItem | null>(null);
-  const [configValue, setConfigValue] = useState('');
-  const [configDesc, setConfigDesc] = useState('');
-  const [configImpact, setConfigImpact] = useState<ConfigImpactPreview | null>(null);
-  const [simpleConfigValues, setSimpleConfigValues] = useState<Record<string, string>>({});
-  const [simpleConfigSavingKey, setSimpleConfigSavingKey] = useState<string | null>(null);
-  const [officeLocation, setOfficeLocation] = useState<MapPoint | null>(null);
-  const [officeLocationSaving, setOfficeLocationSaving] = useState(false);
+  const { data: configs, isLoading: configsLoading, error: configsError, refetch: refetchConfigs } = useConfigs();
+  const updateConfig = useUpdateConfig();
+  const toggleMaintenance = useToggleMaintenance();
+  const scheduleMaintenance = useScheduleMaintenance();
 
-  // Payment settings state
+  const [simpleValues, setSimpleValues] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  // Scheduling State
+  const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(addDays(new Date(), 3));
+  const [selectedTime, setSelectedTime] = useState('02:00'); // Default to 2 AM
+  const [scheduleReason, setScheduleReason] = useState('');
+
+
+  // Map State
+  const [officeLocation, setOfficeLocation] = useState<MapPoint | null>(null);
+  const [locationSaving, setLocationSaving] = useState(false);
+
+  // Payment State
   const [surchargePercent, setSurchargePercent] = useState('10');
   const [splitValues, setSplitValues] = useState(['30', '40', '30']);
   const [stageLabels, setStageLabels] = useState(['Down Payment', 'Mid-Project', 'Final Payment']);
-  const [paymentSettingsLoaded, setPaymentSettingsLoaded] = useState(false);
+  const [paymentLoaded, setPaymentLoaded] = useState(false);
 
-  const {
-    data: configs,
-    isLoading: configsLoading,
-    error: configsError,
-    refetch: refetchConfigs,
-  } = useConfigs();
-
-  const updateConfig = useUpdateConfig();
-  const previewConfigImpact = useConfigImpactPreview();
-  const rollbackConfigVersion = useRollbackConfigVersion();
-  const { data: configVersionHistory, isLoading: configVersionsLoading } = useConfigVersions(editConfig?.key);
-  const toggleMaintenance = useToggleMaintenance();
-
-  const quickLinks = [
-    { label: 'Maintenance mode', href: '#maintenance-mode', note: 'Turn the system on or off for non-admin users.' },
-    { label: 'Payment settings', href: '#payment-settings', note: 'Adjust surcharge and installment stages.' },
-    { label: 'Lifecycle analytics', href: '#lifecycle-analytics', note: 'Control lifecycle insights shown in reports.' },
-    { label: 'System defaults', href: '#general-configuration', note: 'Use Easy Settings for common values and Advanced only when needed.' },
-  ];
+  // Help Center State
+  const [helpTitle, setHelpTitle] = useState('');
+  const [helpSubtitle, setHelpSubtitle] = useState('');
+  const [helpContent, setHelpContent] = useState('');
+  const [helpLoaded, setHelpLoaded] = useState(false);
+  const [helpSaving, setHelpSaving] = useState(false);
 
   const maintenanceEnabled = configs?.find((c) => c.key === 'maintenance_mode')?.value === true;
+  const scheduledTime = configs?.find((c) => c.key === 'maintenance_scheduled_at')?.value;
+  const isScheduled = !!scheduledTime && !maintenanceEnabled;
+
   const lifecycleAnalyticsEnabled = (() => {
     const config = configs?.find((c) => c.key === 'feature_lifecycle_mismatch_analytics');
     return typeof config?.value === 'boolean' ? config.value : true;
   })();
 
-  const generalConfigs = (configs || []).filter(
-    (config) =>
-      config.key !== 'maintenance_mode' &&
-      config.key !== 'feature_lifecycle_mismatch_analytics' &&
-      !config.key.startsWith('installment_'),
-  );
-  const simpleConfigs = generalConfigs.filter((config) => config.key in SIMPLE_CONFIG_FIELDS);
-  const advancedConfigs = generalConfigs.filter((config) => !(config.key in SIMPLE_CONFIG_FIELDS));
-  const groupedSimpleConfigs = SIMPLE_CONFIG_GROUPS.map((group) => ({
-    ...group,
-    configs: simpleConfigs.filter(
-      (config) =>
-        SIMPLE_CONFIG_FIELDS[config.key]?.group === group.id &&
-        !OFFICE_LOCATION_KEYS.includes(config.key as (typeof OFFICE_LOCATION_KEYS)[number]),
-    ),
-  })).filter((group) => group.configs.length > 0);
-
-  // Load payment settings from configs when available
-  useEffect(() => {
-    if (!configs || paymentSettingsLoaded) return;
-    const surchargeConfig = configs.find((c) => c.key === 'installment_surcharge_percent');
-    const splitConfig = configs.find((c) => c.key === 'installment_split');
-    const labelsConfig = configs.find((c) => c.key === 'installment_stage_labels');
-
-    if (surchargeConfig) setSurchargePercent(String(surchargeConfig.value));
-    if (splitConfig && Array.isArray(splitConfig.value)) {
-      setSplitValues(splitConfig.value.map(String));
-    }
-    if (labelsConfig && Array.isArray(labelsConfig.value)) {
-      setStageLabels(labelsConfig.value.map(String));
-    }
-    setPaymentSettingsLoaded(true);
-  }, [configs, paymentSettingsLoaded]);
-
+  // Sync Effect
   useEffect(() => {
     if (!configs) return;
+
+    // 1. Sync Help Center
+    if (!helpLoaded) {
+      const hcConfig = configs.find((c) => c.key === 'help_center_content');
+      if (hcConfig) {
+        try {
+          const parsed = typeof hcConfig.value === 'string' ? JSON.parse(hcConfig.value) : hcConfig.value;
+          setHelpTitle(parsed.title || '');
+          setHelpSubtitle(parsed.subtitle || '');
+          setHelpContent(parsed.content || '');
+        } catch {
+          setHelpContent(typeof hcConfig.value === 'string' ? hcConfig.value : JSON.stringify(hcConfig.value));
+        }
+      }
+      setHelpLoaded(true);
+    }
+
+    // 2. Sync Payments
+    if (!paymentLoaded) {
+      const sur = configs.find((c) => c.key === 'installment_surcharge_percent');
+      const splits = configs.find((c) => c.key === 'installment_split');
+      const labels = configs.find((c) => c.key === 'installment_stage_labels');
+      
+      if (sur) setSurchargePercent(String(sur.value));
+      if (splits && Array.isArray(splits.value)) setSplitValues(splits.value.map(String));
+      if (labels && Array.isArray(labels.value)) setStageLabels(labels.value.map(String));
+      setPaymentLoaded(true);
+    }
+
+    // 3. Sync Fees & Durations (Simple values)
+    const trackedKeys = [
+      'baseFee', 'baseCoveredKm', 'perKmRate', 'maxDistanceKm', 
+      'paymentReminderDays', 'paymentEscalationAfterReminders'
+    ];
     const nextValues: Record<string, string> = {};
-    for (const config of configs) {
-      if (!(config.key in SIMPLE_CONFIG_FIELDS)) continue;
-      if (typeof config.value === 'number' || typeof config.value === 'string') {
-        nextValues[config.key] = String(config.value);
+    for (const c of configs) {
+      if (trackedKeys.includes(c.key)) {
+        nextValues[c.key] = String(c.value);
       }
     }
-    setSimpleConfigValues((previous) => {
-      const previousKeys = Object.keys(previous);
-      const nextKeys = Object.keys(nextValues);
-      if (previousKeys.length !== nextKeys.length) return nextValues;
-      for (const key of nextKeys) {
-        if (previous[key] !== nextValues[key]) return nextValues;
+    setSimpleValues((prev) => {
+      const keys = Object.keys(nextValues);
+      if (Object.keys(prev).length !== keys.length) return nextValues;
+      for (const k of keys) {
+        if (prev[k] !== nextValues[k]) return nextValues;
       }
-      return previous;
+      return prev;
     });
-  }, [configs]);
 
-  useEffect(() => {
-    if (!configs) return;
-    const latitudeConfig = configs.find((config) => config.key === 'shopLatitude');
-    const longitudeConfig = configs.find((config) => config.key === 'shopLongitude');
-    if (!latitudeConfig || !longitudeConfig) return;
-
-    const latitude = Number(latitudeConfig.value);
-    const longitude = Number(longitudeConfig.value);
-    if (Number.isNaN(latitude) || Number.isNaN(longitude)) return;
-
-    setOfficeLocation((previous) => {
-      if (previous && previous.lat === latitude && previous.lng === longitude) {
-        return previous;
+    // 4. Sync Map location
+    const lat = configs.find((c) => c.key === 'shopLatitude');
+    const lng = configs.find((c) => c.key === 'shopLongitude');
+    if (lat && lng) {
+      const latitude = Number(lat.value);
+      const longitude = Number(lng.value);
+      if (!Number.isNaN(latitude) && !Number.isNaN(longitude)) {
+        setOfficeLocation((prev) => {
+          if (prev && prev.lat === latitude && prev.lng === longitude) return prev;
+          return { lat: latitude, lng: longitude };
+        });
       }
-      return { lat: latitude, lng: longitude };
-    });
-  }, [configs]);
-
-  const handleSavePaymentSettings = async () => {
-    const splits = splitValues.map(Number);
-    const surcharge = Number(surchargePercent);
-
-    if (isNaN(surcharge) || surcharge < 0 || surcharge > 100) {
-      toast.error('Surcharge must be between 0 and 100');
-      return;
     }
-    if (splits.some(isNaN) || splits.some((v) => v <= 0)) {
-      toast.error('All split values must be positive numbers');
-      return;
-    }
-    const sum = splits.reduce((a, b) => a + b, 0);
-    if (Math.abs(sum - 100) > 0.01) {
-      toast.error(`Split values must sum to 100 (currently ${sum})`);
-      return;
-    }
-    if (stageLabels.length !== splits.length || stageLabels.some((l) => !l.trim())) {
-      toast.error('Each stage must have a label');
-      return;
-    }
+  }, [configs, helpLoaded, paymentLoaded]);
 
-    try {
-      await Promise.all([
-        updateConfig.mutateAsync({
-          key: 'installment_surcharge_percent',
-          value: surcharge,
-          description: 'Surcharge percentage applied to installment payments',
-        }),
-        updateConfig.mutateAsync({
-          key: 'installment_split',
-          value: splits,
-          description: 'Installment split percentages for each stage (must sum to 100)',
-        }),
-        updateConfig.mutateAsync({
-          key: 'installment_stage_labels',
-          value: stageLabels.map((l) => l.trim()),
-          description: 'Labels for each installment stage',
-        }),
-      ]);
-      toast.success('Payment settings saved');
-    } catch (err) {
-      toast.error(extractErrorMessage(err, 'Failed to save payment settings'));
-    }
-  };
-
-  const addStage = () => {
-    if (splitValues.length >= 6) return;
-    setSplitValues([...splitValues, '0']);
-    setStageLabels([...stageLabels, `Stage ${splitValues.length + 1}`]);
-  };
-
-  const removeStage = (idx: number) => {
-    if (splitValues.length <= 1) return;
-    setSplitValues(splitValues.filter((_, i) => i !== idx));
-    setStageLabels(stageLabels.filter((_, i) => i !== idx));
-  };
-
-  const openEditConfig = (cfg: ConfigItem) => {
-    setEditConfig(cfg);
-    setConfigValue(typeof cfg.value === 'string' ? cfg.value : JSON.stringify(cfg.value));
-    setConfigDesc(cfg.description || '');
-    setConfigImpact(null);
-  };
-
-  const parseConfigInputValue = () => {
-    let parsed: unknown = configValue;
-    try { parsed = JSON.parse(configValue); } catch { /* keep as raw string */ }
-    return parsed;
-  };
-
-  const handlePreviewConfigImpact = async () => {
-    if (!editConfig) return;
-    try {
-      const preview = await previewConfigImpact.mutateAsync({
-        key: editConfig.key,
-        value: parseConfigInputValue(),
-      });
-      setConfigImpact(preview);
-      if (preview.riskLevel === 'high') {
-        toast.error('High-risk config change detected. Review impact warnings before saving.');
-      }
-    } catch (err) {
-      toast.error(extractErrorMessage(err, 'Failed to preview config impact'));
-    }
-  };
-
-  const handleRollbackConfigVersion = async (versionId: string) => {
-    if (!editConfig) return;
-    try {
-      const rolledBack = await rollbackConfigVersion.mutateAsync({
-        key: editConfig.key,
-        versionId,
-      });
-      setConfigValue(
-        typeof rolledBack.value === 'string'
-          ? rolledBack.value
-          : JSON.stringify(rolledBack.value),
-      );
-      setConfigDesc(rolledBack.description || '');
-      setConfigImpact(null);
-      toast.success('Config rolled back to selected version');
-    } catch (err) {
-      toast.error(extractErrorMessage(err, 'Failed to rollback config version'));
-    }
-  };
-
-  const handleSaveConfig = async () => {
-    if (!editConfig) return;
-    try {
-      const parsed = parseConfigInputValue();
-      await updateConfig.mutateAsync({
-        key: editConfig.key,
-        value: parsed,
-        description: configDesc || undefined,
-      });
-      toast.success('Config updated');
-      setConfigImpact(null);
-      setEditConfig(null);
-    } catch (err) {
-      toast.error(extractErrorMessage(err, 'Failed to update config'));
-    }
-  };
-
-  const isSimpleConfigChanged = (config: ConfigItem) => {
-    const draft = simpleConfigValues[config.key];
-    if (draft === undefined) return false;
-    const current = typeof config.value === 'number' || typeof config.value === 'string'
-      ? String(config.value)
-      : '';
-    return draft.trim() !== current.trim();
-  };
-
-  const handleSaveSimpleConfig = async (config: ConfigItem) => {
-    const field = SIMPLE_CONFIG_FIELDS[config.key];
-    if (!field) return;
-
-    const draft = simpleConfigValues[config.key];
-    if (draft === undefined) return;
-
-    let nextValue: string | number = draft.trim();
-    if (field.inputType === 'number') {
-      const parsed = Number(draft);
-      if (Number.isNaN(parsed)) {
-        toast.error('Please enter a valid number.');
-        return;
-      }
-      if (field.min !== undefined && parsed < field.min) {
-        toast.error(`Value must be at least ${field.min}.`);
-        return;
-      }
-      nextValue = parsed;
-    }
-
-    try {
-      setSimpleConfigSavingKey(config.key);
-      await updateConfig.mutateAsync({
-        key: config.key,
-        value: nextValue,
-        description: config.description || undefined,
-      });
-      toast.success(`${field.label} saved.`);
-    } catch (err) {
-      toast.error(extractErrorMessage(err, 'Failed to save setting'));
-    } finally {
-      setSimpleConfigSavingKey(null);
-    }
-  };
-
-  const handleSaveOfficeLocation = async () => {
-    if (!officeLocation) {
-      toast.error('Pin your office location on the map first.');
-      return;
-    }
-
-    if (officeLocation.lat < -90 || officeLocation.lat > 90 || officeLocation.lng < -180 || officeLocation.lng > 180) {
-      toast.error('Pinned coordinates are invalid. Please select a valid location.');
-      return;
-    }
-
-    try {
-      setOfficeLocationSaving(true);
-      await Promise.all([
-        updateConfig.mutateAsync({
-          key: 'shopLatitude',
-          value: officeLocation.lat,
-          description: 'Office latitude used as the origin for ocular distance and fee calculations.',
-        }),
-        updateConfig.mutateAsync({
-          key: 'shopLongitude',
-          value: officeLocation.lng,
-          description: 'Office longitude used as the origin for ocular distance and fee calculations.',
-        }),
-      ]);
-      toast.success('Office location saved. Ocular fee calculations will use this pinned location.');
-    } catch (err) {
-      toast.error(extractErrorMessage(err, 'Failed to save office location'));
-    } finally {
-      setOfficeLocationSaving(false);
-    }
-  };
-
+  // Handlers
   const handleToggleMaintenance = async () => {
     try {
       await toggleMaintenance.mutateAsync(!maintenanceEnabled);
-      toast.success(maintenanceEnabled ? 'Maintenance mode disabled' : 'Maintenance mode enabled');
+      toast.success(maintenanceEnabled ? 'System handles restored' : 'System paused for maintenance');
     } catch (err) {
-      toast.error(extractErrorMessage(err, 'Failed to toggle maintenance'));
+      toast.error(extractErrorMessage(err, 'Failed to toggle system states'));
     }
   };
 
@@ -540,24 +156,165 @@ export function SettingsPage() {
       await updateConfig.mutateAsync({
         key: 'feature_lifecycle_mismatch_analytics',
         value: !lifecycleAnalyticsEnabled,
-        description: 'Enable lifecycle mismatch analytics, hotspot reports, and operational alerting surfaces.',
+        description: 'Enable operations delay reports and analytics dashboards.',
       });
       toast.success(
         lifecycleAnalyticsEnabled
-          ? 'Lifecycle analytics disabled'
-          : 'Lifecycle analytics enabled',
+          ? 'Reporting analytics disabled'
+          : 'Reporting analytics enabled',
       );
     } catch (err) {
-      toast.error(extractErrorMessage(err, 'Failed to toggle lifecycle analytics'));
+      toast.error(extractErrorMessage(err, 'Failed to toggle analytics feature'));
     }
   };
 
-  if (configsError) return <PageError message="Failed to load settings" onRetry={refetchConfigs} />;
+  const handleSavePaymentSettings = async () => {
+    const splits = splitValues.map(Number);
+    const surcharge = Number(surchargePercent);
+
+    if (isNaN(surcharge) || surcharge < 0 || surcharge > 100) {
+      toast.error('Surcharge must be a valid percentage');
+      return;
+    }
+    if (splits.some(isNaN) || splits.some((v) => v <= 0)) {
+      toast.error('All stage splits must be greater than 0');
+      return;
+    }
+    const sum = splits.reduce((a, b) => a + b, 0);
+    if (Math.abs(sum - 100) > 0.01) {
+      toast.error(`Installment payments must sum up precisely to 100%`);
+      return;
+    }
+    if (stageLabels.length !== splits.length || stageLabels.some((l) => !l.trim())) {
+      toast.error('Every payment stage needs a clear name');
+      return;
+    }
+
+    try {
+      await Promise.all([
+        updateConfig.mutateAsync({ key: 'installment_surcharge_percent', value: surcharge }),
+        updateConfig.mutateAsync({ key: 'installment_split', value: splits }),
+        updateConfig.mutateAsync({ key: 'installment_stage_labels', value: stageLabels.map((l) => l.trim()) }),
+      ]);
+      toast.success('Billing policies updated');
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to save billing policy'));
+    }
+  };
+
+  const handleSaveHelpContent = async () => {
+    try {
+      setHelpSaving(true);
+      await updateConfig.mutateAsync({
+        key: 'help_center_content',
+        value: {
+          title: helpTitle.trim(),
+          subtitle: helpSubtitle.trim(),
+          content: helpContent.trim()
+        },
+        description: 'Formatted content payload for the customer Help Center page.',
+      });
+      toast.success('Help center knowledge base updated');
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to publish user guides'));
+    } finally {
+      setHelpSaving(false);
+    }
+  };
+
+  const handleSaveOfficeLocation = async () => {
+    if (!officeLocation) return;
+    try {
+      setLocationSaving(true);
+      await Promise.all([
+        updateConfig.mutateAsync({ key: 'shopLatitude', value: officeLocation.lat }),
+        updateConfig.mutateAsync({ key: 'shopLongitude', value: officeLocation.lng }),
+      ]);
+      toast.success('Service area origin pinned');
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to anchor service area'));
+    } finally {
+      setLocationSaving(false);
+    }
+  };
+
+  const handleSaveSimpleConfig = async (key: string, label: string) => {
+    const draft = simpleValues[key];
+    if (draft === undefined) return;
+    const parsed = Number(draft);
+    if (Number.isNaN(parsed)) {
+      toast.error(`Please provide a valid number for ${label}`);
+      return;
+    }
+    
+    try {
+      setSavingKey(key);
+      await updateConfig.mutateAsync({ key, value: parsed });
+      toast.success(`${label} updated successfully`);
+    } catch (err) {
+      toast.error(extractErrorMessage(err, `Failed to update ${label}`));
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const isSimpleChanged = (key: string) => {
+    const cfg = configs?.find((c) => c.key === key);
+    if (!cfg) return false;
+    return String(cfg.value) !== simpleValues[key];
+  };
+
+  // Utilities for UI
+  const addStage = () => {
+    if (splitValues.length >= 5) return;
+    setSplitValues([...splitValues, '0']);
+    setStageLabels([...stageLabels, `Stage ${splitValues.length + 1}`]);
+  };
+  const removeStage = (idx: number) => {
+    if (splitValues.length <= 1) return;
+    setSplitValues(splitValues.filter((_, i) => i !== idx));
+    setStageLabels(stageLabels.filter((_, i) => i !== idx));
+  };
+
+  const handleScheduleMaintenance = async () => {
+    if (!selectedDate) return;
+    
+    // Validate 3 day min
+    const minDate = startOfDay(addDays(new Date(), 3));
+    if (isBefore(selectedDate, minDate)) {
+      toast.error('Scheduling requires at least a 3-day notice for users.');
+      return;
+    }
+
+    try {
+      const parts = selectedTime.split(':');
+      const hours = parseInt(parts[0] ?? '0', 10) || 0;
+      const minutes = parseInt(parts[1] ?? '0', 10) || 0;
+
+      const scheduledAt = new Date(selectedDate);
+      scheduledAt.setHours(hours, minutes, 0, 0);
+
+
+      await scheduleMaintenance.mutateAsync({
+        scheduledAt: scheduledAt.toISOString(),
+        reason: scheduleReason.trim(),
+      });
+      
+      toast.success('Maintenance scheduled and users notified');
+      setIsScheduleDialogOpen(false);
+      setScheduleReason('');
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to schedule maintenance'));
+    }
+  };
+
+  if (configsError) return <PageError message="Failed to load platform rules" onRetry={refetchConfigs} />;
+
 
   const inputClasses = 'metal-input h-11';
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
+    <div className="mx-auto max-w-6xl space-y-8 pb-10">
       {/* Header */}
       <div className="metal-panel rounded-[1.75rem] p-5 sm:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -566,695 +323,326 @@ export function SettingsPage() {
               Admin workspace
             </p>
             <h1 className="mt-2 text-2xl font-bold tracking-tight text-[#171b21] dark:text-slate-100 sm:text-3xl">
-              System Settings
+              Business Configuration
             </h1>
             <p className="mt-2 text-sm leading-6 text-[#616a74] dark:text-slate-400">
-              Use this page to manage system behavior with clear controls and short guides for each section.
+              Control billing guardrails, customer-facing content, and operational policies from one place.
             </p>
           </div>
-
-          <div className="grid gap-2 sm:grid-cols-2 lg:w-[28rem]">
-            {quickLinks.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                className="metal-pill group rounded-2xl border border-[color:var(--color-border)]/70 p-3 text-left transition-colors hover:border-sky-300/70 hover:bg-sky-50/60 dark:hover:border-sky-400/40 dark:hover:bg-sky-400/10"
-              >
-                <p className="text-sm font-semibold text-[#171b21] dark:text-slate-100 group-hover:text-sky-700 dark:group-hover:text-sky-200">
-                  {link.label}
-                </p>
-                <p className="mt-1 text-xs leading-5 text-[#616a74] dark:text-slate-400">
-                  {link.note}
-                </p>
-              </a>
-            ))}
-          </div>
         </div>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr]">
-        <div className="metal-panel rounded-[1.5rem] border border-[color:var(--color-border)]/60 p-5 sm:p-6">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7b8490] dark:text-slate-400">
-            Start here
-          </p>
-          <ol className="mt-3 space-y-3 text-sm text-[#434c56] dark:text-slate-300">
-            <li className="flex gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                1
-              </span>
-              <span>
-                Use <strong className="text-[#171b21] dark:text-slate-100">Maintenance Mode</strong> when you need to pause public access.
-              </span>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                2
-              </span>
-              <span>
-                Update <strong className="text-[#171b21] dark:text-slate-100">Payment & Installment Settings</strong> only if the billing policy changes.
-              </span>
-            </li>
-            <li className="flex gap-3">
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                3
-              </span>
-              <span>
-                Review <strong className="text-[#171b21] dark:text-slate-100">Lifecycle Analytics</strong> and <strong className="text-[#171b21] dark:text-slate-100">System Defaults</strong> only when policy or operations need to change.
-              </span>
-            </li>
-          </ol>
+      {configsLoading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-40 w-full rounded-2xl" />
+          <Skeleton className="h-48 w-full rounded-2xl" />
         </div>
+      ) : (
+        <div className="space-y-8">
+          
+          {/* Section 1: Core Operations */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-bold text-[#171b21] dark:text-slate-100 flex items-center gap-2">
+              <Activity className="h-5 w-5 text-gray-400" /> Operational Authority
+            </h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Card className={`border-l-4 rounded-xl ${maintenanceEnabled ? 'border-l-red-500 bg-red-50/50' : isScheduled ? 'border-l-amber-500 bg-amber-50/30' : 'border-l-emerald-500'}`}>
+                <CardHeader className="pb-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-base text-gray-900 dark:text-slate-100">
+                        {maintenanceEnabled ? 'System Suspended' : isScheduled ? 'Maintenance Scheduled' : 'System Active'}
+                      </CardTitle>
+                      <CardDescription className="mt-1.5 text-xs text-gray-500 dark:text-slate-400">
+                        {maintenanceEnabled ? (
+                          'Platform is currently offline for non-admins.'
+                        ) : isScheduled ? (
+                          <>System will be paused on <span className="font-bold text-amber-700 dark:text-amber-400">{format(new Date(scheduledTime as string), 'PPP p')}</span></>
+                        ) : (
+                          'System is currently accepting live traffic.'
+                        )}
+                      </CardDescription>
+                    </div>
 
-        <div className="metal-panel rounded-[1.5rem] border border-[color:var(--color-border)]/60 p-5 sm:p-6">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#7b8490] dark:text-slate-400">
-            What this page changes
-          </p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-[color:var(--color-border)]/60 bg-white/65 p-3 dark:bg-slate-950/40">
-              <p className="text-sm font-semibold text-[#171b21] dark:text-slate-100">Safe controls</p>
-              <p className="mt-1 text-xs leading-5 text-[#616a74] dark:text-slate-400">
-                Maintenance mode and payment settings are the most common day-to-day admin controls.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-[color:var(--color-border)]/60 bg-white/65 p-3 dark:bg-slate-950/40">
-              <p className="text-sm font-semibold text-[#171b21] dark:text-slate-100">Higher risk values</p>
-              <p className="mt-1 text-xs leading-5 text-[#616a74] dark:text-slate-400">
-                System Defaults can affect pricing, reminders, and map behavior. Change only what you understand.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* Maintenance Toggle */}
-        <div id="maintenance-mode" className="md:col-span-2 scroll-mt-24">
-          <Card
-            className={`border-l-4 rounded-xl ${
-              maintenanceEnabled ? 'border-l-red-500 bg-red-50/50' : 'border-l-emerald-500'
-            }`}
-          >
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`p-2.5 rounded-xl ${
-                      maintenanceEnabled
-                        ? 'bg-red-100 text-red-600'
-                        : 'bg-emerald-100 text-emerald-600'
-                    }`}
-                  >
-                    <Power className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-lg text-gray-900 dark:text-slate-100">
-                      System Maintenance Mode
-                    </CardTitle>
-                    <CardDescription className="text-gray-500 dark:text-slate-400">
-                      {maintenanceEnabled
-                        ? 'The system is currently unavailable to non-admin users.'
-                        : 'The system is fully operational and accessible to all users.'}
-                      {' '}Use this during planned maintenance or emergency fixes.
-                    </CardDescription>
-                  </div>
-                </div>
-                <Button
-                  variant={maintenanceEnabled ? 'default' : 'destructive'}
-                  onClick={handleToggleMaintenance}
-                  disabled={toggleMaintenance.isPending}
-                  className={`rounded-xl ${maintenanceEnabled ? 'bg-emerald-600 hover:bg-emerald-700' : ''}`}
-                >
-                  {toggleMaintenance.isPending ? (
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  ) : maintenanceEnabled ? (
-                    'Disable Maintenance'
-                  ) : (
-                    'Enable Maintenance'
-                  )}
-                </Button>
-              </div>
-            </CardHeader>
-          </Card>
-        </div>
-
-        {/* Payment Settings */}
-        <div id="payment-settings" className="md:col-span-2 scroll-mt-24">
-          <Card className="rounded-xl">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-xl text-[#171b21] dark:text-slate-100">
-                <CreditCard className="h-5 w-5 text-[#8a939d] dark:text-slate-400" />
-                Payment &amp; Installment Settings
-              </CardTitle>
-              <CardDescription className="text-[#616a74] dark:text-slate-400">
-                Configure installment surcharge and stage split for project payments. Use this when payment terms change.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Surcharge */}
-              <div className="space-y-1.5">
-                <Label className="text-[13px] font-medium text-gray-700 dark:text-slate-300">
-                  Installment Surcharge (%)
-                </Label>
-                <div className="flex items-center gap-2 max-w-xs">
-                  <Input
-                    type="number"
-                    value={surchargePercent}
-                    onChange={(e) => setSurchargePercent(e.target.value)}
-                    min={0}
-                    max={100}
-                    step={1}
-                    className={inputClasses}
-                  />
-                  <span className="text-sm text-gray-500 dark:text-slate-400 whitespace-nowrap">
-                    % surcharge on total
-                  </span>
-                </div>
-                <p className="text-xs text-gray-400 dark:text-slate-500">
-                  Customers paying in installments pay total + this surcharge. Set to 0 for no surcharge.
-                </p>
-              </div>
-
-              {/* Stages */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-[13px] font-medium text-gray-700 dark:text-slate-300">
-                    Installment Stages
-                  </Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addStage}
-                    disabled={splitValues.length >= 6}
-                    className="h-7 rounded-lg border-gray-200 !bg-white/80 !text-[#171b21] text-xs hover:!bg-white dark:border-slate-600 dark:!bg-slate-800/90 dark:!text-slate-100 dark:hover:!bg-slate-700"
-                  >
-                    <Plus className="mr-1 h-3 w-3" />
-                    Add Stage
-                  </Button>
-                </div>
-
-                <div className="space-y-2">
-                  {splitValues.map((val, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <Input
-                        value={stageLabels[idx] || ''}
-                        onChange={(e) => {
-                          const newLabels = [...stageLabels];
-                          newLabels[idx] = e.target.value;
-                          setStageLabels(newLabels);
-                        }}
-                        placeholder={`Stage ${idx + 1}`}
-                        className={`flex-1 ${inputClasses}`}
-                      />
-                      <Input
-                        type="number"
-                        value={val}
-                        onChange={(e) => {
-                          const newSplits = [...splitValues];
-                          newSplits[idx] = e.target.value;
-                          setSplitValues(newSplits);
-                        }}
-                        min={1}
-                        max={100}
-                        className={`w-20 text-center ${inputClasses}`}
-                      />
-                      <span className="text-sm text-gray-500 dark:text-slate-400">%</span>
-                      {splitValues.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeStage(idx)}
-                          className="h-8 w-8 p-0 text-gray-400 dark:text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30"
-                        >
-                          <Trash2 className="h-4 w-4" />
+                    <div className="flex flex-col gap-2">
+                      {maintenanceEnabled ? (
+                        <Button variant="default" onClick={handleToggleMaintenance} disabled={toggleMaintenance.isPending} size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">
+                          {toggleMaintenance.isPending && <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                          Restore Traffic
                         </Button>
+                      ) : isScheduled ? (
+                        <Button variant="outline" onClick={() => handleToggleMaintenance()} disabled={toggleMaintenance.isPending} size="sm" className="text-red-600 border-red-200 hover:bg-red-50">
+                          {toggleMaintenance.isPending && <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                          Cancel Schedule
+                        </Button>
+                      ) : (
+                        <Dialog open={isScheduleDialogOpen} onOpenChange={setIsScheduleDialogOpen}>
+                          <DialogTrigger asChild>
+                            <Button variant="destructive" size="sm" className="shadow-md">
+                              Suspend Traffic
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-md metal-panel rounded-2xl">
+                            <DialogHeader>
+                              <DialogTitle>Schedule System Suspension</DialogTitle>
+                              <DialogDescription className="text-sm">
+                                To protect your users, you must provide at least <span className="font-bold">3 days notice</span> before the system goes offline.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-5 py-4">
+                              <div className="space-y-2">
+                                <Label className="text-xs font-semibold uppercase text-gray-400">Select Date & Time</Label>
+                                <div className="flex gap-2">
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button variant="outline" className={cn("w-full justify-start text-left font-normal h-11 rounded-xl", !selectedDate && "text-muted-foreground")}>
+                                        <BookOpen className="mr-2 h-4 w-4 opacity-50" />
+                                        {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0 rounded-2xl" align="start">
+                                      <Calendar
+                                        mode="single"
+                                        selected={selectedDate}
+                                        onSelect={setSelectedDate}
+                                        disabled={(date) => isBefore(date, addDays(new Date(), 3))}
+                                        initialFocus
+                                      />
+                                    </PopoverContent>
+                                  </Popover>
+                                  <Input 
+                                    type="time" 
+                                    value={selectedTime} 
+                                    onChange={(e) => setSelectedTime(e.target.value)} 
+                                    className="w-32 h-11 rounded-xl metal-input"
+                                  />
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                <Label className="text-xs font-semibold uppercase text-gray-400">Reason for downtime (optional)</Label>
+                                <Textarea 
+                                  placeholder="e.g. Server maintanance, Database upgrade..." 
+                                  value={scheduleReason}
+                                  onChange={(e) => setScheduleReason(e.target.value)}
+                                  className="min-h-[80px] rounded-xl bg-slate-50/50"
+                                />
+                                <p className="text-[10px] text-gray-500 italic">This will be included in the notification sent to all users.</p>
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button variant="ghost" onClick={() => setIsScheduleDialogOpen(false)}>Cancel</Button>
+                              <Button 
+                                onClick={handleScheduleMaintenance} 
+                                disabled={scheduleMaintenance.isPending || !selectedDate}
+                                className="bg-red-600 hover:bg-red-700 text-white font-bold px-6 shadow-lg shadow-red-500/20"
+                              >
+                                {scheduleMaintenance.isPending ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
+                                Confirm & Notify Everyone
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
                       )}
                     </div>
-                  ))}
-                </div>
-
-                <div className="flex items-center justify-between pt-2">
-                  <p className="text-xs text-gray-400 dark:text-slate-500">
-                    Total:{' '}
-                    <span
-                      className={
-                        Math.abs(
-                          splitValues.map(Number).reduce((a, b) => a + (isNaN(b) ? 0 : b), 0) - 100,
-                        ) < 0.01
-                          ? 'text-emerald-600 font-medium'
-                          : 'text-red-500 font-medium'
-                      }
-                    >
-                      {splitValues.map(Number).reduce((a, b) => a + (isNaN(b) ? 0 : b), 0)}%
-                    </span>{' '}
-                    (must be 100%)
-                  </p>
-                  <Button
-                    variant="prominent"
-                    onClick={handleSavePaymentSettings}
-                    disabled={updateConfig.isPending}
-                    className="rounded-lg"
-                    size="sm"
-                  >
-                    {updateConfig.isPending ? (
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Save className="mr-2 h-4 w-4" />
-                    )}
-                    Save Payment Settings
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Lifecycle Analytics Feature Toggle */}
-        <div id="lifecycle-analytics" className="md:col-span-2 scroll-mt-24">
-          <Card
-            className={`border-l-4 rounded-xl ${
-              lifecycleAnalyticsEnabled ? 'border-l-emerald-500' : 'border-l-amber-500 bg-amber-50/40'
-            }`}
-          >
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <CardTitle className="text-lg text-gray-900 dark:text-slate-100">
-                    Lifecycle Analytics Rollout
-                  </CardTitle>
-                  <CardDescription className="text-gray-500 dark:text-slate-400">
-                    Controls reports lifecycle mismatch hotspots, trend analytics, and alert banners. Keep enabled for normal monitoring.
-                  </CardDescription>
-                </div>
-                <Button
-                  variant={lifecycleAnalyticsEnabled ? 'default' : 'outline'}
-                  onClick={handleToggleLifecycleAnalytics}
-                  disabled={updateConfig.isPending}
-                  className={`rounded-xl ${lifecycleAnalyticsEnabled ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : ''}`}
-                >
-                  {updateConfig.isPending ? (
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  ) : lifecycleAnalyticsEnabled ? (
-                    'Disable Lifecycle Analytics'
-                  ) : (
-                    'Enable Lifecycle Analytics'
-                  )}
-                </Button>
-              </div>
-            </CardHeader>
-          </Card>
-        </div>
-
-        {/* Config Values */}
-        <Card id="general-configuration" className="h-full flex flex-col rounded-xl scroll-mt-24 md:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl text-[#171b21] dark:text-slate-100">
-              <Settings className="h-5 w-5 text-[#8a939d] dark:text-slate-400" />
-              General Configuration
-            </CardTitle>
-            <CardDescription className="text-[#616a74] dark:text-slate-400">
-              Use Easy Settings for day-to-day changes. Use Advanced Settings only for technical or JSON values.
-            </CardDescription>
-            <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
-              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 font-semibold text-emerald-700 dark:text-emerald-200">
-                Core: safer numeric values
-              </span>
-              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 font-semibold text-amber-700 dark:text-amber-200">
-                Advanced: content or file-based settings
-              </span>
-            </div>
-          </CardHeader>
-          <CardContent className="flex-1">
-            {configsLoading ? (
-              <div className="space-y-4">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="flex flex-col space-y-2">
-                    <Skeleton className="h-4 w-1/3" />
-                    <Skeleton className="h-10 w-full" />
                   </div>
-                ))}
-              </div>
-            ) : !configs || configs.length === 0 ? (
-              <div className="text-center py-8 text-gray-500 dark:text-slate-400 border border-dashed border-gray-200 dark:border-slate-700 rounded-xl">
-                No configuration entries found.
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <section className="space-y-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-[#171b21] dark:text-slate-100">Easy Settings</h3>
-                    <p className="text-xs text-[#616a74] dark:text-slate-400">
-                      Clear labels for common values. Edit and save each field directly.
-                    </p>
-                  </div>
+                </CardHeader>
+              </Card>
 
-                  {simpleConfigs.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-gray-300 px-4 py-3 text-xs text-gray-600 dark:border-slate-700 dark:text-slate-400">
-                      No easy settings are configured yet.
+              <Card className={`border-l-4 rounded-xl ${lifecycleAnalyticsEnabled ? 'border-l-emerald-500' : 'border-l-amber-500'}`}>
+                <CardHeader className="pb-4">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-base text-gray-900 dark:text-slate-100">Delay Reporting</CardTitle>
+                      <CardDescription className="mt-1.5 text-xs text-gray-500 dark:text-slate-400">
+                        Highlights when operations fall behind schedule. Keep this active for dashboard health metrics.
+                      </CardDescription>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="rounded-2xl border border-[color:var(--color-border)]/70 bg-[var(--color-card)]/55 p-4">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                          <div>
-                            <p className="text-sm font-semibold text-[#171b21] dark:text-slate-100">Office Location Pin</p>
-                            <p className="mt-1 text-xs leading-5 text-[#616a74] dark:text-slate-400">
-                              Pin your office location on the map. This pinned point becomes the standard origin for ocular visit distance and fee computation.
-                            </p>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => void handleSaveOfficeLocation()}
-                            disabled={!officeLocation || officeLocationSaving}
-                            className="h-8 rounded-lg px-3 text-xs"
-                          >
-                            {officeLocationSaving ? 'Saving...' : 'Save office location'}
-                          </Button>
-                        </div>
+                    <Button variant={lifecycleAnalyticsEnabled ? 'outline' : 'default'} onClick={handleToggleLifecycleAnalytics} disabled={updateConfig.isPending} size="sm">
+                      {updateConfig.isPending && <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />}
+                      {lifecycleAnalyticsEnabled ? 'Mute Alerts' : 'Activate Alerts'}
+                    </Button>
+                  </div>
+                </CardHeader>
+              </Card>
+            </div>
+          </section>
 
-                        <div className="mt-3 rounded-xl border border-[color:var(--color-border)]/65 bg-[var(--metal-panel-background)] p-3">
-                          <LocationPicker value={officeLocation} onChange={(location) => setOfficeLocation(location)} />
-                        </div>
+          {/* Section 2: Pricing & Follow-ups */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-bold text-[#171b21] dark:text-slate-100 flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-gray-400" /> Billing & Fees
+            </h2>
+            <div className="grid gap-4 lg:grid-cols-2">
+              
+              <Card className="rounded-xl flex flex-col">
+                <CardHeader>
+                  <CardTitle className="text-md">Installment Structures</CardTitle>
+                  <CardDescription className="text-xs">Adjust how percentages divide when a customer splits their invoice.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5 flex-1 p-5 lg:p-6 bg-[var(--color-card)]/50 pt-0">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold text-gray-700 dark:text-slate-300">Markup on installments (%)</Label>
+                    <div className="flex gap-2">
+                      <Input type="number" value={surchargePercent} onChange={e => setSurchargePercent(e.target.value)} className={`w-28 text-center ${inputClasses}`} />
+                      <span className="flex items-center text-xs text-gray-500">% total overhead</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-3 border-t border-gray-100 dark:border-slate-800">
+                    <div className="flex justify-between items-center">
+                      <Label className="text-xs font-semibold text-gray-700 dark:text-slate-300">Payment Steps</Label>
+                      <Button variant="ghost" size="sm" onClick={addStage} className="h-6 text-[11px] px-2 text-sky-600">
+                        + Add step
+                      </Button>
+                    </div>
+                    {splitValues.map((val, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <Input value={stageLabels[idx] || ''} onChange={e => { const n = [...stageLabels]; n[idx] = e.target.value; setStageLabels(n); }} placeholder="Phase name" className={`${inputClasses} flex-1 text-sm`} />
+                        <Input type="number" value={val} onChange={e => { const n = [...splitValues]; n[idx] = e.target.value; setSplitValues(n); }} className={`${inputClasses} w-20 text-center font-medium`} />
+                        <span className="text-gray-400 text-xs font-medium">%</span>
+                        {splitValues.length > 1 && (
+                          <Button variant="ghost" size="icon" onClick={() => removeStage(idx)} className="h-8 w-8 text-red-400 hover:text-red-500"><Trash2 className="h-4 w-4" /></Button>
+                        )}
                       </div>
+                    ))}
+                    <div className="flex justify-between items-center pt-2">
+                      <span className={`text-[11px] font-bold ${Math.abs(splitValues.map(Number).reduce((a, b) => a + (isNaN(b) ? 0 : b), 0) - 100) < 0.01 ? 'text-emerald-500' : 'text-red-500'}`}>
+                        Total calculates to {splitValues.map(Number).reduce((a, b) => a + (isNaN(b) ? 0 : b), 0)}%
+                      </span>
+                      <Button onClick={handleSavePaymentSettings} size="sm" disabled={updateConfig.isPending} className="h-8 rounded-lg shadow-sm">
+                        {updateConfig.isPending ? <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin"/> : <Save className="mr-2 h-3.5 w-3.5"/> }
+                        Update Policy
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
-                      {groupedSimpleConfigs.map((group) => (
-                        <div key={group.id} className="rounded-2xl border border-[color:var(--color-border)]/70 bg-[var(--color-card)]/55 p-4">
-                          <div>
-                            <p className="text-sm font-semibold text-[#171b21] dark:text-slate-100">{group.title}</p>
-                            <p className="mt-1 text-xs text-[#616a74] dark:text-slate-400">{group.description}</p>
+              <div className="grid gap-4">
+                <Card className="rounded-xl">
+                  <CardHeader>
+                    <CardTitle className="text-md">Ocular Visitation Rates</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 pt-0">
+                    <div className="grid grid-cols-2 gap-4">
+                      {[{key: 'baseFee', lbl: 'Base Out-of-Area', u: '₱'}, {key: 'baseCoveredKm', lbl: 'Covered Radius', u: 'km'}, {key: 'perKmRate', lbl: 'Addition per Km', u: '₱/km'}].map((cfg) => (
+                        <div key={cfg.key} className="space-y-1.5">
+                          <Label className="text-xs text-gray-600 dark:text-slate-400">{cfg.lbl}</Label>
+                          <div className="flex items-center gap-2">
+                            <Input value={simpleValues[cfg.key] || ''} onChange={e => setSimpleValues({...simpleValues, [cfg.key]: e.target.value})} className={`w-full ${inputClasses}`} />
+                            <span className="text-xs font-semibold text-gray-500 shrink-0">{cfg.u}</span>
                           </div>
-
-                          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                            {group.configs.map((cfg) => {
-                              const field = SIMPLE_CONFIG_FIELDS[cfg.key];
-                              if (!field) return null;
-                              const isSaving = simpleConfigSavingKey === cfg.key && updateConfig.isPending;
-                              const changed = isSimpleConfigChanged(cfg);
-
-                              return (
-                                <div
-                                  key={cfg._id}
-                                  className="rounded-2xl border border-[color:var(--color-border)]/70 bg-[var(--color-card)]/80 p-4"
-                                >
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <p className="text-sm font-semibold text-[#171b21] dark:text-slate-100">{field.label}</p>
-                                      <p className="mt-1 text-xs leading-5 text-[#616a74] dark:text-slate-400">{field.help}</p>
-                                    </div>
-                                    <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-[#7b8490] dark:text-slate-500">{cfg.key}</p>
-                                  </div>
-
-                                  <div className="mt-3 flex items-end gap-2">
-                                    <div className="flex-1">
-                                      <Input
-                                        type={field.inputType}
-                                        value={simpleConfigValues[cfg.key] ?? ''}
-                                        min={field.min}
-                                        step={field.step}
-                                        onChange={(event) =>
-                                          setSimpleConfigValues((previous) => ({
-                                            ...previous,
-                                            [cfg.key]: event.target.value,
-                                          }))
-                                        }
-                                        className="metal-input h-10"
-                                      />
-                                    </div>
-                                    {field.unit ? (
-                                      <span className="mb-2 whitespace-nowrap text-xs font-medium text-[#616a74] dark:text-slate-400">
-                                        {field.unit}
-                                      </span>
-                                    ) : null}
-                                  </div>
-
-                                  <div className="mt-3 flex items-center justify-end">
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      onClick={() => void handleSaveSimpleConfig(cfg)}
-                                      disabled={!changed || isSaving}
-                                      className="h-8 rounded-lg px-3 text-xs"
-                                    >
-                                      {isSaving ? 'Saving...' : 'Save'}
-                                    </Button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                          {isSimpleChanged(cfg.key) && (
+                            <Button onClick={() => handleSaveSimpleConfig(cfg.key, cfg.lbl)} disabled={savingKey === cfg.key} size="sm" variant="secondary" className="h-6 text-[10px] w-full mt-1">
+                              Apply changes
+                            </Button>
+                          )}
                         </div>
                       ))}
                     </div>
-                  )}
-                </section>
+                  </CardContent>
+                </Card>
 
-                <section className="space-y-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-[#171b21] dark:text-slate-100">Advanced Settings</h3>
-                    <p className="text-xs text-[#616a74] dark:text-slate-400">
-                      For technical values and JSON content. If unsure, leave unchanged and consult your technical lead.
-                    </p>
-                  </div>
-
-                  {advancedConfigs.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-gray-300 px-4 py-3 text-xs text-gray-600 dark:border-slate-700 dark:text-slate-400">
-                      No advanced settings available.
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {advancedConfigs.map((cfg) => {
-                        const tier = getConfigTier(cfg.key);
-                        const preview = getConfigPreview(cfg.value, cfg.key);
-
-                        return (
-                          <div
-                            key={cfg._id}
-                            className="metal-panel rounded-2xl border border-[color:var(--color-border)]/60 p-4 transition-colors hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_18px_28px_rgba(18,22,27,0.08)]"
-                          >
-                            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="font-mono text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400">
-                                    {cfg.key}
-                                  </p>
-                                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] ${
-                                    tier.tone === 'warning'
-                                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200'
-                                      : tier.tone === 'success'
-                                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-200'
-                                        : tier.tone === 'info'
-                                          ? 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-200'
-                                          : 'border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-200'
-                                  }`}>
-                                    {tier.label}
-                                  </span>
-                                </div>
-                                {cfg.description && (
-                                  <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-slate-300">{cfg.description}</p>
-                                )}
-                                {!cfg.description && (
-                                  <p className="mt-1 text-sm leading-6 text-gray-600 dark:text-slate-300">
-                                    Technical system value. Open to review before editing.
-                                  </p>
-                                )}
-                              </div>
-                              <div className="flex shrink-0 items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => openEditConfig(cfg)}
-                                  className="h-8 rounded-lg border-[color:var(--color-border)]/70 bg-white/90 px-3 text-xs text-[var(--color-card-foreground)] hover:bg-white dark:border-slate-600/80 dark:bg-slate-900/75 dark:text-slate-100 dark:hover:bg-slate-800/90"
-                                >
-                                  <Settings className="mr-1.5 h-3.5 w-3.5" />
-                                  Edit value
-                                </Button>
-                              </div>
-                            </div>
-
-                            <div className="mt-3 rounded-xl border border-[color:var(--color-border)]/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.72)_0%,rgba(248,250,252,0.92)_100%)] p-3 dark:border-slate-700/70 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.78)_0%,rgba(15,23,42,0.94)_100%)]">
-                              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#7b8490] dark:text-slate-400">
-                                Current value
-                              </p>
-                              <div className="mt-2 space-y-2 font-mono text-sm leading-6 text-[#434c56] dark:text-slate-200">
-                                {preview.kind === 'text' ? (
-                                  <p className="break-all">{preview.summary}</p>
-                                ) : (
-                                  <>
-                                    <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#171b21] dark:text-slate-100">
-                                      <span>{preview.summary}</span>
-                                      {preview.details && <span className="text-[#7b8490] dark:text-slate-400">{preview.details}</span>}
-                                    </div>
-                                    <p className="line-clamp-3 break-words text-xs leading-5 text-[#616a74] dark:text-slate-400">
-                                      {preview.excerpt}
-                                    </p>
-                                  </>
-                                )}
-                              </div>
-                            </div>
+                <Card className="rounded-xl">
+                  <CardHeader>
+                    <CardTitle className="text-md">Debt Rules</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 pt-0">
+                    <div className="grid grid-cols-2 gap-4">
+                      {[{key: 'paymentReminderDays', lbl: 'Days between reminders', u: 'days'}, {key: 'paymentEscalationAfterReminders', lbl: 'Admin flag threshold', u: 'notices'}].map((cfg) => (
+                        <div key={cfg.key} className="space-y-1.5">
+                          <Label className="text-xs text-gray-600 dark:text-slate-400">{cfg.lbl}</Label>
+                          <div className="flex items-center gap-2">
+                            <Input value={simpleValues[cfg.key] || ''} onChange={e => setSimpleValues({...simpleValues, [cfg.key]: e.target.value})} className={`w-full ${inputClasses}`} />
+                            <span className="text-xs font-semibold text-gray-500 shrink-0">{cfg.u}</span>
                           </div>
-                        );
-                      })}
+                          {isSimpleChanged(cfg.key) && (
+                            <Button onClick={() => handleSaveSimpleConfig(cfg.key, cfg.lbl)} disabled={savingKey === cfg.key} size="sm" variant="secondary" className="h-6 text-[10px] w-full mt-1">
+                              Apply changes
+                            </Button>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                  )}
-                </section>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-      </div>
-
-      {/* Edit Config Dialog */}
-      <Dialog
-        open={!!editConfig}
-        onOpenChange={(o) => {
-          if (!o) setEditConfig(null);
-        }}
-      >
-        <DialogContent className="metal-panel max-w-md rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-[#171b21] dark:text-slate-100">Update Configuration</DialogTitle>
-            <DialogDescription className="text-[#616a74] dark:text-slate-100">
-              Modifying system constants can affect application behavior.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-mono text-gray-500 dark:text-slate-300 uppercase">Key</Label>
-              <Input
-                value={editConfig?.key || ''}
-                disabled
-                className="metal-input bg-white/30 font-mono text-sm"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="cfg-value"
-                className="text-[13px] font-medium text-gray-700 dark:text-slate-300"
-              >
-                Value
-              </Label>
-              <Input
-                id="cfg-value"
-                value={configValue}
-                onChange={(e) => setConfigValue(e.target.value)}
-                className={`font-mono ${inputClasses}`}
-              />
-              <p className="text-xs text-gray-400 dark:text-slate-300">JSON objects are supported.</p>
-              <div className="flex items-center justify-between gap-2 pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePreviewConfigImpact}
-                  disabled={previewConfigImpact.isPending}
-                  className="rounded-lg"
-                >
-                  {previewConfigImpact.isPending ? (
-                    <RefreshCw className="mr-2 h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <AlertTriangle className="mr-2 h-3.5 w-3.5" />
-                  )}
-                  Preview Impact
-                </Button>
-                {configImpact?.riskLevel && (
-                  <span className={`text-xs font-semibold uppercase tracking-wide ${getRiskLabelClass(configImpact.riskLevel)}`}>
-                    Risk: {configImpact.riskLevel}
-                  </span>
-                )}
+                  </CardContent>
+                </Card>
               </div>
             </div>
-            {configImpact && (
-              <div className={`rounded-xl border p-3 ${getRiskPanelClass(configImpact.riskLevel)}`}>
-                <p className="text-xs font-semibold text-gray-800 dark:text-slate-200">Impact Preview</p>
-                <p className="mt-1 text-xs text-gray-700 dark:text-slate-300">{getImpactSummaryText(configImpact)}</p>
-                {configImpact.warnings.length > 0 ? (
-                  <ul className="mt-2 space-y-1 text-xs text-gray-700 dark:text-slate-300">
-                    {configImpact.warnings.map((warning, idx) => (
-                      <li key={idx}>- {warning}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            )}
+          </section>
 
-            <div className="space-y-2 rounded-xl border border-gray-200 dark:border-slate-700 p-3">
-              <div className="flex items-center gap-2">
-                <History className="h-4 w-4 text-gray-500 dark:text-slate-400" />
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-gray-600 dark:text-slate-300">Version History</p>
-              </div>
-              {getVersionHistoryStatus(configVersionsLoading, configVersionHistory?.versions?.length || 0) === 'loading' ? (
-                <p className="text-xs text-gray-500 dark:text-slate-400">Loading previous versions...</p>
-              ) : getVersionHistoryStatus(configVersionsLoading, configVersionHistory?.versions?.length || 0) === 'empty' ? (
-                <p className="text-xs text-gray-500 dark:text-slate-400">No previous versions available yet.</p>
-              ) : (
-                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-                  {configVersionHistory?.versions?.map((version) => (
-                    <div key={version._id} className="rounded-lg border border-gray-200 dark:border-slate-700 p-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-[11px] text-gray-600 dark:text-slate-300">
-                          {new Date(version.updatedAt).toLocaleString()}
-                        </p>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void handleRollbackConfigVersion(version._id)}
-                          disabled={rollbackConfigVersion.isPending}
-                          className="h-6 rounded-md text-[10px]"
-                        >
-                          Rollback
-                        </Button>
-                      </div>
-                      <p className="mt-1 font-mono text-[11px] text-gray-700 dark:text-slate-300 break-all">
-                        {typeof version.value === 'string' ? version.value : JSON.stringify(version.value)}
-                      </p>
-                    </div>
-                  ))}
+          {/* Section 3: Platform Resources */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-bold text-[#171b21] dark:text-slate-100 flex items-center gap-2">
+              <BookOpen className="h-5 w-5 text-gray-400" /> Platform Knowledge
+            </h2>
+            <Card className="rounded-xl">
+              <CardHeader>
+                <CardTitle className="text-md">Help Center Directory</CardTitle>
+                <CardDescription className="text-xs">Publish the FAQ and rules visible to all customers on the /help page.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-0">
+                <div className="space-y-2">
+                  <Label>Primary Heading</Label>
+                  <Input value={helpTitle} onChange={e => setHelpTitle(e.target.value)} placeholder="e.g. Terms & Condition" className={inputClasses} />
                 </div>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="cfg-desc"
-                className="text-[13px] font-medium text-gray-700 dark:text-slate-300"
-              >
-                Description
-              </Label>
-              <Input
-                id="cfg-desc"
-                value={configDesc}
-                onChange={(e) => setConfigDesc(e.target.value)}
-                placeholder="Optional description"
-                className={inputClasses}
-              />
-            </div>
-            <DialogFooter className="pt-4">
-              <Button
-                variant="outline"
-                onClick={() => setEditConfig(null)}
-                className="rounded-lg"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleSaveConfig}
-                disabled={updateConfig.isPending}
-                className="rounded-lg text-white dark:text-white"
-              >
-                {updateConfig.isPending ? (
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="mr-2 h-4 w-4" />
-                )}
-                Save Changes
-              </Button>
-            </DialogFooter>
-          </div>
-        </DialogContent>
-      </Dialog>
+                <div className="space-y-2">
+                  <Label>Subheading</Label>
+                  <Input value={helpSubtitle} onChange={e => setHelpSubtitle(e.target.value)} placeholder="e.g. Everything you need to know about us" className={inputClasses}/>
+                </div>
+                <div className="space-y-2">
+                  <Label>Main Article Bodies</Label>
+                  <Textarea value={helpContent} onChange={e => setHelpContent(e.target.value)} className="min-h-[250px] resize-y rounded-xl bg-[var(--color-card)]/50 p-4 font-mono text-sm shadow-inner" placeholder="Pasting double line breaks splits text into beautiful paragraphs..." />
+                  <p className="text-[11px] text-gray-500">Leaving a blank line separates text into individual blocks or rules automatically.</p>
+                </div>
+                <div className="flex justify-end pt-2">
+                  <Button onClick={handleSaveHelpContent} disabled={helpSaving} className="shadow-md rounded-xl">
+                    {helpSaving ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/> }
+                    Publish to Help Page
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+
+          {/* Section 4: Map Bounds */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-bold text-[#171b21] dark:text-slate-100 flex items-center gap-2">
+              <MapPin className="h-5 w-5 text-gray-400" /> Ground Logistics
+            </h2>
+            <Card className="rounded-xl">
+              <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3">
+                <div>
+                  <CardTitle className="text-md">Operations Anchor</CardTitle>
+                  <CardDescription className="text-xs mt-1 max-w-lg">
+                    This location acts as kilometer zero. Any ocular requests stretching beyond your maximum radius will automatically apply correct out-of-bounds charges calculated from this pin.
+                  </CardDescription>
+                </div>
+                <Button variant="outline" size="sm" onClick={handleSaveOfficeLocation} disabled={locationSaving || !officeLocation} className="mt-3 sm:mt-0 shadow-sm h-9">
+                  {locationSaving ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>} Stop coordinates
+                </Button>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="space-y-4">
+                  <div className="rounded-2xl border-2 border-[var(--color-border)]/80 overflow-hidden shadow-inner h-[320px] bg-slate-50 dark:bg-slate-900">
+                    <LocationPicker value={officeLocation} onChange={(location) => setOfficeLocation(location)} />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Label className="text-xs shrink-0">Maximum Travel Radius:</Label>
+                    <Input value={simpleValues['maxDistanceKm'] || ''} onChange={e => setSimpleValues({...simpleValues, ['maxDistanceKm']: e.target.value})} className={`w-28 ${inputClasses} h-9`} />
+                    <span className="text-xs text-gray-500 font-medium">km limits</span>
+                    {isSimpleChanged('maxDistanceKm') && (
+                      <Button onClick={() => handleSaveSimpleConfig('maxDistanceKm', 'Max allowable distance')} size="sm" variant="secondary" className="h-8 py-0 ml-auto text-xs shrink-0">
+                        Apply max km
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+
+        </div>
+      )}
     </div>
   );
 }
