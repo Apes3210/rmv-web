@@ -23,9 +23,9 @@ import { Label } from '@/components/ui/label';
 import { ServiceType, SERVICE_TYPE_LABELS } from '@/lib/constants';
 
 interface ServiceTypePickerProps {
-  value: string;
+  value: string[];
   customValue?: string;
-  onChange: (serviceType: string, customLabel?: string) => void;
+  onChange: (serviceTypes: string[], customLabel?: string) => void;
   disabled?: boolean;
 }
 
@@ -73,21 +73,27 @@ export function ServiceTypePicker({
   }, []);
 
   const handleSelect = (type: string) => {
-    if (type === ServiceType.CUSTOM) {
-      onChange(type, customInput);
+    let newValues = [...value];
+    if (newValues.includes(type)) {
+      newValues = newValues.filter(v => v !== type);
     } else {
-      onChange(type, undefined);
+      newValues.push(type);
     }
-    if (type !== ServiceType.CUSTOM) {
-      setOpen(false);
+
+    if (!newValues.includes(ServiceType.CUSTOM) && value.includes(ServiceType.CUSTOM)) {
+      setCustomInput('');
+      onChange(newValues, undefined);
+    } else {
+      onChange(newValues, newValues.includes(ServiceType.CUSTOM) ? customInput : undefined);
     }
   };
 
-  const displayLabel = value === ServiceType.CUSTOM
-    ? (customValue || 'Custom')
-    : (SERVICE_TYPE_LABELS[value] || 'Select service type');
+  const displayLabel = value.length === 0
+    ? 'Select service types'
+    : value.map(v => v === ServiceType.CUSTOM ? (customValue || 'Custom') : (SERVICE_TYPE_LABELS[v] || v)).join(', ');
 
-  const Icon = SERVICE_TYPE_ICONS[value] || SquareAsterisk;
+  const firstSelected = value[0];
+  const Icon = firstSelected ? (SERVICE_TYPE_ICONS[firstSelected] || SquareAsterisk) : SquareAsterisk;
 
   return (
     <div ref={containerRef} className="relative space-y-1.5">
@@ -102,7 +108,7 @@ export function ServiceTypePicker({
           'flex w-full items-center gap-3 h-11 rounded-xl border px-3 text-sm transition-all text-left',
           'border-gray-200 bg-gray-50/50 hover:border-[#6e6e73] focus:outline-none focus:ring-2 focus:ring-[#6e6e73]/20 dark:border-white/15 dark:bg-white/[0.05] dark:hover:border-white/30 dark:focus:ring-[#d6b36a]/30',
           disabled && 'opacity-50 cursor-not-allowed',
-          !value && 'text-gray-400 dark:text-slate-500',
+          value.length === 0 && 'text-gray-400 dark:text-slate-500',
         )}
       >
         <div className="rounded-lg bg-[#f0f0f5] p-1.5 dark:bg-white/10">
@@ -122,7 +128,7 @@ export function ServiceTypePicker({
           <div className="grid grid-cols-3 gap-2">
             {SERVICE_TYPES.map((type) => {
               const TypeIcon = SERVICE_TYPE_ICONS[type] || SquareAsterisk;
-              const isSelected = value === type;
+              const isSelected = value.includes(type);
 
               return (
                 <button
@@ -157,14 +163,14 @@ export function ServiceTypePicker({
           </div>
 
           {/* Custom input */}
-          {value === ServiceType.CUSTOM && (
+          {value.includes(ServiceType.CUSTOM) && (
             <div className="mt-3 border-t border-gray-100 pt-3 dark:border-white/10">
               <Input
                 placeholder="Describe the custom service..."
                 value={customInput}
                 onChange={(e) => {
                   setCustomInput(e.target.value);
-                  onChange(ServiceType.CUSTOM, e.target.value);
+                  onChange(value, e.target.value);
                 }}
                 className="h-10 rounded-xl border-gray-200 text-sm dark:border-white/15 dark:bg-white/[0.05] dark:text-slate-100 dark:placeholder:text-slate-500"
                 autoFocus

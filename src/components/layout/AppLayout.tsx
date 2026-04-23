@@ -29,6 +29,8 @@ import { getVisibleNavigationPaths } from './navigation';
 import toast from 'react-hot-toast';
 import type { Project, Appointment, User } from '@/lib/types';
 import { useSignature } from '@/hooks/useUsers';
+import { useAvailabilityDialogStore } from '@/stores/availability-dialog.store';
+import { InternalAvailabilityDialog } from './InternalAvailabilityDialog';
 import {
   Dialog,
   DialogContent,
@@ -246,7 +248,19 @@ export function AppLayout() {
   const { data: notificationsData } = useNotifications({ limit: '50' });
   const queryClient = useQueryClient();
   const { data: signatureData } = useSignature();
+  const openAvailabilityDialog = useAvailabilityDialogStore((state) => state.openDialog);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  const isInternalAvailabilityUser = Boolean(
+    user?.roles.some((role) => [
+      Role.APPOINTMENT_AGENT,
+      Role.SALES_STAFF,
+      Role.ENGINEER,
+      Role.CASHIER,
+      Role.ADMIN,
+      Role.FABRICATION_STAFF,
+    ].includes(role)),
+  );
 
   const profileChecks = useMemo(() => {
     if (!user) return { completed: 0, total: 3, percent: 0 };
@@ -434,6 +448,16 @@ export function AppLayout() {
       setNotifications(notificationsData.items);
     }
   }, [notificationsData, setNotifications]);
+
+  useEffect(() => {
+    if (!isInternalAvailabilityUser) return;
+    if (!user?.availabilitySetupRequired) return;
+    openAvailabilityDialog();
+  }, [
+    isInternalAvailabilityUser,
+    openAvailabilityDialog,
+    user?.availabilitySetupRequired,
+  ]);
 
   const segments = location.pathname.split('/').filter(Boolean);
   const pageKey = segments[0] || 'dashboard';
@@ -886,6 +910,21 @@ export function AppLayout() {
                 </button>
               )}
 
+              {isInternalAvailabilityUser && user && (
+                <button
+                  type="button"
+                  onClick={() => openAvailabilityDialog()}
+                  className="metal-pill hidden items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground lg:flex"
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                  <span className="font-medium">
+                    {user.availabilitySetupRequired
+                      ? 'Set availability'
+                      : (user.availabilityStatus || 'availability').replace(/_/g, ' ')}
+                  </span>
+                </button>
+              )}
+
               {user && (
                 <Link
                   to="/account/profile"
@@ -983,6 +1022,14 @@ export function AppLayout() {
             </div>
           </DialogContent>
         </Dialog>
+
+        <InternalAvailabilityDialog
+          user={user}
+          enforceSetupPrompt={Boolean(
+            isInternalAvailabilityUser
+            && user?.availabilitySetupRequired
+          )}
+        />
       </main>
     </div>
   );

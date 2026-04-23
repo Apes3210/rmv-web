@@ -15,7 +15,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ServiceTypePicker } from '@/components/shared/ServiceTypePicker';
 import { useAvailableSlots, useRequestAppointment, useRequestReschedule } from '@/hooks/useAppointments';
 import { useAppointments } from '@/hooks/useAppointments';
-import { SLOT_CODES, ServiceType } from '@/lib/constants';
+import { useHolidays } from '@/hooks/useConfig';
+import { SLOT_CODES, ServiceType, APPOINTMENT_TYPE_LABELS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 
 function formatSlotTime(slotCode: string): string {
@@ -34,13 +35,6 @@ function getNextValidBookingDate(): Date {
   return candidate;
 }
 
-/** True when a calendar day should be disabled (too soon or weekend). */
-function isDateDisabled(day: Date): boolean {
-  const dow = getDay(day);
-  if (dow === 0 || dow === 6) return true;
-  if (startOfDay(day) < startOfDay(addDays(new Date(), 3))) return true;
-  return false;
-}
 
 const bookingSchema = z.object({
   type: z.literal('office'),
@@ -72,8 +66,27 @@ export function BookAppointmentPage() {
   const selectedDate = watch('date');
   const selectedSlot = watch('slotCode');
 
-  // Service type + notes state
-  const [serviceType, setServiceType] = useState(ServiceType.CUSTOM as string);
+  // Fetch holidays for the current year
+  const currentYear = String(new Date().getFullYear());
+  const { data: holidays } = useHolidays(currentYear);
+
+  const holidayDates = useMemo(() => {
+    if (!holidays) return new Set<string>();
+    return new Set(holidays.map((h) => h.date.slice(0, 10)));
+  }, [holidays]);
+
+  /** True when a calendar day should be disabled (too soon, weekend, or holiday). */
+  const isDateDisabled = (day: Date): boolean => {
+    const dow = getDay(day);
+    if (dow === 0 || dow === 6) return true;
+    if (startOfDay(day) < startOfDay(addDays(new Date(), 3))) return true;
+    const dateStr = format(day, 'yyyy-MM-dd');
+    if (holidayDates.has(dateStr)) return true;
+    return false;
+  };
+
+  // Service types + notes state
+  const [serviceTypes, setServiceTypes] = useState<string[]>([]);
   const [serviceTypeCustom, setServiceTypeCustom] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -160,7 +173,7 @@ export function BookAppointmentPage() {
           date: selectedDate,
           slotCode: selectedSlot,
           purpose: notes || undefined,
-          serviceType: serviceType as import('@/lib/constants').ServiceType,
+          serviceTypes: serviceTypes as import('@/lib/constants').ServiceType[],
           serviceTypeCustom: serviceTypeCustom || undefined,
         });
 
@@ -226,7 +239,7 @@ export function BookAppointmentPage() {
           <p className="text-[#6e6e73] text-sm dark:text-slate-400">
             {rescheduleId
               ? 'Choose a new date and time'
-              : 'Book your office consultation first'}
+              : `Book your ${(APPOINTMENT_TYPE_LABELS.office || 'Consultation').toLowerCase()} first`}
           </p>
         </div>
       </div>
@@ -324,16 +337,16 @@ export function BookAppointmentPage() {
                 <div className="space-y-2.5">
                   <label className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-300">Visit Type</label>
                   <div className="rounded-xl border border-[#c8c8cd] bg-[#f8f9fb] p-3 text-left text-[#1d1d1f] ring-1 ring-[#d7dbe0] dark:border-white/15 dark:bg-[#0f1722] dark:text-slate-100 dark:ring-white/10">
-                    <p className="text-sm font-semibold">Office Consultation</p>
+                    <p className="text-sm font-semibold">{APPOINTMENT_TYPE_LABELS['office']}</p>
                     <p className="mt-0.5 text-xs text-[#6e6e73] dark:text-slate-300">Meet at our office first. Ocular scheduling is handled after consultation.</p>
                   </div>
                 </div>
 
                 <ServiceTypePicker
-                  value={serviceType}
+                  value={serviceTypes}
                   customValue={serviceTypeCustom}
-                  onChange={(type, custom) => {
-                    setServiceType(type);
+                  onChange={(types, custom) => {
+                    setServiceTypes(types);
                     setServiceTypeCustom(custom || '');
                   }}
                 />
@@ -482,7 +495,7 @@ export function BookAppointmentPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl border border-[#c8c8cd]/50 bg-[#f5f5f7]/30 p-4 dark:border-white/10 dark:bg-white/[0.03]">
                   <p className="text-xs font-medium uppercase tracking-wider text-[#86868b] dark:text-slate-500">Visit Type</p>
-                  <p className="mt-1 text-sm font-semibold text-[#1d1d1f] dark:text-slate-100">Office Consultation</p>
+                  <p className="mt-1 text-sm font-semibold text-[#1d1d1f] dark:text-slate-100">{APPOINTMENT_TYPE_LABELS['office']}</p>
                 </div>
                 <div className="rounded-xl border border-[#c8c8cd]/50 bg-[#f5f5f7]/30 p-4 dark:border-white/10 dark:bg-white/[0.03]">
                   <p className="text-xs font-medium uppercase tracking-wider text-[#86868b] dark:text-slate-500">Date</p>
@@ -496,11 +509,11 @@ export function BookAppointmentPage() {
                     {selectedSlot ? formatSlotTime(selectedSlot) : '—'}
                   </p>
                 </div>
-                {serviceType && (
+                {serviceTypes && serviceTypes.length > 0 && (
                   <div className="rounded-xl border border-[#c8c8cd]/50 bg-[#f5f5f7]/30 p-4 dark:border-white/10 dark:bg-white/[0.03]">
-                    <p className="text-xs font-medium uppercase tracking-wider text-[#86868b] dark:text-slate-500">Service Type</p>
+                    <p className="text-xs font-medium uppercase tracking-wider text-[#86868b] dark:text-slate-500">Service Types</p>
                     <p className="mt-1 text-sm font-semibold capitalize text-[#1d1d1f] dark:text-slate-100">
-                      {serviceType === ServiceType.CUSTOM && serviceTypeCustom ? serviceTypeCustom : serviceType.replace(/_/g, ' ')}
+                      {serviceTypes.map(st => st === ServiceType.CUSTOM && serviceTypeCustom ? serviceTypeCustom : st.replace(/_/g, ' ')).join(', ')}
                     </p>
                   </div>
                 )}

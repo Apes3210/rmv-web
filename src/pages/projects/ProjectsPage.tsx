@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { FolderOpen, ChevronRight, Calendar, User, Wrench } from 'lucide-react';
 import { format } from 'date-fns';
@@ -101,6 +101,19 @@ export function ProjectsPage() {
   if (isError) return <PageError onRetry={refetch} />;
 
   const projects = data?.items || [];
+
+  const upcomingItems = projects
+    .filter((p: any) => ![ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(p.status as ProjectStatus))
+    .sort((a: any, b: any) => new Date(String(b.createdAt || '')).getTime() - new Date(String(a.createdAt || '')).getTime());
+    
+  const recentItems = projects
+    .filter((p: any) => [ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(p.status as ProjectStatus))
+    .sort((a: any, b: any) => new Date(String(b.createdAt || '')).getTime() - new Date(String(a.createdAt || '')).getTime());
+
+  const sections = [
+    { key: 'upcoming', label: 'Upcoming and Actionable', items: upcomingItems },
+    { key: 'recent', label: 'Recent and History', items: recentItems },
+  ].filter(s => s.items.length > 0);
 
   return (
     <div className="space-y-6">
@@ -214,7 +227,16 @@ export function ProjectsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {projects.map((project) => {
+                {sections.map((section) => (
+                  <Fragment key={section.key}>
+                    <TableRow key={`${section.key}-heading`} className="hover:bg-transparent">
+                      <TableCell colSpan={6} className="px-5 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-metal-color)]">
+                          {section.label}
+                        </p>
+                      </TableCell>
+                    </TableRow>
+                    {section.items.map((project: any) => {
                   const { label: displayLabel, cfg } = deriveDisplayStatus(project);
                   const engineers = Array.isArray(project.engineerIds)
                     ? (project.engineerIds as unknown as { firstName: string; lastName: string }[]).filter(
@@ -240,6 +262,11 @@ export function ProjectsPage() {
                             <p className="max-w-[260px] truncate text-[15px] font-medium text-[var(--color-card-foreground)] transition-colors group-hover:text-[var(--text-metal-color)]">
                               {String(project.serviceType || project.title || '')}
                             </p>
+                            {project.projectNumber && (
+                              <p className="text-[10px] font-bold text-[var(--text-metal-color)] tracking-tight">
+                                {project.projectNumber}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </TableCell>
@@ -306,6 +333,8 @@ export function ProjectsPage() {
                     </TableRow>
                   );
                 })}
+                  </Fragment>
+                ))}
               </TableBody>
             </Table>
             <div className="border-t border-[color:var(--color-border)] px-6 py-2.5">
@@ -317,7 +346,14 @@ export function ProjectsPage() {
 
           {/* â”€â”€ Mobile cards (< md) â”€â”€ */}
           <div className="md:hidden space-y-2">
-            {projects.map((project) => {
+            {sections.map((section) => (
+              <div key={section.key} className="space-y-2">
+                <div className="px-1 py-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-metal-color)]">
+                    {section.label}
+                  </p>
+                </div>
+                {section.items.map((project: any) => {
               const { label: displayLabel, cfg } = deriveDisplayStatus(project);
               const customer =
                 project.customerId && typeof project.customerId === 'object'
@@ -336,6 +372,11 @@ export function ProjectsPage() {
                       <p className="truncate text-[15px] font-semibold text-[var(--color-card-foreground)]">
                         {String(project.title || '')}
                       </p>
+                      {project.projectNumber && (
+                        <span className="text-[10px] font-bold text-[var(--text-metal-color)] tracking-tight bg-[color:var(--color-muted)] px-1 rounded">
+                          {project.projectNumber}
+                        </span>
+                      )}
                     </div>
                     <Badge variant="outline" className={`text-[11px] font-bold uppercase tracking-wider shrink-0 ${cfg.badge}`}>
                       {displayLabel}
@@ -365,6 +406,8 @@ export function ProjectsPage() {
                 </Link>
               );
             })}
+              </div>
+            ))}
             <p className="px-1 pt-1 text-[11px] text-[var(--text-metal-color)]">
               {projects.length} project{projects.length !== 1 ? 's' : ''}
             </p>

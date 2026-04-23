@@ -113,6 +113,7 @@ export function useUpdateVisitReport() {
       preferredDesign?: string;
       customerRequirements?: string;
       notes?: string;
+      discussionNotes?: string;
       photoKeys?: string[];
       videoKeys?: string[];
       sketchKeys?: string[];

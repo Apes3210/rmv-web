@@ -24,7 +24,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAvailableSlots, useAgentCreateAppointment, useAgentCreateOcular } from '@/hooks/useAppointments';
 import { useCustomerSearch, type CustomerSearchResult } from '@/hooks/useUsers';
-import { AppointmentType, Role, SLOT_CODES } from '@/lib/constants';
+import { AppointmentType, Role, SLOT_CODES, APPOINTMENT_TYPE_LABELS } from '@/lib/constants';
 import type { MapPoint } from '@/lib/maps';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
@@ -95,8 +95,8 @@ export function AgentBookAppointmentPage() {
     resolver: zodResolver(bookingSchema),
     defaultValues: {
       type: canCreateOfficeForCustomer && !canBookOcularAsStaff
-        ? 'office'
-        : 'ocular',
+        ? AppointmentType.OFFICE
+        : AppointmentType.OCULAR,
       date: defaultDate,
       ...(recommendedSlot && { slotCode: recommendedSlot }),
     },
@@ -231,7 +231,7 @@ export function AgentBookAppointmentPage() {
         </Button>
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[#1d1d1f] dark:text-slate-100">
-            {isOcularMode ? 'Schedule Ocular Visit' : 'Create Appointment'}
+            {isOcularMode ? `Schedule ${APPOINTMENT_TYPE_LABELS['ocular']}` : 'Create Appointment'}
           </h1>
           <p className="text-sm text-[#6e6e73] dark:text-slate-400">
             {isOcularMode
@@ -398,13 +398,13 @@ export function AgentBookAppointmentPage() {
                   {[
                     {
                       value: AppointmentType.OFFICE,
-                      label: 'Office Visit',
+                      label: APPOINTMENT_TYPE_LABELS[AppointmentType.OFFICE],
                       desc: 'Customer visits the shop',
                       show: canCreateOfficeForCustomer,
                     },
                     {
                       value: AppointmentType.OCULAR,
-                      label: 'Ocular Visit',
+                      label: APPOINTMENT_TYPE_LABELS[AppointmentType.OCULAR],
                       desc: 'Staff visits customer site',
                       show: canBookOcularAsStaff,
                     },

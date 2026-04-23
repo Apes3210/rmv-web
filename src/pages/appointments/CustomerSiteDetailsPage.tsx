@@ -85,7 +85,7 @@ export function CustomerSiteDetailsPage() {
   const [submitOpen, setSubmitOpen] = useState(false);
 
   // ── Form state ──
-  const [serviceType, setServiceType] = useState(ServiceType.CUSTOM as string);
+  const [serviceTypes, setServiceTypes] = useState<string[]>([]);
   const [serviceTypeCustom, setServiceTypeCustom] = useState('');
   const [materials, setMaterials] = useState('');
   const [finishes, setFinishes] = useState('');
@@ -126,8 +126,8 @@ export function CustomerSiteDetailsPage() {
 
   const buildPayload = () => ({
     id: id!,
-    serviceType: serviceType || undefined,
-    serviceTypeCustom: serviceType === ServiceType.CUSTOM ? serviceTypeCustom : undefined,
+    serviceTypes: serviceTypes.length > 0 ? (serviceTypes as import('@/lib/constants').ServiceType[]) : undefined,
+    serviceTypeCustom: serviceTypes.includes(ServiceType.CUSTOM) ? serviceTypeCustom : undefined,
     measurementUnit: measurementUnit || undefined,
     lineItems: lineItems.length > 0 ? lineItems : undefined,
     siteConditions,
@@ -231,10 +231,10 @@ export function CustomerSiteDetailsPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <ServiceTypePicker
-                value={serviceType}
+                value={serviceTypes}
                 customValue={serviceTypeCustom}
-                onChange={(type, custom) => {
-                  setServiceType(type);
+                onChange={(types, custom) => {
+                  setServiceTypes(types);
                   setServiceTypeCustom(custom || '');
                 }}
               />

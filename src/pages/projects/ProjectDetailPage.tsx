@@ -35,6 +35,7 @@ import {
   useGenerateContract,
   useSignContract,
   useAssignEngineers,
+  useReassignProjectSales,
   useAssignFabrication,
   useReviewInitialDesign,
   useResubmitInitialDesign,
@@ -49,10 +50,10 @@ import { useUsers, useSignature } from '@/hooks/useUsers';
 import { useAuthStore } from '@/stores/auth.store';
 import { useThemeStore } from '@/stores/theme.store';
 import { api } from '@/lib/api';
-import { Role } from '@/lib/constants';
+import { Role, StaffAvailabilityStatus, ProjectStatus } from '@/lib/constants';
 import { canManageFabricationUpdates, canViewFabricationUpdates, isAssignedEngineer as isProjectEngineerAssigned, isAssignedFabricationMember } from '@/lib/project-access';
 import { cn, extractErrorMessage } from '@/lib/utils';
-import type { VisitReport } from '@/lib/types';
+import type { ApiResponse, VisitReport } from '@/lib/types';
 import toast from 'react-hot-toast';
 import { SignaturePad } from '@/components/shared/SignaturePad';
 
@@ -247,32 +248,38 @@ export function ProjectDetailPage() {
     if (path.endsWith('/blueprint')) return 'blueprint';
     if (path.endsWith('/payments')) return 'payments';
     if (path.endsWith('/fabrication')) return 'fabrication';
+
+    // Role-based defaults if no URL segment
+    const userRole = useAuthStore.getState().user?.roles;
+    const isTechStaff = userRole?.some(r => r === Role.ENGINEER || r === Role.FABRICATION_STAFF);
+    if (isTechStaff) return 'blueprint';
+
     return 'details';
   }, [location.pathname]);
 
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
 
   const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentKey: TabKey) => {
-    const currentIndex = ALL_TABS.findIndex((tab) => tab.key === currentKey);
+    const currentIndex = tabs.findIndex((tab) => tab.key === currentKey);
     if (currentIndex === -1) return;
 
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
       event.preventDefault();
       const direction = event.key === 'ArrowRight' ? 1 : -1;
-      const nextIndex = (currentIndex + direction + ALL_TABS.length) % ALL_TABS.length;
-      const nextTab = ALL_TABS[nextIndex];
+      const nextIndex = (currentIndex + direction + tabs.length) % tabs.length;
+      const nextTab = tabs[nextIndex];
       if (nextTab) setActiveTab(nextTab.key);
     }
 
     if (event.key === 'Home') {
       event.preventDefault();
-      const firstTab = ALL_TABS[0];
+      const firstTab = tabs[0];
       if (firstTab) setActiveTab(firstTab.key);
     }
 
     if (event.key === 'End') {
       event.preventDefault();
-      const lastTab = ALL_TABS[ALL_TABS.length - 1];
+      const lastTab = tabs[tabs.length - 1];
       if (lastTab) setActiveTab(lastTab.key);
     }
   };
@@ -287,6 +294,7 @@ export function ProjectDetailPage() {
   const generateContract = useGenerateContract();
   const signContractMutation = useSignContract();
   const assignEngineers = useAssignEngineers();
+  const reassignProjectSales = useReassignProjectSales();
   const assignFabrication = useAssignFabrication();
   const reviewInitialDesign = useReviewInitialDesign();
   const resubmitInitialDesign = useResubmitInitialDesign();
@@ -299,17 +307,38 @@ export function ProjectDetailPage() {
   const isEngineer = user?.roles?.some((r: string) => r === Role.ENGINEER);
   const isCustomer = user?.roles?.some((r: string) => r === Role.CUSTOMER);
   const isAdmin = user?.roles?.some((r: string) => r === Role.ADMIN);
+  const shouldHideAmount = user?.roles?.some((r: string) => [Role.ADMIN, Role.APPOINTMENT_AGENT, Role.ENGINEER, Role.FABRICATION_STAFF].includes(r as Role));
   const isFabricationStaff = user?.roles?.some((r: string) => r === Role.FABRICATION_STAFF);
   const isStaff = !isCustomer; // any non-customer role
   const canGenerate = user?.roles?.some((r: string) =>
     [Role.ADMIN, Role.CASHIER, Role.SALES_STAFF].includes(r as Role),
   );
 
+  const tabs = useMemo(() => {
+    if (isEngineer || isFabricationStaff) {
+      // Prioritize Blueprint for tech staff and hide Payments
+      const order: TabKey[] = ['blueprint', 'fabrication', 'details'];
+      return order
+        .map((k) => ALL_TABS.find((t) => t.key === k))
+        .filter(Boolean) as typeof ALL_TABS;
+    }
+    return ALL_TABS;
+  }, [isEngineer, isFabricationStaff]);
+
   // ── Fabrication staff list (only fetch when engineer is on the page) ──
   const { data: fabStaffList } = useUsers(
     isEngineer ? { role: 'fabrication_staff' } : undefined,
     { enabled: !!isEngineer },
   );
+
+  const [salesStaffList, setSalesStaffList] = useState<Array<{
+    _id: string;
+    firstName: string;
+    lastName: string;
+    availabilityStatus?: StaffAvailabilityStatus;
+    availabilityNote?: string;
+  }>>([]);
+  const [selectedSalesStaffId, setSelectedSalesStaffId] = useState('');
 
   // ── Fab assignment form state ──
   const [showFabForm, setShowFabForm] = useState(false);
@@ -333,7 +362,6 @@ export function ProjectDetailPage() {
     return project.visitReportId as VisitReport;
   }, [project]);
 
-  const tabs = ALL_TABS;
 
   const currentStepIndex = LIFECYCLE_STEPS.findIndex((s) => s.key === project?.status);
 
@@ -349,6 +377,18 @@ export function ProjectDetailPage() {
     if (!user?._id || !project?.salesStaffId) return false;
     return (typeof project.salesStaffId === 'string' ? project.salesStaffId : project.salesStaffId._id) === user._id;
   }, [project, user]);
+  const currentSalesStaffId = useMemo(() => {
+    if (!project?.salesStaffId) return '';
+    return typeof project.salesStaffId === 'string' ? project.salesStaffId : project.salesStaffId._id;
+  }, [project?.salesStaffId]);
+  const currentSalesStaffName = useMemo(() => {
+    if (!project?.salesStaffId) return 'Not assigned yet';
+    if (typeof project.salesStaffId !== 'string') {
+      return `${project.salesStaffId.firstName} ${project.salesStaffId.lastName}`;
+    }
+    const fromList = salesStaffList.find((staff) => staff._id === project.salesStaffId);
+    return fromList ? `${fromList.firstName} ${fromList.lastName}` : 'Assigned sales staff';
+  }, [project?.salesStaffId, salesStaffList]);
   const hasInitialDesign = Boolean(project?.initialDesignKeys?.length || project?.initialDesignNotes);
   const initialDesignBackfill = project?.initialDesignBackfill;
   const hasBackfilledInitialDesign = Boolean(initialDesignBackfill?.backfilledAt);
@@ -384,12 +424,51 @@ export function ProjectDetailPage() {
   const canViewFabrication = Boolean(project && canViewFabricationUpdates(project, user));
   const canManageFabrication = Boolean(project && canManageFabricationUpdates(project, user));
   const showFabricationAssignmentNotice = Boolean(isFabricationStaff && !isAssignedFabrication && !isAdmin);
+  const canReassignProjectSales = Boolean(
+    isAdmin
+    && project
+    && ![ProjectStatus.CANCELLED, ProjectStatus.COMPLETED].includes(project.status as ProjectStatus),
+  );
   const canEngineerClaimProject = Boolean(
     isEngineer && project?.status === 'submitted' && project.engineerIds.length === 0 && !isAssignedEngineer,
   );
   const hasProjectReviewSubmitted = Boolean(project?.customerReview?.submittedAt);
   const hasProjectReviewSkipped = Boolean(project?.customerReview?.skippedAt);
   const canPromptProjectReview = Boolean(isCustomer && project?.status === 'completed' && !hasProjectReviewSubmitted && !hasProjectReviewSkipped);
+
+  const availabilityLabel = (status?: StaffAvailabilityStatus) => {
+    switch (status) {
+      case StaffAvailabilityStatus.UNAVAILABLE:
+        return 'Unavailable';
+      case StaffAvailabilityStatus.ON_LEAVE:
+        return 'On Leave';
+      default:
+        return 'Available';
+    }
+  };
+
+  const isAvailabilityBlocked = (status?: StaffAvailabilityStatus) => (
+    status === StaffAvailabilityStatus.UNAVAILABLE || status === StaffAvailabilityStatus.ON_LEAVE
+  );
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    api.get<ApiResponse<Array<{
+      _id: string;
+      firstName: string;
+      lastName: string;
+      availabilityStatus?: StaffAvailabilityStatus;
+      availabilityNote?: string;
+    }>>>('/users/sales-staff')
+      .then((res) => setSalesStaffList(res.data.data))
+      .catch(() => setSalesStaffList([]));
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!currentSalesStaffId) return;
+    setSelectedSalesStaffId(currentSalesStaffId);
+  }, [currentSalesStaffId]);
 
   useEffect(() => {
     setInitialDesignKeys(project?.initialDesignKeys || []);
@@ -578,6 +657,29 @@ export function ProjectDetailPage() {
     }
   };
 
+  const handleReassignProjectSales = async () => {
+    if (!project) return;
+    if (!selectedSalesStaffId) {
+      toast.error('Select a sales staff member first');
+      return;
+    }
+    if (selectedSalesStaffId === currentSalesStaffId) {
+      toast.error('Select a different sales staff member');
+      return;
+    }
+
+    try {
+      await reassignProjectSales.mutateAsync({
+        id: project._id,
+        salesStaffId: selectedSalesStaffId,
+      });
+      toast.success('Project sales staff reassigned successfully.');
+      refetch();
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to reassign sales staff'));
+    }
+  };
+
   const toggleAssistant = (staffId: string) => {
     setFabAssistantIds((prev) =>
       prev.includes(staffId) ? prev.filter((id) => id !== staffId) : [...prev, staffId],
@@ -645,6 +747,11 @@ export function ProjectDetailPage() {
             <h1 className="text-lg sm:text-2xl font-bold tracking-tight text-[var(--color-card-foreground)] truncate">
               {project.serviceType || project.title}
             </h1>
+            {project.projectNumber && (
+              <span className="ml-2 inline-flex items-center rounded-lg bg-[color:var(--color-muted)] dark:bg-slate-800 border border-[color:var(--color-border)] dark:border-slate-700 px-2.5 py-1 text-xs font-bold tracking-tight text-[var(--text-metal-color)] dark:text-slate-300 shadow-sm">
+                {project.projectNumber}
+              </span>
+            )}
             <StatusBadge status={project.status} />
           </div>
           <p className="text-xs sm:text-sm text-[var(--text-metal-color)] dark:text-slate-300 mt-0.5">
@@ -1419,7 +1526,15 @@ export function ProjectDetailPage() {
               <CardTitle className={`text-base sm:text-lg ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>Team</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6 px-4 sm:px-6">
-              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                {/* Sales Staff */}
+                <div>
+                  <p className={`text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>Sales Staff</p>
+                  <p className={`mt-1 text-sm ${isDark ? 'text-slate-200' : 'text-[var(--color-card-foreground)]'}`}>
+                    {currentSalesStaffName}
+                  </p>
+                </div>
+
                 {/* Engineers */}
                 <div>
                   <p className={`text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>Engineers</p>
@@ -1477,6 +1592,49 @@ export function ProjectDetailPage() {
                   )}
                 </div>
               </div>
+
+              {canReassignProjectSales && (
+                <div className="rounded-xl border border-cyan-200 dark:border-cyan-900/60 bg-cyan-50/40 dark:bg-cyan-950/30 p-4 space-y-4">
+                  <p className="text-sm font-semibold text-cyan-800 dark:text-cyan-200 flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Reassign Sales Staff
+                  </p>
+
+                  <div>
+                    <label className="text-xs font-medium text-[#6e6e73] dark:text-slate-400 block mb-1">Sales Staff</label>
+                    <Select value={selectedSalesStaffId} onValueChange={setSelectedSalesStaffId}>
+                      <SelectTrigger className="bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100">
+                        <SelectValue placeholder="Select replacement sales staff" />
+                      </SelectTrigger>
+                      <SelectContent className="dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100">
+                        {salesStaffList.map((staff) => (
+                          <SelectItem
+                            key={staff._id}
+                            value={staff._id}
+                            disabled={isAvailabilityBlocked(staff.availabilityStatus)}
+                          >
+                            {staff.firstName} {staff.lastName} ({availabilityLabel(staff.availabilityStatus)})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    className="bg-cyan-700 text-white hover:bg-cyan-800 dark:bg-cyan-600 dark:hover:bg-cyan-500"
+                    onClick={handleReassignProjectSales}
+                    disabled={
+                      reassignProjectSales.isPending
+                      || !selectedSalesStaffId
+                      || selectedSalesStaffId === currentSalesStaffId
+                    }
+                  >
+                    {reassignProjectSales.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+                    Reassign Sales Staff
+                  </Button>
+                </div>
+              )}
 
               {/* Assign Fabrication Team (inline form for engineers) */}
               {isEngineer && isAssignedEngineer && (showFabForm || (!hasFabLead && ['approved', 'payment_pending', 'fabrication'].includes(project.status))) && (
@@ -2095,7 +2253,7 @@ export function ProjectDetailPage() {
                           <p className={`mt-0.5 text-[11px] ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>{(stage as any).description}</p>
                         )}
                         <p className={`text-xs ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
-                          {String(stage.percentage)}% — {formatCurrency(Number(stage.amount))}
+                          {String(stage.percentage)}% — {shouldHideAmount ? '***' : formatCurrency(Number(stage.amount))}
                         </p>
                       </div>
                       <StatusBadge status={String(stage.status)} />
@@ -2120,7 +2278,7 @@ export function ProjectDetailPage() {
                     >
                       <div>
                         <p className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-[var(--color-card-foreground)]'}`}>
-                          {formatCurrency(Number(p.amountPaid))}
+                          {shouldHideAmount ? '***' : formatCurrency(Number(p.amountPaid))}
                         </p>
                         <p className={`text-xs capitalize ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
                           {String(p.method || '').replace('_', ' ')}

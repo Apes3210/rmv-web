@@ -1,4 +1,4 @@
-import type { Role } from './constants';
+import type { Role, StaffAvailabilityStatus } from './constants';
 
 // ── Auth ──
 export interface User {
@@ -15,6 +15,7 @@ export interface User {
     province?: string;
     zip?: string;
     country?: string;
+    addressType?: 'personal' | 'business';
     lat?: number;
     lng?: number;
     formattedAddress?: string;
@@ -22,6 +23,24 @@ export interface User {
   roles: Role[];
   isEmailVerified: boolean;
   isActive: boolean;
+  availabilityStatus?: StaffAvailabilityStatus;
+  availabilityNote?: string;
+  availabilityUpdatedAt?: string;
+  activeShift?: {
+    sessionId: string;
+    shiftStartAt: string;
+    shiftEndAt: string;
+    isCurrent: boolean;
+    reminderSentAt?: string;
+  };
+  expiredShift?: {
+    sessionId: string;
+    shiftStartAt: string;
+    shiftEndAt: string;
+    isCurrent: boolean;
+    reminderSentAt?: string;
+  };
+  availabilitySetupRequired?: boolean;
   mustChangePassword: boolean;
   twoFactorEnabled?: boolean;
   provider?: 'local' | 'google';
@@ -44,6 +63,22 @@ export interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   csrfToken: string | null;
+}
+
+export interface SalesStaffLookupUser {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+  availabilityStatus?: StaffAvailabilityStatus;
+  availabilityNote?: string;
+  availabilityUpdatedAt?: string;
+  activeShift?: User['activeShift'];
+  expiredShift?: User['expiredShift'];
+  availabilitySetupRequired?: boolean;
+  assignmentEligible?: boolean;
+  assignmentBlockedReason?: string;
 }
 
 export interface Session {
@@ -71,6 +106,7 @@ export interface LoginActivity {
 }
 
 export interface CustomerSiteDetails {
+  serviceTypes?: string[];
   serviceType?: string;
   serviceTypeCustom?: string;
   measurementUnit?: string;
@@ -92,13 +128,22 @@ export interface Appointment {
   _id: string;
   customerId: string;
   customerName?: string;
-  salesStaffId?: string;
+  salesStaffId?:
+    | string
+    | {
+      _id: string;
+      firstName: string;
+      lastName: string;
+      availabilityStatus?: string;
+      availabilityNote?: string;
+    };
   salesStaffName?: string;
   type: string;
   date: string;
   slotCode: string;
   status: string;
   purpose?: string;
+  serviceTypes?: string[];
   serviceType?: string;
   serviceTypeCustom?: string;
   address?: string;
@@ -109,6 +154,7 @@ export interface Appointment {
     city: string;
     province: string;
     zip: string;
+    addressType?: 'personal' | 'business';
   };
   latitude?: number;
   longitude?: number;
@@ -137,9 +183,11 @@ export interface Appointment {
   paymongoCheckoutUrl?: string;
   rescheduleCount: number;
   maxReschedules: number;
+  projectNumber?: string;
   internalNotes?: string;
   customerSiteDetails?: CustomerSiteDetails;
   siteDetailsStatus?: 'pending' | 'submitted' | 'skipped';
+  addressType?: 'personal' | 'business';
   initialDesignKeys?: string[];
   initialDesignNotes?: string;
   initialDesignStatus?: 'pending' | 'submitted' | 'skipped';
@@ -148,18 +196,56 @@ export interface Appointment {
   updatedAt: string;
 }
 
+export interface AppointmentQueueSampleProject {
+  projectId: string;
+  title: string;
+  serviceType?: string;
+  status: string;
+  path: string;
+}
+
+export interface AppointmentQueueActions {
+  reviewReportPath?: string;
+  projectPath?: string;
+  createProjectPath?: string;
+}
+
+export interface AppointmentQueueItem {
+  appointment: Appointment;
+  segment: 'upcoming' | 'recent';
+  actions: AppointmentQueueActions;
+  sampleProjects: AppointmentQueueSampleProject[];
+}
+
+export interface AppointmentQueueResponse {
+  items: AppointmentQueueItem[];
+  upcomingCount: number;
+  recentCount: number;
+  recentWindowDays: number;
+  generatedAt: string;
+}
+
 // ── Project ──
 export interface Project {
   _id: string;
   appointmentId: string;
   customerId: string | { _id: string; firstName: string; lastName: string; email?: string };
   customerName?: string;
-  salesStaffId?: string | { _id: string; firstName: string; lastName: string };
+  salesStaffId?: string | { _id: string; firstName: string; lastName: string; availabilityStatus?: string; availabilityNote?: string };
   salesStaffName?: string;
+  projectNumber?: string;
   title: string;
   serviceType?: string;
   description?: string;
   siteAddress?: string;
+  siteAddressStructured?: {
+    street: string;
+    barangay: string;
+    city: string;
+    province: string;
+    zip: string;
+    addressType?: 'personal' | 'business';
+  };
   measurements?: {
     length?: number;
     width?: number;
@@ -481,6 +567,7 @@ export interface VisitReport {
   notes?: string;
 
   // Consultation-specific fields
+  discussionNotes?: string;
   productsDiscussed?: string;
   designPreferences?: string;
   materialOptions?: string;
@@ -496,6 +583,7 @@ export interface VisitReport {
   sketchKeys: string[];
   referenceImageKeys: string[];
   returnReason?: string;
+  sampleProjects?: AppointmentQueueSampleProject[];
   createdAt: string;
   updatedAt: string;
 }

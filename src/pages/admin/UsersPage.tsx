@@ -65,7 +65,7 @@ import {
   useDisableUser,
   useEnableUser,
 } from '@/hooks/useUsers';
-import { Role } from '@/lib/constants';
+import { Role, StaffAvailabilityStatus } from '@/lib/constants';
 import type { User } from '@/lib/types';
 
 const ROLES: { value: Role; label: string }[] = [
@@ -94,6 +94,8 @@ const userSchema = z.object({
     { message: 'Enter a valid 10-digit mobile number (9XXXXXXXXX)' }
   ).optional().or(z.literal('')),
   role: z.nativeEnum(Role),
+  availabilityStatus: z.nativeEnum(StaffAvailabilityStatus).optional(),
+  availabilityNote: z.string().max(240).optional().or(z.literal('')),
   password: z.string().optional(),
   employmentType: z.enum(['permanent', 'contract']),
   expiresAt: z.string().optional(),
@@ -244,6 +246,34 @@ export function UsersPage() {
     r
       .replace(/_/g, ' ')
       .replace(/\b\w/g, (l) => l.toUpperCase());
+
+  const isInternalAvailabilityUser = (user: User) =>
+    user.roles.some((role) => [
+      Role.APPOINTMENT_AGENT,
+      Role.SALES_STAFF,
+      Role.ENGINEER,
+      Role.CASHIER,
+      Role.ADMIN,
+      Role.FABRICATION_STAFF,
+    ].includes(role as Role));
+
+  const availabilitySummaryLabel = (user: User) => {
+    if (!isInternalAvailabilityUser(user)) return 'Not applicable';
+    if (user.availabilitySetupRequired) return 'Setup Required';
+    if (user.expiredShift) return 'Shift Ended';
+    if (user.availabilityStatus) return user.availabilityStatus.replace(/_/g, ' ');
+    return 'Not Set';
+  };
+
+  const availabilityShiftLabel = (user: User) => {
+    if (user.activeShift) {
+      return `${new Date(user.activeShift.shiftStartAt).toLocaleString()} to ${new Date(user.activeShift.shiftEndAt).toLocaleString()}`;
+    }
+    if (user.expiredShift) {
+      return `Ended ${new Date(user.expiredShift.shiftEndAt).toLocaleString()}`;
+    }
+    return user.availabilityNote || 'No shift details';
+  };
 
   const userList = extractItems<User>(users);
 
@@ -402,6 +432,13 @@ export function UsersPage() {
                     </span>
                   )}
                 </div>
+                {isInternalAvailabilityUser(u) && (
+                  <div className="ml-[52px] mt-2 rounded-xl border border-[#d9dfe6] bg-white/50 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#68727d] dark:text-slate-400">Availability</p>
+                    <p className="mt-1 text-xs font-medium capitalize text-[#171b21] dark:text-slate-100">{availabilitySummaryLabel(u)}</p>
+                    <p className="mt-1 text-[11px] text-[#68727d] dark:text-slate-400">{availabilityShiftLabel(u)}</p>
+                  </div>
+                )}
               </div>
             ))}
             <div className="px-1 pt-1">
@@ -420,6 +457,7 @@ export function UsersPage() {
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-[#68727d]">Email</TableHead>
                   <TableHead className="hidden text-xs font-semibold uppercase tracking-wider text-[#68727d] lg:table-cell">Phone</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-[#68727d]">Role</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-[#68727d]">Availability</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-[#68727d]">Status</TableHead>
                   <TableHead className="w-10 pr-5 text-xs font-semibold uppercase tracking-wider text-[#68727d]"><span className="sr-only">Actions</span></TableHead>
                 </TableRow>
@@ -474,6 +512,17 @@ export function UsersPage() {
                             {formatRole(r)}
                           </Badge>
                         ))}
+                      </div>
+                    </TableCell>
+
+                    <TableCell className="py-5">
+                      <div className="min-w-[180px]">
+                        <p className="text-sm font-medium capitalize text-[#171b21] dark:text-slate-100">
+                          {availabilitySummaryLabel(u)}
+                        </p>
+                        <p className="mt-1 text-xs text-[#68727d] dark:text-slate-400">
+                          {availabilityShiftLabel(u)}
+                        </p>
                       </div>
                     </TableCell>
 

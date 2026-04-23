@@ -1,6 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { ApiResponse, Appointment, PaginatedResponse, CustomerSiteDetails } from '@/lib/types';
+import type {
+  ApiResponse,
+  Appointment,
+  AppointmentQueueResponse,
+  PaginatedResponse,
+  CustomerSiteDetails,
+} from '@/lib/types';
 import type { SlotCode } from '@/lib/constants';
 import { extractItems } from '@/lib/utils';
 
@@ -8,6 +14,7 @@ import { extractItems } from '@/lib/utils';
 const KEYS = {
   all: ['appointments'] as const,
   list: (params?: Record<string, unknown>) => [...KEYS.all, 'list', params] as const,
+  queue: (params?: Record<string, unknown>) => [...KEYS.all, 'queue', params] as const,
   detail: (id: string) => [...KEYS.all, id] as const,
   slots: (date: string, type: string) => [...KEYS.all, 'slots', date, type] as const,
 };
@@ -18,7 +25,7 @@ function syncAppointmentCaches(qc: ReturnType<typeof useQueryClient>, appointmen
 }
 
 // ── Queries ──
-export function useAppointments(params?: Record<string, string>) {
+export function useAppointments(params?: Record<string, string>, enabled = true) {
   return useQuery({
     queryKey: KEYS.list(params),
     queryFn: async () => {
@@ -28,6 +35,21 @@ export function useAppointments(params?: Record<string, string>) {
       );
       return data.data;
     },
+    enabled,
+  });
+}
+
+export function useAppointmentQueue(params?: Record<string, string>, enabled = true) {
+  return useQuery({
+    queryKey: KEYS.queue(params),
+    queryFn: async () => {
+      const { data } = await api.get<ApiResponse<AppointmentQueueResponse>>(
+        '/appointments/queue',
+        { params },
+      );
+      return data.data;
+    },
+    enabled,
   });
 }
 
@@ -65,6 +87,7 @@ export function useRequestAppointment() {
       date: string;
       slotCode: string;
       purpose?: string;
+      serviceTypes?: string[];
       serviceType?: string;
       serviceTypeCustom?: string;
       formattedAddress?: string;
@@ -115,6 +138,26 @@ export function useConfirmAppointment() {
       internalNotes?: string;
     }) => {
       const { data } = await api.post<ApiResponse<Appointment>>(`/appointments/${id}/confirm`, body);
+      return data.data;
+    },
+    onSuccess: (appointment) => {
+      syncAppointmentCaches(qc, appointment);
+    },
+  });
+}
+
+export function useReassignAppointmentSales() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...body
+    }: {
+      id: string;
+      salesStaffId: string;
+      reason?: string;
+    }) => {
+      const { data } = await api.post<ApiResponse<Appointment>>(`/appointments/${id}/reassign-sales`, body);
       return data.data;
     },
     onSuccess: (appointment) => {

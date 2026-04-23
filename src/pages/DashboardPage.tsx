@@ -536,22 +536,24 @@ export function DashboardPage() {
             <p className="mt-1 text-xs text-[var(--text-metal-muted-color)]">{actionHeading.description}</p>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {actions.map((action) => (
-            <Link key={action.label} to={action.path} className="group">
-              <div className="metal-panel flex items-center gap-2 p-2.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.82),0_20px_32px_rgba(18,22,27,0.1)] sm:gap-4 sm:p-4">
-                <div
-                  className="silver-sheen flex h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-lg sm:rounded-xl shadow-[0_10px_22px_rgba(15,23,42,0.1)] flex-shrink-0"
-                >
-                  <action.icon className="h-4 w-4 sm:h-5 sm:w-5 text-[#33414d]" />
+            <Link key={action.label} to={action.path} className="group outline-none">
+              <div className="relative flex items-center gap-4 overflow-hidden rounded-[1.25rem] border border-[color:var(--color-border)] bg-[color:var(--color-card)] p-4 transition-all duration-300 hover:border-transparent hover:bg-[color:var(--color-primary)] hover:shadow-xl hover:-translate-y-1 focus-within:ring-2 focus-within:ring-[color:var(--color-primary)] focus-within:ring-offset-2 dark:bg-[color:var(--color-muted)]/30 dark:hover:bg-slate-100">
+                <div className="silver-sheen flex h-11 w-11 shrink-0 items-center justify-center rounded-full ring-1 ring-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.78),0_4px_12px_rgba(18,22,27,0.08)] transition-all duration-300 group-hover:scale-110 dark:ring-white/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.48),0_4px_12px_rgba(0,0,0,0.2)]">
+                  <action.icon className="h-5 w-5 text-[#2b3138]" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold leading-tight text-[#171b21] dark:text-slate-100 group-hover:text-[#4d5660] dark:group-hover:text-slate-300 sm:text-sm">
+                  <p className="text-sm font-semibold tracking-tight text-[color:var(--color-foreground)] transition-colors duration-300 group-hover:text-white dark:group-hover:text-slate-900 sm:text-[15px]">
                     {action.label}
                   </p>
-                  <p className="mt-0.5 line-clamp-2 text-[10px] leading-tight text-[#68727d] sm:text-xs">{action.description}</p>
+                  <p className="truncate text-xs font-medium text-[color:var(--text-metal-muted-color)] transition-colors duration-300 group-hover:text-white/80 dark:group-hover:text-slate-600">
+                    {action.description}
+                  </p>
                 </div>
-                <ArrowRight className="hidden h-3.5 w-3.5 text-[#9ca6b1] opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100 sm:block sm:h-4 sm:w-4" />
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-transparent opacity-0 transition-all duration-300 group-hover:bg-white/20 dark:group-hover:bg-slate-200 group-hover:opacity-100">
+                  <ArrowRight className="h-4 w-4 text-[color:var(--color-foreground)] transition-transform duration-300 group-hover:translate-x-0.5 group-hover:text-white dark:group-hover:text-slate-900" />
+                </div>
               </div>
             </Link>
           ))}

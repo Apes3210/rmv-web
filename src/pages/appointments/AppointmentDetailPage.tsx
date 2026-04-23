@@ -1,19 +1,13 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ArrowLeft, MapPin, Clock, User, Phone, CreditCard, CheckCircle2, Users, FileText, Camera, Image, Loader2, Banknote, Info } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, User, Phone, CreditCard, CheckCircle2, Users, FileText, Camera, Image, Loader2, Banknote, Info, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-import { extractErrorMessage, extractLocalDateValue } from '@/lib/utils';
+import { extractErrorMessage, extractLocalDateValue, cn } from '@/lib/utils';
 import { reverseGeocodeLocation, fetchOcularFeePreview, type MapPoint, type OcularFeePreview } from '@/lib/maps';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter,
@@ -37,7 +31,7 @@ import {
 import { useVisitReportsByAppointment } from '@/hooks/useVisitReports';
 
 import { useAuthStore } from '@/stores/auth.store';
-import { Role, AppointmentStatus } from '@/lib/constants';
+import { Role, AppointmentStatus, StaffAvailabilityStatus } from '@/lib/constants';
 import { SERVICE_TYPE_LABELS } from '@/lib/constants';
 import { Suspense, lazy, useState, useEffect } from 'react';
 import { api } from '@/lib/api';
@@ -96,7 +90,15 @@ export function AppointmentDetailPage() {
   const { data: visitReports } = useVisitReportsByAppointment(canSeeVisitReports ? id! : '');
 
   // Sales staff assignment state (for agents/admins)
-  const [salesStaffList, setSalesStaffList] = useState<{ _id: string; firstName: string; lastName: string }[]>([]);
+  const [salesStaffList, setSalesStaffList] = useState<{ 
+    _id: string; 
+    firstName: string; 
+    lastName: string;
+    availabilityStatus?: StaffAvailabilityStatus;
+    activeShift?: { shiftStartAt: string; shiftEndAt: string } | null;
+    assignmentEligible?: boolean;
+    assignmentBlockedReason?: string;
+  }[]>([]);
   const [selectedSalesStaff, setSelectedSalesStaff] = useState<string>('');
 
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -157,12 +159,26 @@ export function AppointmentDetailPage() {
 
   // Fetch sales staff list for consultation assignment
   useEffect(() => {
-    if (canConfirmAppointment) {
-      api.get<ApiResponse<{ _id: string; firstName: string; lastName: string }[]>>('/users/sales-staff')
+    if (canConfirmAppointment && appt?.date && appt?.slotCode) {
+      const params = new URLSearchParams({
+        date: appt.date,
+        slotCode: appt.slotCode,
+        appointmentId: id!,
+      });
+      
+      api.get<ApiResponse<{ 
+        _id: string; 
+        firstName: string; 
+        lastName: string;
+        availabilityStatus?: StaffAvailabilityStatus;
+        activeShift?: { shiftStartAt: string; shiftEndAt: string } | null;
+        assignmentEligible?: boolean;
+        assignmentBlockedReason?: string;
+      }[]>>(`/users/sales-staff?${params.toString()}`)
         .then(res => setSalesStaffList(res.data.data))
         .catch(() => {});
     }
-  }, [canConfirmAppointment]);
+  }, [canConfirmAppointment, appt?.date, appt?.slotCode, id]);
 
   if (isLoading) return <PageLoader />;
   if (isError || !appt) return <PageError onRetry={refetch} />;
@@ -176,8 +192,12 @@ export function AppointmentDetailPage() {
     customerCanManageAppointment && appt.rescheduleCount < appt.maxReschedules;
 
   const handleConfirm = async () => {
-    if (!selectedSalesStaff) {
-      toast.error('Please select a sales staff member to assign');
+    const staff = salesStaffList.find(s => s._id === selectedSalesStaff);
+    if (!selectedSalesStaff || staff?.assignmentEligible === false) {
+      toast.error(staff?.assignmentEligible === false 
+        ? `Staff ineligible: ${staff.assignmentBlockedReason}` 
+        : 'Please select a sales staff member to assign'
+      );
       return;
     }
     try {
@@ -1023,43 +1043,97 @@ export function AppointmentDetailPage() {
 
       {/* Agent: Assign Sales Staff & Confirm */}
       {canConfirmAppointment && appt.status === AppointmentStatus.REQUESTED && appt.type !== 'ocular' && (
-        <Card className="rounded-xl border-[#c8c8cd]/50 shadow-sm dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(17,24,34,0.96)_0%,rgba(10,17,26,0.98)_100%)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_36px_rgba(0,0,0,0.26)]">
+        <Card className="rounded-xl border-[#c8c8cd]/50 shadow-sm dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(17,24,34,0.96)_0%,rgba(10,17,26,0.98)_100%)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_36px_rgba(0,0,0,0.26)] lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-lg text-[#1d1d1f] dark:text-slate-100">Assign Sales Staff & Confirm</CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-
             {salesStaffList.length === 0 ? (
-              <div className="flex items-center gap-2.5 rounded-lg bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-700">
+              <div className="flex items-center gap-2.5 rounded-lg bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-700 dark:bg-amber-500/5 dark:border-amber-500/10 dark:text-amber-400">
                 <Users className="h-4 w-4 shrink-0" />
                 <span>No sales staff found. Please create one in the admin panel first.</span>
               </div>
             ) : (
-              <div>
-                <label className="block text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400 mb-2.5">Sales Staff</label>
-                <Select
-                  value={selectedSalesStaff}
-                  onValueChange={(val) => setSelectedSalesStaff(val)}
-                >
-                  <SelectTrigger className="h-12 w-full rounded-xl border-[#d2d2d7] bg-white px-4 text-base text-[#1d1d1f] focus:border-[#c8c8cd] focus:ring-1 focus:ring-[#e8e8ed] focus:ring-offset-0 dark:border-[#2f4563] dark:bg-[#1c2a42] dark:text-slate-100 dark:hover:border-[#3d587d] dark:focus:border-[#4f7097] dark:focus:ring-[#4f7097]/20">
-                    <SelectValue placeholder="Choose a sales staff member..." />
-                  </SelectTrigger>
-                  <SelectContent className="max-w-[calc(100vw-3rem)] rounded-xl border-[#d2d2d7] bg-white shadow-lg dark:border-[#2f4563] dark:bg-[#1c2a42]">
-                    {salesStaffList.map((s) => (
-                      <SelectItem key={s._id} value={s._id} className="cursor-pointer rounded-lg py-2.5 text-sm text-[#1d1d1f] dark:text-slate-100 focus:bg-[#f0f0f5] focus:text-[#1d1d1f] dark:focus:bg-[#243754] dark:focus:text-white data-[highlighted]:bg-[#f0f0f5] data-[highlighted]:text-[#1d1d1f] dark:data-[highlighted]:bg-[#243754] dark:data-[highlighted]:text-white">
-                        {s.firstName} {s.lastName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-3">
+                <label className="block text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Select a staff member</label>
+                <div className="max-h-[320px] overflow-y-auto space-y-2 pr-1">
+                  {salesStaffList.map((s) => {
+                    const isSelected = selectedSalesStaff === s._id;
+                    const isAvailable = s.availabilityStatus === StaffAvailabilityStatus.AVAILABLE;
+                    const isBlocked = s.assignmentEligible === false;
+                    
+                    return (
+                      <button
+                        key={s._id}
+                        type="button"
+                        onClick={() => setSelectedSalesStaff(s._id)}
+                        className={cn(
+                          "w-full flex items-center gap-4 rounded-xl px-4 py-4 text-left transition-all duration-200 border relative group",
+                          isSelected
+                            ? "border-blue-500/50 bg-blue-500/10 ring-1 ring-blue-500/20 dark:border-blue-400/40 dark:bg-blue-500/10"
+                            : "border-transparent bg-[#f5f5f7] hover:bg-[#ebebed] dark:bg-white/[0.04] dark:hover:bg-white/[0.07]",
+                          isBlocked && !isSelected && "opacity-60"
+                        )}
+                      >
+                        {isBlocked && (
+                          <div className="absolute top-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-50 border border-rose-100 text-[10px] font-bold text-rose-600 uppercase dark:bg-rose-500/10 dark:border-rose-500/20 dark:text-rose-400">
+                            <AlertCircle className="h-3 w-3" />
+                            {s.assignmentBlockedReason || 'Ineligible'}
+                          </div>
+                        )}
+                        <div className={cn(
+                          "flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-colors",
+                          isSelected
+                            ? "bg-blue-600 text-white"
+                            : "bg-[#e5e5ea] text-[#6e6e73] dark:bg-white/10 dark:text-slate-400"
+                        )}>
+                          {s.firstName?.[0]}{s.lastName?.[0]}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-[#1d1d1f] dark:text-slate-100 text-[15px] truncate block">
+                              {s.firstName} {s.lastName}
+                            </span>
+                            <div className={cn(
+                              "h-1.5 w-1.5 rounded-full",
+                              isAvailable ? "bg-emerald-500" : "bg-slate-400"
+                            )} />
+                          </div>
+                          <div className="flex flex-col gap-0.5 mt-0.5">
+                            <span className="text-[11px] font-medium text-[#6e6e73] dark:text-slate-500 uppercase tracking-wider">
+                              {(s.availabilityStatus || 'setup_required').replace(/_/g, ' ')}
+                            </span>
+                            {s.activeShift && (
+                              <span className="text-[11px] text-[#8e8e93] dark:text-slate-400">
+                                {format(new Date(s.activeShift.shiftStartAt), 'h:mm a')} - {format(new Date(s.activeShift.shiftEndAt), 'h:mm a')}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <div className="h-6 w-6 rounded-full bg-blue-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                            <CheckCircle2 className="h-4 w-4 text-white shrink-0" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-[#6e6e73] dark:text-slate-500">
+                  Only eligible staff members can be assigned to this appointment.
+                </p>
               </div>
             )}
             <Button
               onClick={handleConfirm}
-              disabled={confirmMutation.isPending || !selectedSalesStaff}
-              className="h-10 w-full rounded-xl [background-image:none] bg-emerald-600 text-sm text-white hover:bg-emerald-700 disabled:opacity-100 dark:border dark:border-emerald-700/40 dark:[background-image:none] dark:bg-[#1f7a5b] dark:text-white dark:shadow-[0_12px_24px_rgba(16,97,71,0.24)] dark:hover:bg-[#248667] dark:hover:border-emerald-500/40 dark:disabled:border-white/10 dark:disabled:bg-[#1b2432] dark:disabled:text-slate-500 dark:disabled:shadow-none sm:w-auto"
+              disabled={
+                confirmMutation.isPending || 
+                !selectedSalesStaff || 
+                salesStaffList.find(s => s._id === selectedSalesStaff)?.assignmentEligible === false
+              }
+              className="h-10 w-full rounded-xl [background-image:none] bg-emerald-600 text-sm text-white hover:bg-emerald-700 disabled:opacity-50 dark:border dark:border-emerald-700/40 dark:[background-image:none] dark:bg-[#1f7a5b] dark:text-white dark:shadow-[0_12px_24px_rgba(16,97,71,0.24)] dark:hover:bg-[#248667] dark:hover:border-emerald-500/40 dark:disabled:border-white/10 dark:disabled:bg-[#1b2432] dark:disabled:text-slate-500 dark:disabled:shadow-none"
             >
-              Confirm & Assign
+              {confirmMutation.isPending ? 'Confirming...' : 'Confirm & Assign'}
             </Button>
           </CardContent>
         </Card>
@@ -1270,7 +1344,7 @@ export function AppointmentDetailPage() {
           );
         })()}
 
-        {(isAgent || isAdmin) &&
+        {isAdmin &&
           [AppointmentStatus.REQUESTED, AppointmentStatus.CONFIRMED, AppointmentStatus.PREPARING].includes(
             appt.status as AppointmentStatus,
           ) && (

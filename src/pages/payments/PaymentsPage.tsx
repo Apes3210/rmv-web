@@ -95,6 +95,7 @@ export function PaymentsPage() {
   const location = useLocation();
   const isCustomer = user?.roles.includes(Role.CUSTOMER);
   const isCashier = user?.roles.some((r: string) => [Role.CASHIER, Role.ADMIN].includes(r as Role));
+  const shouldHideAmount = user?.roles.some((r: string) => [Role.ADMIN, Role.APPOINTMENT_AGENT].includes(r as Role));
   const { data: unpaidOcularFees } = useUnpaidOcularFees();
   const actionableOcularFees = useMemo(
     () => (unpaidOcularFees ?? []).filter((appt) => (appt.ocularFee ?? 0) > 0),
@@ -787,7 +788,9 @@ export function PaymentsPage() {
                         </div>
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <p className="text-sm font-bold text-[var(--color-card-foreground)]">{formatCurrency(Number(stage.amount))}</p>
+                            <p className="text-sm font-bold text-[var(--color-card-foreground)]">
+                              {shouldHideAmount ? '***' : formatCurrency(Number(stage.amount))}
+                            </p>
                             <span className="text-xs text-[var(--text-metal-muted-color)]">{String(stage.percentage)}%</span>
                           </div>
                           {timingBadge}
@@ -904,7 +907,9 @@ export function PaymentsPage() {
                             </p>
                           )}
                         </div>
-                        <p className="text-sm font-bold text-[var(--color-card-foreground)] text-right">{formatCurrency(Number(stage.amount))}</p>
+                        <p className="text-sm font-bold text-[var(--color-card-foreground)] text-right">
+                          {shouldHideAmount ? '***' : formatCurrency(Number(stage.amount))}
+                        </p>
                         <div className="flex justify-center">
                           <StatusBadge status={String(stage.status)} />
                         </div>
@@ -1044,7 +1049,9 @@ export function PaymentsPage() {
                       <div className="sm:hidden">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-bold text-[var(--color-card-foreground)]">{formatCurrency(Number(p.amountPaid))}</p>
+                            <p className="text-sm font-bold text-[var(--color-card-foreground)]">
+                              {shouldHideAmount ? '***' : formatCurrency(Number(p.amountPaid))}
+                            </p>
                             <p className="text-xs text-[var(--text-metal-color)] capitalize mt-0.5">
                               {String(p.method || '').replace('_', ' ')}
                               {p.receiptNumber && ` · ${String(p.receiptNumber)}`}
@@ -1079,7 +1086,9 @@ export function PaymentsPage() {
                             <p className="text-xs text-red-500 mt-0.5">Declined: {String(p.declineReason)}</p>
                           )}
                         </div>
-                        <p className="text-sm font-bold text-[var(--color-card-foreground)] text-right">{formatCurrency(Number(p.amountPaid))}</p>
+                        <p className="text-sm font-bold text-[var(--color-card-foreground)] text-right">
+                          {shouldHideAmount ? '***' : formatCurrency(Number(p.amountPaid))}
+                        </p>
                         <div className="flex justify-center">
                           <StatusBadge status={String(p.status)} />
                         </div>

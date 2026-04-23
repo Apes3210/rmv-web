@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { ApiResponse, User } from '@/lib/types';
+import type { ApiResponse, SalesStaffLookupUser, User } from '@/lib/types';
+import type { StaffAvailabilityStatus } from '@/lib/constants';
 import { useAuthStore } from '@/stores/auth.store';
 import toast from 'react-hot-toast';
 import { extractErrorMessage, extractItems } from '@/lib/utils';
@@ -57,6 +58,8 @@ export function useUpdateUser() {
       roles?: string[];
       password?: string;
       expiresAt?: string | null;
+      availabilityStatus?: StaffAvailabilityStatus;
+      availabilityNote?: string | null;
     }) => {
       const { data } = await api.patch<ApiResponse<User>>(`/users/admin/users/${id}`, body);
       return data.data;
@@ -129,6 +132,7 @@ interface UpdateProfilePayload {
     province?: string;
     zip?: string;
     country?: string;
+    addressType?: 'personal' | 'business';
     lat?: number;
     lng?: number;
     formattedAddress?: string;
@@ -158,6 +162,63 @@ export function useUpdateProfile() {
       toast.error(extractErrorMessage(err, 'Failed to update profile'));
     },
   });
+}
+
+interface UpdateOwnAvailabilityPayload {
+  availabilityStatus: StaffAvailabilityStatus;
+  availabilityNote?: string | null;
+  shiftStartAt?: string | null;
+  shiftEndAt?: string | null;
+}
+
+export function useUpdateOwnAvailability() {
+  const qc = useQueryClient();
+  const { fetchMe } = useAuthStore();
+
+  return useMutation({
+    mutationFn: async (payload: UpdateOwnAvailabilityPayload) => {
+      const { data } = await api.patch<ApiResponse<User>>('/users/profile/availability', payload);
+      return data.data;
+    },
+    onSuccess: async () => {
+      qc.invalidateQueries({ queryKey: KEYS.all });
+      await fetchMe();
+    },
+    onError: (err) => {
+      toast.error(extractErrorMessage(err, 'Failed to update availability'));
+    },
+  });
+}
+
+export function useCloseOwnAvailability() {
+  const qc = useQueryClient();
+  const { fetchMe } = useAuthStore();
+
+  return useMutation({
+    mutationFn: async () => {
+      const { data } = await api.post<ApiResponse<User>>('/users/profile/availability/close');
+      return data.data;
+    },
+    onSuccess: async () => {
+      qc.invalidateQueries({ queryKey: KEYS.all });
+      await fetchMe();
+    },
+    onError: (err) => {
+      toast.error(extractErrorMessage(err, 'Failed to close availability'));
+    },
+  });
+}
+
+export async function fetchSalesStaffLookup(params?: {
+  date?: string;
+  slotCode?: string;
+  appointmentId?: string;
+  search?: string;
+}) {
+  const { data } = await api.get<ApiResponse<SalesStaffLookupUser[]>>('/users/sales-staff', {
+    params,
+  });
+  return extractItems<SalesStaffLookupUser>(data.data);
 }
 
 // ── E-Signature ──

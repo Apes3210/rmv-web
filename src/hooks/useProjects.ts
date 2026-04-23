@@ -127,6 +127,31 @@ export function useAssignEngineers() {
   });
 }
 
+export function useReassignProjectSales() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      salesStaffId,
+      reason,
+    }: {
+      id: string;
+      salesStaffId: string;
+      reason?: string;
+    }) => {
+      const { data } = await api.post<ApiResponse<Project>>(`/projects/${id}/reassign-sales`, {
+        salesStaffId,
+        reason,
+      });
+      return data.data;
+    },
+    onSuccess: (project) => {
+      syncProjectCaches(qc, project);
+      qc.invalidateQueries({ queryKey: KEYS.all });
+    },
+  });
+}
+
 export function useAssignFabrication() {
   const qc = useQueryClient();
   return useMutation({

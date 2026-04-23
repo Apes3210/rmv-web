@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Calendar, FileText, ChevronRight, MapPin } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -17,16 +17,18 @@ import { CollectionToolbar } from '@/components/shared/CollectionToolbar';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { PageError } from '@/components/shared/PageError';
 import { StatusBadge } from '@/components/shared/StatusBadge';
-import { useAppointments } from '@/hooks/useAppointments';
+import { useAppointmentQueue, useAppointments } from '@/hooks/useAppointments';
+import type { Appointment } from '@/lib/types';
 import { useAuthStore } from '@/stores/auth.store';
 import { useThemeStore } from '@/stores/theme.store';
-import { Role, AppointmentStatus } from '@/lib/constants';
+import { Role, AppointmentStatus, APPOINTMENT_TYPE_LABELS } from '@/lib/constants';
 
 const STATUS_FILTERS = [
   { label: 'All', value: '' },
   { label: 'Requested', value: AppointmentStatus.REQUESTED },
   { label: 'Reschedule', value: AppointmentStatus.RESCHEDULE_REQUESTED },
   { label: 'Confirmed', value: AppointmentStatus.CONFIRMED },
+  { label: 'Ready for Ocular', value: AppointmentStatus.READY_FOR_OCULAR },
   { label: 'Completed', value: AppointmentStatus.COMPLETED },
   { label: 'Cancelled', value: AppointmentStatus.CANCELLED },
 ];
@@ -42,10 +44,10 @@ const statusConfig: Record<string, { label: string; dot: string; badge: string }
     dot: 'bg-[#708ca6]',
     badge: 'border-[#8da4b8] text-[#4f6679] bg-[linear-gradient(180deg,#eef4f9_0%,#d8e4ee_100%)]',
   },
-  ready_for_ocular: {
+  [AppointmentStatus.READY_FOR_OCULAR]: {
     label: 'Ready for Ocular',
-    dot: 'bg-[#8277a3]',
-    badge: 'border-[#afa7c5] text-[#665d82] bg-[linear-gradient(180deg,#f2f1f8_0%,#e0dced_100%)]',
+    dot: 'bg-[#0f766e]',
+    badge: 'border-[#14b8a6] text-[#0f766e] bg-[linear-gradient(180deg,#f0fdfa_0%,#ccfbf1_100%)]',
   },
   completed: {
     label: 'Completed',
@@ -79,9 +81,18 @@ export function AppointmentsPage() {
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [statusFilter, setStatusFilter] = useState(searchParams.get('status') || '');
+  const [statusFilter, setStatusFilter] = useState<string | null>(searchParams.get('status'));
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const isDark = resolvedTheme === 'dark';
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [search]);
 
   const formatSlotTime = (slot: string) => {
     const parts = slot.split(':').map(Number);
@@ -93,27 +104,118 @@ export function AppointmentsPage() {
   };
 
   const params: Record<string, string> = {};
-  if (statusFilter) params.status = statusFilter;
-  if (search) params.search = search;
+  if (statusFilter !== null) params.status = statusFilter;
+  if (debouncedSearch) params.search = debouncedSearch;
 
-  const { data, isLoading, isError, refetch } = useAppointments(params);
+  const isQueueRole = Boolean(
+    user?.roles.some((role) => [Role.APPOINTMENT_AGENT, Role.ADMIN, Role.SALES_STAFF].includes(role)),
+  );
+
+  const listQuery = useAppointments(params, !isQueueRole);
+  const queueQuery = useAppointmentQueue(params, isQueueRole);
+
+  const activeQuery = isQueueRole ? queueQuery : listQuery;
+  const { isLoading, isError, refetch } = activeQuery;
+
+  const queueItems = queueQuery.data?.items || [];
+  const appointments: Appointment[] = isQueueRole
+    ? queueItems.map((item) => item.appointment)
+    : (listQuery.data?.items || []);
+
+  const recentWindowDays = queueQuery.data?.recentWindowDays || 14;
+  
+  let sections: Array<{ key: string; label: string; items: Appointment[] }> = [];
+
+  if (isQueueRole) {
+    sections = [
+      {
+        key: 'upcoming',
+        label: 'Upcoming and Actionable',
+        items: queueItems.filter((item) => item.segment === 'upcoming').map((item) => item.appointment),
+      },
+      {
+        key: 'recent',
+        label: (statusFilter !== null || search) ? 'Recent and History' : `Recent (${recentWindowDays} days)`,
+        items: queueItems.filter((item) => item.segment === 'recent').map((item) => item.appointment),
+      },
+    ].filter((section) => section.items.length > 0);
+  } else {
+    const upcomingItems = appointments.filter(a => !['completed', 'cancelled', 'no_show'].includes(a.status));
+    const recentItems = appointments.filter(a => ['completed', 'cancelled', 'no_show'].includes(a.status));
+
+    sections = [
+      {
+        key: 'upcoming',
+        label: 'Upcoming and Actionable',
+        items: upcomingItems,
+      },
+      {
+        key: 'recent',
+        label: (statusFilter !== null || search) ? 'Recent and History' : 'Recent and History',
+        items: recentItems,
+      },
+    ].filter((section) => section.items.length > 0);
+  }
+
+  const queueMetaByAppointmentId = new Map(
+    queueItems.map((item) => [
+      item.appointment._id,
+      {
+        actions: item.actions,
+        sampleProjects: item.sampleProjects,
+      },
+    ]),
+  );
+
   const isCustomer = user?.roles.includes(Role.CUSTOMER) && user.roles.length === 1;
+  const isSalesOnly = Boolean(
+    user?.roles.includes(Role.SALES_STAFF)
+    && !user.roles.some((role) => [Role.ADMIN, Role.APPOINTMENT_AGENT].includes(role)),
+  );
+  const trimmedSearch = search.trim();
 
   if (isError) return <PageError onRetry={refetch} />;
 
-  const appointments = data?.items || [];
   const customerCtaClassName = isDark
     ? 'border border-white/35 bg-[linear-gradient(180deg,rgba(248,250,252,0.99)_0%,rgba(225,232,240,0.97)_100%)] text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.94),0_18px_34px_rgba(0,0,0,0.34)] hover:bg-[linear-gradient(180deg,rgba(255,255,255,1)_0%,rgba(233,239,245,1)_100%)] hover:text-slate-950'
     : '';
 
-  const getStatusKey = (appt: (typeof appointments)[0]) => {
-      const awaitingPayment =
-        appt.type === 'ocular' && appt.ocularFeeStatus === 'pending' && !appt.ocularFeePaid;
+  const isDerivedReadyForOcular = (appt: Appointment) =>
+    appt.type === 'office'
+    && appt.status === AppointmentStatus.COMPLETED
+    && appt.consultationReportSubmitted;
+
+  const getStatusKey = (appt: Appointment) => {
+    const awaitingPayment =
+      appt.type === 'ocular' && appt.ocularFeeStatus === 'pending' && !appt.ocularFeePaid;
     if (awaitingPayment) return 'awaiting_payment';
-    if (appt.type === 'office' && appt.status === 'completed' && appt.consultationReportSubmitted)
+    if (appt.status === AppointmentStatus.READY_FOR_OCULAR) {
+      return AppointmentStatus.READY_FOR_OCULAR;
+    }
+    if (
+      statusFilter !== AppointmentStatus.COMPLETED
+      && isDerivedReadyForOcular(appt)
+    ) {
       return 'ready_for_ocular';
+    }
     return appt.status;
   };
+
+  const searchPlaceholder = isCustomer
+    ? 'Search service, location, date, or notes'
+    : isSalesOnly
+      ? 'Search assigned customers, project no., service, address'
+      : 'Search customers, project no., service, address';
+
+  const emptyDescription = trimmedSearch
+    ? isQueueRole
+      ? `No queue items match "${trimmedSearch}" with the current status filters.`
+      : `No appointments match "${trimmedSearch}" with the current status filters.`
+    : isCustomer
+      ? 'Book your first appointment to get started with your project.'
+      : isQueueRole
+        ? 'No queue items match your current search or status filters.'
+        : 'No appointments match your current search or status filters.';
 
   return (
     <div className="space-y-5">
@@ -131,7 +233,9 @@ export function AppointmentsPage() {
           <p className="mt-1 text-sm text-[#616a74] dark:text-slate-400">
             {isCustomer
               ? 'Schedule and manage your site visits.'
-              : 'Manage customer booking requests.'}
+              : isQueueRole
+                ? 'Manage the appointment queue with upcoming work first and recent outcomes second.'
+                : 'Manage customer booking requests.'}
           </p>
         </div>
         {isCustomer && (
@@ -148,11 +252,11 @@ export function AppointmentsPage() {
       <CollectionToolbar
         title="Find the right appointment fast"
         description="Search customers, then narrow the list by lifecycle stage."
-        searchPlaceholder="Search bookings"
+        searchPlaceholder={searchPlaceholder}
         searchValue={search}
         onSearchChange={setSearch}
         filters={STATUS_FILTERS}
-        activeFilter={statusFilter}
+        activeFilter={statusFilter ?? ''}
         onFilterChange={setStatusFilter}
       />
 
@@ -196,9 +300,7 @@ export function AppointmentsPage() {
         <EmptyState
           icon={<Calendar className="h-6 w-6" />}
           title="No appointments found"
-          description={isCustomer
-            ? 'Book your first appointment to get started with your project.'
-            : 'No appointments match your current search or status filters.'}
+          description={emptyDescription}
           action={isCustomer ? (
             <Button asChild variant="prominent" className={customerCtaClassName}>
               <Link to="/appointments/book">
@@ -211,70 +313,91 @@ export function AppointmentsPage() {
         <>
           {/* ── Mobile list (< md) ── */}
           <div className="md:hidden space-y-2">
-            {appointments.map((appt) => {
-              const statusKey = getStatusKey(appt);
-              const config = statusConfig[statusKey] ?? statusConfig.requested!;
-
-              return (
-                <Link
-                  key={appt._id}
-                  to={`/appointments/${appt._id}`}
-                  className="group block"
-                >
-                  <div className="metal-panel rounded-[1.35rem] px-4 py-3.5 transition-colors active:bg-white/60">
-                    {/* Row 1: Status dot + Name + Badge + Chevron */}
-                    <div className="flex items-center justify-between gap-2 min-w-0">
-                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <div className={`h-2 w-2 rounded-full flex-shrink-0 ${config.dot}`} />
-                        <p className="truncate text-[15px] font-medium text-[#171b21] dark:text-slate-100">
-                          {appt.customerName || 'Appointment'}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <StatusBadge status={statusKey} label={config.label} className="h-5 px-1.5 py-0 text-[10px]" />
-                        <ChevronRight className="h-4 w-4 text-[#c8c8cd] dark:text-slate-500" />
-                      </div>
-                    </div>
-
-                    {/* Row 2: Meta — type · date · time */}
-                    <div className="mt-2 ml-[18px] flex items-center gap-1.5 text-xs text-[#68727d] dark:text-slate-400">
-                      <span className="capitalize">{appt.type}</span>
-                      <span className="text-[#b8c0c9] dark:text-slate-500">·</span>
-                      <span>
-                        {appt.date ? format(new Date(appt.date), 'MMM d, yyyy') : '—'}
-                      </span>
-                      <span className="text-[#b8c0c9] dark:text-slate-500">·</span>
-                      <span className="font-medium text-[#434c56] dark:text-slate-300">
-                        {formatSlotTime(appt.slotCode)}
-                      </span>
-                    </div>
-
-                    {/* Row 3 (optional): Site details badge */}
-                    {appt.siteDetailsStatus === 'pending' && appt.status === 'requested' && (
-                      <div className="ml-[18px] mt-1.5">
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#4f6679]">
-                          <FileText className="h-3 w-3" />
-                          {appt.type === 'office' ? 'Site Details Required' : 'Site Details Optional'}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Row 4 (optional): Location */}
-                    {(appt.addressStructured?.city || appt.address) ? (
-                      <div className="ml-[18px] mt-1.5 flex items-center gap-1.5 text-[11px] text-[#68727d] dark:text-slate-400">
-                        <MapPin className="h-3 w-3 flex-shrink-0" />
-                        <span className="truncate">{appt.addressStructured?.city || appt.address}</span>
-                      </div>
-                    ) : (
-                      <div className="ml-[18px] mt-1.5 flex items-center gap-1.5 text-[11px] text-[#9fa8b3] dark:text-slate-500">
-                        <MapPin className="h-3 w-3 flex-shrink-0" />
-                        <span>Address not provided</span>
-                      </div>
-                    )}
+            {sections.map((section) => (
+              <div key={section.key} className="space-y-2">
+                <Fragment>
+                  <div className="px-1 py-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[#6d7782] dark:text-slate-400">
+                      {section.label}
+                    </p>
                   </div>
-                </Link>
-              );
-            })}
+                </Fragment>
+                {section.items.map((appt) => {
+                  const statusKey = getStatusKey(appt);
+                  const config = statusConfig[statusKey] ?? statusConfig.requested!;
+                  const queueMeta = queueMetaByAppointmentId.get(appt._id);
+
+                  return (
+                    <Link
+                      key={appt._id}
+                      to={`/appointments/${appt._id}`}
+                      className="group block"
+                    >
+                      <div className="metal-panel rounded-[1.35rem] px-4 py-3.5 transition-colors active:bg-white/60">
+                        {/* Row 1: Status dot + Name + Badge + Chevron */}
+                        <div className="flex items-center justify-between gap-2 min-w-0">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            <div className={`h-2 w-2 rounded-full flex-shrink-0 ${config.dot}`} />
+                            <p className="truncate text-[15px] font-medium text-[#171b21] dark:text-slate-100">
+                              {appt.customerName || 'Appointment'}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <StatusBadge status={statusKey} label={config.label} className="h-5 px-1.5 py-0 text-[10px]" />
+                            <ChevronRight className="h-4 w-4 text-[#c8c8cd] dark:text-slate-500" />
+                          </div>
+                        </div>
+
+                        {/* Row 2: Meta — type · date · time */}
+                        <div className="mt-2 ml-[18px] flex items-center gap-1.5 text-xs text-[#68727d] dark:text-slate-400">
+                          <span className="capitalize">{APPOINTMENT_TYPE_LABELS[appt.type] || appt.type}</span>
+                          <span className="text-[#b8c0c9] dark:text-slate-500">·</span>
+                          <span>
+                            {appt.date ? format(new Date(appt.date), 'MMM d, yyyy') : '—'}
+                          </span>
+                          <span className="text-[#b8c0c9] dark:text-slate-500">·</span>
+                          <span className="font-medium text-[#434c56] dark:text-slate-300">
+                            {formatSlotTime(appt.slotCode)}
+                          </span>
+                        </div>
+                        <div className="mt-1 ml-[18px] text-[10px] text-[#8b95a0] dark:text-slate-500">
+                          Last updated {formatDistanceToNow(new Date(appt.updatedAt), { addSuffix: true })}
+                        </div>
+
+                        {/* Row 3 (optional): Site details badge */}
+                        {appt.siteDetailsStatus === 'pending' && appt.status === 'requested' && (
+                          <div className="ml-[18px] mt-1.5">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#4f6679]">
+                              <FileText className="h-3 w-3" />
+                              {appt.type === 'office' ? 'Consultation Details Required' : 'Site Details Optional'}
+                            </span>
+                          </div>
+                        )}
+
+                        {isQueueRole && queueMeta?.sampleProjects?.[0] && (
+                          <div className="ml-[18px] mt-1.5 text-[11px] text-[#5c6672] dark:text-slate-400">
+                            Sample project: {queueMeta.sampleProjects[0].title}
+                          </div>
+                        )}
+
+                        {/* Row 4 (optional): Location */}
+                        {(appt.addressStructured?.city || appt.address) ? (
+                          <div className="ml-[18px] mt-1.5 flex items-center gap-1.5 text-[11px] text-[#68727d] dark:text-slate-400">
+                            <MapPin className="h-3 w-3 flex-shrink-0" />
+                            <span className="truncate">{appt.addressStructured?.city || appt.address}</span>
+                          </div>
+                        ) : (
+                          <div className="ml-[18px] mt-1.5 flex items-center gap-1.5 text-[11px] text-[#9fa8b3] dark:text-slate-500">
+                            <MapPin className="h-3 w-3 flex-shrink-0" />
+                            <span>Address not provided</span>
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
             <div className="px-1 pt-1">
               <p className="text-[11px] text-[#68727d] dark:text-slate-400">
                 {appointments.length} appointment{appointments.length !== 1 ? 's' : ''}
@@ -296,80 +419,155 @@ export function AppointmentsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {appointments.map((appt) => {
-                  const statusKey = getStatusKey(appt);
-                  const config = statusConfig[statusKey] ?? statusConfig.requested!;
+                {sections.map((section) => (
+                  <Fragment key={section.key}>
+                    <Fragment>
+                      <TableRow key={`${section.key}-heading`} className="hover:bg-transparent">
+                        <TableCell colSpan={6} className="px-5 py-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wider text-[#6d7782] dark:text-slate-400">
+                            {section.label}
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    </Fragment>
+                    {section.items.map((appt) => {
+                      const statusKey = getStatusKey(appt);
+                      const config = statusConfig[statusKey] ?? statusConfig.requested!;
+                      const queueMeta = queueMetaByAppointmentId.get(appt._id);
+                      const queueActions = [
+                        queueMeta?.actions.reviewReportPath
+                          ? { label: 'Review Report', path: queueMeta.actions.reviewReportPath }
+                          : null,
+                        queueMeta?.actions.projectPath
+                          ? { label: 'Open Project', path: queueMeta.actions.projectPath }
+                          : null,
+                        queueMeta?.actions.createProjectPath
+                          ? { label: appt.type === 'ocular' ? 'Submit Visit Report' : 'Add Specification', path: queueMeta.actions.createProjectPath }
+                          : null,
+                      ].filter((action): action is { label: string; path: string } => Boolean(action));
 
-                  return (
-                    <TableRow
-                      key={appt._id}
-                      onClick={() => navigate(`/appointments/${appt._id}`)}
-                      className="group cursor-pointer border-b border-[#e1e6ec] transition-colors hover:bg-white/45 dark:border-slate-700 dark:hover:bg-slate-800/50"
-                    >
-                      {/* Customer */}
-                      <TableCell className="pl-5 py-5">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${config.dot}`} />
-                          <div className="min-w-0">
-                            <p className="truncate text-[15px] font-medium text-[#171b21] dark:text-slate-100 transition-colors group-hover:text-[#4f6679] dark:group-hover:text-sky-300">
-                              {appt.customerName || 'Appointment'}
-                            </p>
-                            {appt.siteDetailsStatus === 'pending' && appt.status === 'requested' && (
-                              <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-[#4f6679]">
-                                <FileText className="h-3 w-3" />
-                                {appt.type === 'office' ? 'Site Details Required' : 'Site Details Optional'}
-                              </span>
+                      return (
+                        <TableRow
+                          key={appt._id}
+                          onClick={() => navigate(`/appointments/${appt._id}`)}
+                          className="group cursor-pointer border-b border-[#e1e6ec] transition-colors hover:bg-white/45 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                        >
+                          {/* Customer */}
+                          <TableCell className="pl-5 py-5">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${config.dot}`} />
+                              <div className="min-w-0">
+                                <p className="truncate text-[15px] font-medium text-[#171b21] dark:text-slate-100 transition-colors group-hover:text-[#4f6679] dark:group-hover:text-sky-300">
+                                  {appt.customerName || 'Appointment'}
+                                  {appt.projectNumber && (
+                                    <span className="ml-2 text-[10px] font-bold text-[#68727d] dark:text-slate-400 bg-[#f1f3f5] dark:bg-slate-800 px-1.5 py-0.5 rounded border border-[#d1d5db] dark:border-slate-700">
+                                      {appt.projectNumber}
+                                    </span>
+                                  )}
+                                </p>
+                                {appt.siteDetailsStatus === 'pending' && appt.status === 'requested' && (
+                                  <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-[#4f6679]">
+                                    <FileText className="h-3 w-3" />
+                                    {appt.type === 'office' ? 'Consultation Details Required' : 'Site Details Optional'}
+                                  </span>
+                                )}
+                                {isQueueRole && queueMeta?.sampleProjects?.[0] && (
+                                  <p className="mt-1 text-[11px] text-[#5f6872] dark:text-slate-400 truncate">
+                                    Sample project: {queueMeta.sampleProjects[0].title}
+                                  </p>
+                                )}
+                                {isQueueRole && typeof appt.salesStaffId === 'object' && appt.salesStaffId && (
+                                  <div className="mt-2 flex items-center gap-2">
+                                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold
+                                      ${appt.salesStaffId.availabilityStatus === 'available'
+                                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+                                        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                                      {appt.salesStaffId.availabilityStatus === 'available' ? (
+                                        <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                      ) : (
+                                        <div className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                      )}
+                                      {appt.salesStaffName || `${appt.salesStaffId.firstName} ${appt.salesStaffId.lastName}`}
+                                      {appt.salesStaffId.availabilityNote && (
+                                        <span className="ml-1 text-[9px] font-normal opacity-80 italic">
+                                          ({appt.salesStaffId.availabilityNote})
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                )}
+                                {isQueueRole && queueActions.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {queueActions.map((action) => (
+                                      <button
+                                        key={action.path}
+                                        type="button"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          navigate(action.path);
+                                        }}
+                                        className="rounded-full border border-[#d0d7df] bg-white/75 px-2 py-0.5 text-[10px] font-semibold text-[#4f6679] transition-colors hover:bg-white dark:border-slate-600 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:bg-slate-700"
+                                      >
+                                        {action.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+
+                          {/* Type */}
+                          <TableCell className="py-5">
+                            <span className="inline-flex items-center text-sm font-medium capitalize text-[#616a74] dark:text-slate-400">
+                              {APPOINTMENT_TYPE_LABELS[appt.type] || appt.type}
+                            </span>
+                          </TableCell>
+
+                          {/* Date & Time */}
+                          <TableCell className="py-5">
+                            <div>
+                              <p className="text-sm text-[#1d1d1f] dark:text-slate-100 font-medium">
+                                {appt.date ? format(new Date(appt.date), 'MMM d, yyyy') : '—'}
+                              </p>
+                              <p className="mt-0.5 text-xs text-[#68727d] dark:text-slate-400">
+                                {formatSlotTime(appt.slotCode)}
+                              </p>
+                              <p className="mt-1 text-[10px] font-medium text-[#8b95a0] dark:text-slate-500 italic">
+                                Updated {format(new Date(appt.updatedAt), 'MMM d, h:mm a')} ({formatDistanceToNow(new Date(appt.updatedAt), { addSuffix: true })})
+                              </p>
+                            </div>
+                          </TableCell>
+
+                          {/* Location — hidden below lg */}
+                          <TableCell className="py-5 hidden lg:table-cell">
+                            {appt.addressStructured?.city || appt.address ? (
+                              <div className="flex max-w-[200px] items-center gap-1.5 text-xs text-[#616a74] dark:text-slate-400">
+                                <MapPin className="h-3 w-3 flex-shrink-0 text-[#8b95a0] dark:text-slate-500" />
+                                <span className="truncate">{appt.addressStructured?.city || appt.address}</span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-[#9fa8b3] dark:text-slate-500">Address not provided</span>
                             )}
-                          </div>
-                        </div>
-                      </TableCell>
+                          </TableCell>
 
-                      {/* Type */}
-                      <TableCell className="py-5">
-                        <span className="inline-flex items-center text-sm font-medium capitalize text-[#616a74] dark:text-slate-400">
-                          {appt.type}
-                        </span>
-                      </TableCell>
+                          {/* Status */}
+                          <TableCell className="py-5">
+                            <StatusBadge status={statusKey} label={config.label} className="text-[11px]" />
+                          </TableCell>
 
-                      {/* Date & Time */}
-                      <TableCell className="py-5">
-                        <div>
-                          <p className="text-sm text-[#1d1d1f] dark:text-slate-100 font-medium">
-                            {appt.date ? format(new Date(appt.date), 'MMM d, yyyy') : '—'}
-                          </p>
-                          <p className="mt-0.5 text-xs text-[#68727d] dark:text-slate-400">
-                            {formatSlotTime(appt.slotCode)}
-                          </p>
-                        </div>
-                      </TableCell>
-
-                      {/* Location — hidden below lg */}
-                      <TableCell className="py-5 hidden lg:table-cell">
-                        {appt.addressStructured?.city || appt.address ? (
-                          <div className="flex max-w-[200px] items-center gap-1.5 text-xs text-[#616a74] dark:text-slate-400">
-                            <MapPin className="h-3 w-3 flex-shrink-0 text-[#8b95a0] dark:text-slate-500" />
-                            <span className="truncate">{appt.addressStructured?.city || appt.address}</span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-[#9fa8b3] dark:text-slate-500">Address not provided</span>
-                        )}
-                      </TableCell>
-
-                      {/* Status */}
-                      <TableCell className="py-5">
-                        <StatusBadge status={statusKey} label={config.label} className="text-[11px]" />
-                      </TableCell>
-
-                      {/* Arrow */}
-                      <TableCell className="py-5 pr-5 text-right">
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#4d5660] dark:text-slate-400 group-hover:text-[#171b21] dark:group-hover:text-slate-200">
-                          Open
-                          <ChevronRight className="h-4 w-4 text-[#9ca6b1] dark:text-slate-500 transition-colors group-hover:text-[#68727d] dark:group-hover:text-slate-300" />
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                          {/* Arrow */}
+                          <TableCell className="py-5 pr-5 text-right">
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#4d5660] dark:text-slate-400 group-hover:text-[#171b21] dark:group-hover:text-slate-200">
+                              Open
+                              <ChevronRight className="h-4 w-4 text-[#9ca6b1] dark:text-slate-500 transition-colors group-hover:text-[#68727d] dark:group-hover:text-slate-300" />
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </Fragment>
+                ))}
               </TableBody>
             </Table>
             <div className="border-t border-[#dde3ea] bg-white/25 px-5 py-3 dark:border-slate-700 dark:bg-slate-900/35">
