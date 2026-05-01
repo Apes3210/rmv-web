@@ -92,6 +92,21 @@ export function FileUpload({
   const inputId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const getUploadUrl = useGetUploadUrl();
+  const existingKeysSignature = existingKeys.join('\u001f');
+
+  useEffect(() => {
+    setFiles((prev) => {
+      const uploadingFiles = prev.filter((file) => file.isUploading);
+      return [
+        ...existingKeys.map((key) => ({
+          fileKey: key,
+          fileName: displayName(key),
+          isUploading: false,
+        })),
+        ...uploadingFiles,
+      ];
+    });
+  }, [existingKeysSignature]);
 
   // Notify parent whenever uploading state changes
   useEffect(() => {

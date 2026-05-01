@@ -72,6 +72,12 @@ function updatedLabel(value: string): string {
   return `Updated ${format(date, 'MMM d, h:mm a')} (${formatDistanceToNow(date, { addSuffix: true })})`;
 }
 
+function updatedRelativeLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Last updated recently';
+  return `Last updated ${formatDistanceToNow(date, { addSuffix: true })}`;
+}
+
 /** Group structure for one appointment's worth of reports. */
 interface AppointmentGroup {
   appointmentId: string;
@@ -310,7 +316,7 @@ export function VisitReportsListPage({ isEmbedded }: { isEmbedded?: boolean } = 
                       <span>{projectCount} item{projectCount !== 1 ? 's' : ''}</span>
                     </div>
                     <p className="mt-1 ml-[18px] text-[10px] font-medium italic text-[#8b95a0] dark:text-slate-500">
-                      {updatedLabel(group.latestUpdate)}
+                      {updatedRelativeLabel(group.latestUpdate)}
                     </p>
 
                     {/* Row 3: Service type chips */}
@@ -346,6 +352,7 @@ export function VisitReportsListPage({ isEmbedded }: { isEmbedded?: boolean } = 
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-[#86868b]">Visit Type</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-[#86868b]">Items</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-[#86868b] hidden lg:table-cell">Services</TableHead>
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-[#86868b] hidden lg:table-cell">Updated</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-[#86868b]">Status</TableHead>
                   <TableHead className="text-xs font-semibold uppercase tracking-wider text-[#86868b] w-10 pr-5"><span className="sr-only">View</span></TableHead>
                 </TableRow>
@@ -354,7 +361,7 @@ export function VisitReportsListPage({ isEmbedded }: { isEmbedded?: boolean } = 
                 {sections.map((section) => (
                   <Fragment key={section.key}>
                     <TableRow key={`${section.key}-heading`} className="border-b border-[#e8e8ed] bg-[#f8fafc]/60 hover:bg-[#f8fafc]/60 dark:border-slate-700 dark:bg-slate-900/40 dark:hover:bg-slate-900/40">
-                      <TableCell colSpan={6} className="px-5 py-3">
+                      <TableCell colSpan={7} className="px-5 py-3">
                         <span className="text-xs font-bold uppercase tracking-wider text-[#8da4b8] dark:text-slate-400">
                           {section.label}
                         </span>
@@ -380,9 +387,6 @@ export function VisitReportsListPage({ isEmbedded }: { isEmbedded?: boolean } = 
                           <div className="min-w-0">
                             <p className="font-medium text-[#1d1d1f] dark:text-slate-100 text-[15px] truncate group-hover:text-[#0066cc] dark:group-hover:text-sky-300 transition-colors">
                               {custName}
-                            </p>
-                            <p className="mt-1 text-[10px] font-medium italic text-[#8b95a0] dark:text-slate-500">
-                              {updatedLabel(group.latestUpdate)}
                             </p>
                           </div>
                         </div>
@@ -418,6 +422,13 @@ export function VisitReportsListPage({ isEmbedded }: { isEmbedded?: boolean } = 
                             </span>
                           ))}
                         </div>
+                      </TableCell>
+
+                      {/* Updated — hidden below lg */}
+                      <TableCell className="py-5 hidden lg:table-cell">
+                        <p className="text-[10px] font-medium italic text-[#8b95a0] dark:text-slate-500">
+                          {updatedLabel(group.latestUpdate)}
+                        </p>
                       </TableCell>
 
                       {/* Status */}

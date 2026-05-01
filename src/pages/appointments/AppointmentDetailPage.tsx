@@ -23,13 +23,14 @@ import {
   useConfirmAppointment,
   useCancelAppointment,
   useUpdateVisitStatus,
+  useUpdateConsultationAttendance,
   useAgentFinalizeOcular,
   useCustomerSubmitLocation,
 } from '@/hooks/useAppointments';
 import { useVisitReportsByAppointment } from '@/hooks/useVisitReports';
 
 import { useAuthStore } from '@/stores/auth.store';
-import { Role, AppointmentStatus, StaffAvailabilityStatus } from '@/lib/constants';
+import { Role, AppointmentStatus, AppointmentAttendanceStatus, StaffAvailabilityStatus } from '@/lib/constants';
 import { SERVICE_TYPE_LABELS } from '@/lib/constants';
 import { Suspense, lazy, useState, useEffect } from 'react';
 import { api } from '@/lib/api';
@@ -58,6 +59,7 @@ export function AppointmentDetailPage() {
   const confirmMutation = useConfirmAppointment();
   const cancelMutation = useCancelAppointment();
   const visitStatusMutation = useUpdateVisitStatus();
+  const attendanceMutation = useUpdateConsultationAttendance();
 
   const finalizeMutation = useAgentFinalizeOcular();
   const submitLocationMutation = useCustomerSubmitLocation();
@@ -179,6 +181,28 @@ export function AppointmentDetailPage() {
   if (isLoading) return <PageLoader />;
   if (isError || !appt) return <PageError onRetry={refetch} />;
 
+  const isOcularAppointment = appt.type === 'ocular';
+  const isReadyForOcularConsultation =
+    appt.type === 'office'
+    && (
+      appt.status === AppointmentStatus.READY_FOR_OCULAR
+      || (appt.status === AppointmentStatus.COMPLETED && appt.consultationReportSubmitted)
+    );
+  const hasCustomerSiteLocation = Boolean(appt.customerLocation);
+  const canCustomerSubmitOcularLocation = Boolean(
+    isCustomer
+    && !hasCustomerSiteLocation
+    && (
+      (
+        isOcularAppointment
+        && [AppointmentStatus.REQUESTED, AppointmentStatus.CONFIRMED].includes(appt.status as AppointmentStatus)
+      )
+      || isReadyForOcularConsultation
+    ),
+  );
+  const canStartOcularProgress = !isOcularAppointment || hasCustomerSiteLocation;
+  const customerSiteLocationRequiredMessage = 'Customer site location is required before starting the ocular visit.';
+
   const customerCanManageAppointment =
     isCustomer &&
     [AppointmentStatus.REQUESTED, AppointmentStatus.CONFIRMED, AppointmentStatus.PREPARING].includes(
@@ -199,7 +223,9 @@ export function AppointmentDetailPage() {
     try {
       await confirmMutation.mutateAsync({ id: id!, salesStaffId: selectedSalesStaff });
       toast.success(
-        'Appointment confirmed! The assigned sales staff has been notified and can proceed with the scheduled visit flow.',
+        isOcularAppointment
+          ? 'Appointment confirmed! The assigned sales staff has been notified and can proceed with the scheduled visit flow.'
+          : 'Consultation confirmed! The assigned sales staff has been notified and can prepare for the office consultation.',
         { duration: 5000 },
       );
     } catch (err) {
@@ -229,6 +255,70 @@ export function AppointmentDetailPage() {
     const suffix = h >= 12 ? 'PM' : 'AM';
     const hour12 = h % 12 || 12;
     return `${hour12}:${String(m).padStart(2, '0')} ${suffix}`;
+  };
+
+  const formatConsultationWindow = (slot: string) => {
+    const parts = slot.split(':').map(Number);
+    const startHour = parts[0] ?? 0;
+    const startMinute = parts[1] ?? 0;
+    const endHour = startHour + 1;
+    return `${formatSlotTime(`${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`)} - ${formatSlotTime(`${String(endHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`)}`;
+  };
+
+  const formatDateTime = (value?: string) =>
+    value ? format(new Date(value), 'MMM d, yyyy h:mm a') : 'Not recorded';
+
+  const isOutsideConsultationWindow = (arrivalAt?: string) => {
+    if (!arrivalAt) return false;
+    const [hourRaw, minuteRaw] = appt.slotCode.split(':').map(Number);
+    const hour = Number.isFinite(hourRaw) ? hourRaw ?? 0 : 0;
+    const minute = Number.isFinite(minuteRaw) ? minuteRaw ?? 0 : 0;
+    const windowEnd = new Date(`${appt.date}T${String(hour + 1).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00+08:00`);
+    return new Date(arrivalAt) > windowEnd;
+  };
+
+  const attendanceStatus = appt.attendanceStatus || AppointmentAttendanceStatus.SCHEDULED;
+  const isOfficeConsultation = appt.type === 'office';
+  const assignedSalesStaffId = typeof appt.salesStaffId === 'string'
+    ? appt.salesStaffId
+    : appt.salesStaffId?._id;
+  const attendancePrimaryButtonClassName =
+    'h-10 rounded-xl border border-slate-900/10 bg-slate-900 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-400/60 disabled:opacity-60 dark:border-blue-400/25 dark:bg-blue-500/18 dark:text-blue-100 dark:shadow-none dark:hover:border-blue-300/40 dark:hover:bg-blue-500/28 dark:focus-visible:ring-blue-300/30';
+  const attendanceSecondaryButtonClassName =
+    'h-10 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-300/70 disabled:opacity-60 dark:border-slate-600/70 dark:bg-slate-900/40 dark:text-slate-200 dark:shadow-none dark:hover:border-slate-500 dark:hover:bg-slate-800/70 dark:focus-visible:ring-slate-400/30';
+  const attendanceDangerButtonClassName =
+    'h-10 rounded-xl border border-red-300 bg-red-50 px-4 text-sm font-semibold text-red-700 shadow-sm transition-colors hover:border-red-400 hover:bg-red-100 focus-visible:ring-2 focus-visible:ring-red-300/70 disabled:opacity-60 dark:border-red-500/35 dark:bg-red-950/35 dark:text-red-200 dark:shadow-none dark:hover:border-red-400/50 dark:hover:bg-red-900/45 dark:focus-visible:ring-red-400/25';
+  const canUpdateAttendance = Boolean(
+    isOfficeConsultation &&
+    (isAdmin || (isSalesStaff && assignedSalesStaffId === user?._id)),
+  );
+
+  const updateAttendance = async (
+    action: 'check_in' | 'start' | 'complete' | 'no_show' | 'reschedule',
+  ) => {
+    const notesRequired = action === 'no_show' || action === 'reschedule';
+    const notes = notesRequired
+      ? window.prompt(action === 'no_show' ? 'Enter no-show notes' : 'Enter reschedule reason')
+      : undefined;
+    if (notesRequired && !notes?.trim()) {
+      toast.error('Notes are required for this attendance action');
+      return;
+    }
+
+    try {
+      await attendanceMutation.mutateAsync({
+        id: id!,
+        action,
+        notes: notes?.trim(),
+      });
+      toast.success(
+        action === 'complete'
+          ? 'Consultation attendance completed. You can now submit the consultation report.'
+          : 'Consultation attendance updated',
+      );
+    } catch (err) {
+      toast.error(extractErrorMessage(err, 'Failed to update attendance'));
+    }
   };
 
   const formatCurrency = (v: number) =>
@@ -270,7 +360,7 @@ export function AppointmentDetailPage() {
       </div>
       <div>
         <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">{label}</p>
-        <p className="text-sm text-[#6e6e73] dark:text-slate-200">{value}</p>
+        <p className="break-words text-sm text-[#6e6e73] dark:text-slate-200">{value}</p>
       </div>
     </div>
   );
@@ -340,9 +430,9 @@ export function AppointmentDetailPage() {
               <p className="text-sm font-semibold text-[#2f3740] dark:text-slate-100">Awaiting Confirmation</p>
               <p className="mt-0.5 text-xs text-[#69737d] dark:text-slate-400">
                 {isCustomer
-                  ? appt.type === 'ocular' && !appt.customerLocation
+                  ? isOcularAppointment && !hasCustomerSiteLocation
                     ? 'Please submit your site location below so your assigned sales staff can finalize your appointment.'
-                    : appt.type === 'ocular' && !appt.ocularFeePaid
+                    : isOcularAppointment && !appt.ocularFeePaid
                     ? 'Please pay the ocular visit fee to proceed. Your assigned sales staff will finalize your appointment once payment is received.'
                     : 'Your appointment request has been received. An agent will review and confirm it shortly.'
                   : 'Review this appointment request and assign a sales staff member to confirm it.'}
@@ -356,11 +446,32 @@ export function AppointmentDetailPage() {
           <CardContent className="flex items-start gap-3 py-3 px-4">
             <Info className="h-5 w-5 text-blue-600 dark:text-blue-300 mt-0.5 shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">Confirmed - Ready to Visit</p>
+              <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                {isOcularAppointment ? 'Confirmed - Ready for Ocular Visit' : 'Confirmed - Office Consultation Scheduled'}
+              </p>
               <p className="text-xs text-blue-700 dark:text-blue-200 mt-0.5">
                 {isCustomer
-                  ? 'Your appointment is confirmed. The assigned sales staff will visit on the scheduled date.'
-                  : 'Mark yourself as "On the Way" when heading to the site, then mark "Complete" after the visit.'}
+                  ? isOcularAppointment
+                    ? hasCustomerSiteLocation
+                      ? 'Your ocular appointment is confirmed. The assigned sales staff will visit your site on the scheduled date.'
+                      : 'Your ocular appointment is confirmed. Submit your site location below so we can calculate any required ocular fee before the visit starts.'
+                    : 'Your consultation is confirmed. Please visit the RMV office on the scheduled date.'
+                  : isOcularAppointment
+                    ? 'Mark yourself as "On the Way" when heading to the site.'
+                    : 'This consultation is scheduled at the RMV office. Review the customer details and prepare for the appointment.'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {canCustomerSubmitOcularLocation && ![AppointmentStatus.REQUESTED, AppointmentStatus.CONFIRMED].includes(appt.status as AppointmentStatus) && (
+        <Card className="rounded-xl border-blue-200 bg-blue-50/50 dark:border-blue-900/60 dark:bg-blue-950/40">
+          <CardContent className="flex items-start gap-3 py-3 px-4">
+            <MapPin className="h-5 w-5 text-blue-600 dark:text-blue-300 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">Site Location Required</p>
+              <p className="text-xs text-blue-700 dark:text-blue-200 mt-0.5">
+                Your consultation is ready for an ocular visit. Submit your site pin and official address below so we can calculate whether the ocular visit is free within Metro Manila or has an outside-area fee.
               </p>
             </div>
           </CardContent>
@@ -377,7 +488,41 @@ export function AppointmentDetailPage() {
               <p className="text-xs text-indigo-700 dark:text-indigo-200 mt-0.5">
                 {isCustomer
                   ? 'The sales staff is on their way to your location. Please be available at the site.'
-                  : 'You are on the way. After the visit, mark this appointment as "Complete" and fill out the visit report.'}
+                  : 'You are on the way. Mark this appointment as "Arrived at Site" once you reach the location.'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {appt.status === AppointmentStatus.ARRIVED_AT_SITE && (
+        <Card className="rounded-xl border-cyan-200 bg-cyan-50/50 dark:border-cyan-900/60 dark:bg-cyan-950/40">
+          <CardContent className="flex items-start gap-3 py-3 px-4">
+            <MapPin className="h-5 w-5 text-cyan-600 dark:text-cyan-300 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-cyan-900 dark:text-cyan-100">
+                {isCustomer ? 'Staff Arrived at Site' : 'Arrived at Site'}
+              </p>
+              <p className="text-xs text-cyan-700 dark:text-cyan-200 mt-0.5">
+                {isCustomer
+                  ? 'The assigned sales staff has arrived at your location and will start the site visit shortly.'
+                  : 'You have arrived at the site. Start the site visit when inspection begins.'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      {appt.status === AppointmentStatus.IN_PROGRESS && (
+        <Card className="rounded-xl border-sky-200 bg-sky-50/50 dark:border-sky-900/60 dark:bg-sky-950/40">
+          <CardContent className="flex items-start gap-3 py-3 px-4">
+            <Clock className="h-5 w-5 text-sky-600 dark:text-sky-300 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-sky-900 dark:text-sky-100">
+                {isCustomer ? 'Site Visit in Progress' : 'Site Visit in Progress'}
+              </p>
+              <p className="text-xs text-sky-700 dark:text-sky-200 mt-0.5">
+                {isCustomer
+                  ? 'The site visit inspection is currently ongoing.'
+                  : 'Site visit is in progress. Complete and submit the final ocular visit report when done.'}
               </p>
             </div>
           </CardContent>
@@ -402,7 +547,7 @@ export function AppointmentDetailPage() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           label="Visit Schedule"
-          value={`${format(new Date(appt.date), 'MMM d, yyyy')} • ${formatSlotTime(appt.slotCode)}`}
+          value={`${format(new Date(appt.date), 'MMM d, yyyy')} • ${isOfficeConsultation ? formatConsultationWindow(appt.slotCode) : formatSlotTime(appt.slotCode)}`}
           tone="accent"
         />
         <SummaryCard
@@ -426,6 +571,76 @@ export function AppointmentDetailPage() {
             : appt.address || 'Office visit'}
         />
       </div>
+
+      {isOfficeConsultation && (
+        <Card className="rounded-xl border-blue-200 bg-blue-50/50 dark:border-blue-900/60 dark:bg-blue-950/30">
+          <CardHeader>
+            <CardTitle className="text-lg text-blue-950 dark:text-blue-100">Consultation Attendance</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <InfoRow icon={Clock} label="Booked Window" value={formatConsultationWindow(appt.slotCode)} />
+              <div>
+                <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Attendance Status</p>
+                <StatusBadge status={attendanceStatus} className="mt-1" />
+              </div>
+              <InfoRow icon={User} label="Arrival" value={formatDateTime(appt.actualArrivalAt)} />
+              <InfoRow icon={CheckCircle2} label="Completed" value={formatDateTime(appt.consultationCompletedAt)} />
+            </div>
+            {appt.consultationStartedAt && (
+              <InfoRow icon={Clock} label="Started" value={formatDateTime(appt.consultationStartedAt)} />
+            )}
+            {appt.attendanceNotes && (
+              <div>
+                <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Attendance Notes</p>
+                <p className="mt-1 text-sm text-[#6e6e73] dark:text-slate-300">{appt.attendanceNotes}</p>
+              </div>
+            )}
+            {attendanceStatus === AppointmentAttendanceStatus.LATE_ARRIVAL && (
+              <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800 dark:border-orange-800/50 dark:bg-orange-950/30 dark:text-orange-200">
+                Customer arrived after the grace period.
+              </div>
+            )}
+            {isOutsideConsultationWindow(appt.actualArrivalAt) && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-200">
+                Customer is outside the booked consultation window. Continue only if the staff schedule allows it.
+              </div>
+            )}
+            {canUpdateAttendance && (
+              <div className="flex flex-wrap gap-2">
+                {attendanceStatus === AppointmentAttendanceStatus.SCHEDULED && (
+                  <>
+                    <Button onClick={() => updateAttendance('check_in')} disabled={attendanceMutation.isPending} className={attendancePrimaryButtonClassName}>
+                      Check In
+                    </Button>
+                    <Button variant="outline" onClick={() => updateAttendance('no_show')} disabled={attendanceMutation.isPending} className={attendanceDangerButtonClassName}>
+                      Mark as No Show
+                    </Button>
+                    <Button variant="outline" onClick={() => updateAttendance('reschedule')} disabled={attendanceMutation.isPending} className={attendanceSecondaryButtonClassName}>
+                      Request Reschedule
+                    </Button>
+                  </>
+                )}
+                {[AppointmentAttendanceStatus.ON_TIME, AppointmentAttendanceStatus.LATE_ARRIVAL].includes(attendanceStatus as AppointmentAttendanceStatus) && (
+                  <>
+                    <Button onClick={() => updateAttendance('start')} disabled={attendanceMutation.isPending} className={attendancePrimaryButtonClassName}>
+                      Start Consultation
+                    </Button>
+                    <Button variant="outline" onClick={() => updateAttendance('reschedule')} disabled={attendanceMutation.isPending} className={attendanceSecondaryButtonClassName}>
+                      Request Reschedule
+                    </Button>
+                  </>
+                )}
+                {attendanceStatus === AppointmentAttendanceStatus.IN_PROGRESS && (
+                  <Button onClick={() => updateAttendance('complete')} disabled={attendanceMutation.isPending} className={attendancePrimaryButtonClassName}>
+                    Complete Consultation
+                  </Button>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {customerCanManageAppointment && (
         <Card className="overflow-hidden rounded-2xl border border-[#d5d8de] bg-[linear-gradient(135deg,rgba(255,255,255,1)_0%,rgba(247,249,251,0.98)_55%,rgba(240,244,248,0.98)_100%)] shadow-sm dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(17,24,34,0.96)_0%,rgba(10,17,26,0.98)_55%,rgba(6,12,19,1)_100%)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_36px_rgba(0,0,0,0.28)]">
@@ -473,9 +688,9 @@ export function AppointmentDetailPage() {
         </Card>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6">
         {/* Info */}
-        <Card className="rounded-xl border-[#c8c8cd]/50 shadow-sm">
+        <Card className="rounded-xl border-[#c8c8cd]/50 shadow-sm lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-lg text-[#1d1d1f] dark:text-slate-100">Appointment Info</CardTitle>
           </CardHeader>
@@ -483,7 +698,7 @@ export function AppointmentDetailPage() {
             <InfoRow
               icon={Clock}
               label="Date & Time"
-              value={`${format(new Date(appt.date), 'EEEE, MMMM d, yyyy')} at ${formatSlotTime(appt.slotCode)}`}
+              value={`${format(new Date(appt.date), 'EEEE, MMMM d, yyyy')} at ${isOfficeConsultation ? formatConsultationWindow(appt.slotCode) : formatSlotTime(appt.slotCode)}`}
             />
 
             <InfoRow
@@ -537,108 +752,106 @@ export function AppointmentDetailPage() {
                   href={`https://www.google.com/maps?q=${appt.customerLocation.lat},${appt.customerLocation.lng}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 mt-2 text-xs text-blue-600 dark:text-blue-300 hover:underline"
+                  className="mt-2 inline-flex flex-wrap items-center gap-1 text-xs text-blue-600 hover:underline dark:text-blue-300"
                 >
                   <MapPin className="h-3 w-3" /> Open in Google Maps
                 </a>
               </div>
             )}
-          </CardContent>
-        </Card>
 
-        {/* Ocular Fee & Reschedules */}
-        <Card className="rounded-xl border-[#c8c8cd]/50 shadow-sm">
-          <CardHeader>
-            <CardTitle className="text-lg text-[#1d1d1f] dark:text-slate-100">Additional Info</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {appt.ocularFee != null && appt.ocularFee > 0 && (
-              <div>
-                {appt.ocularFeePaid ? (
-                  <>
-                    <div className="flex items-center justify-between">
+            <div className="border-t border-[#e5e5ea] pt-4 dark:border-white/10">
+              {appt.ocularFee != null && appt.ocularFee > 0 && (
+                <div>
+                  {appt.ocularFeePaid ? (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Ocular Fee</p>
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5">
+                          <CheckCircle2 className="h-3 w-3" /> Paid
+                        </span>
+                      </div>
+                      <p className="text-lg font-semibold text-[#1d1d1f] dark:text-slate-100 mt-1">
+                        {formatCurrency(appt.ocularFee)}
+                      </p>
+                    </>
+                  ) : appt.ocularFeeStatus === 'pending' && isCustomer ? (
+                    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[linear-gradient(135deg,rgba(18,24,34,0.96)_0%,rgba(10,17,26,0.98)_100%)] p-4 space-y-3 shadow-md shadow-black/5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-semibold text-[#1d1d1f] dark:text-slate-100">Ocular Fee Required</p>
+                        <p className="text-lg font-bold text-[#1d1d1f] dark:text-slate-100">{formatCurrency(appt.ocularFee)}</p>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Pay before your appointment can be confirmed.</p>
+                      <Button
+                        asChild
+                        variant="prominent"
+                        className="w-full h-11 rounded-xl shadow-lg transition-all active:scale-[0.98]"
+                      >
+                        <Link to={`/appointments/${appt._id}/pay-ocular-fee`} className="text-inherit no-underline">
+                          <CreditCard className="mr-2 h-4 w-4" />
+                          Pay {formatCurrency(appt.ocularFee)}
+                        </Link>
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
                       <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Ocular Fee</p>
-                      <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2.5 py-0.5">
-                        <CheckCircle2 className="h-3 w-3" /> Paid
-                      </span>
-                    </div>
-                    <p className="text-lg font-semibold text-[#1d1d1f] dark:text-slate-100 mt-1">
-                      {formatCurrency(appt.ocularFee)}
+                      <p className="text-lg font-semibold text-[#1d1d1f] dark:text-slate-100 mt-1">
+                        {formatCurrency(appt.ocularFee)}
+                      </p>
+                    </>
+                  )}
+                  {appt.ocularFeeMethod && (
+                    <p className="text-xs text-[#6e6e73] dark:text-slate-400 capitalize mt-1">
+                      via {appt.ocularFeeMethod.replace('_', ' ')}
                     </p>
-                  </>
-                ) : appt.ocularFeeStatus === 'pending' && isCustomer ? (
-                  <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-[linear-gradient(135deg,rgba(18,24,34,0.96)_0%,rgba(10,17,26,0.98)_100%)] p-4 space-y-3 shadow-md shadow-black/5">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold text-[#1d1d1f] dark:text-slate-100">Ocular Fee Required</p>
-                      <p className="text-lg font-bold text-[#1d1d1f] dark:text-slate-100">{formatCurrency(appt.ocularFee)}</p>
-                    </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">Pay before your appointment can be confirmed.</p>
-                    <Button
-                      asChild
-                      variant="prominent"
-                      className="w-full h-11 rounded-xl shadow-lg transition-all active:scale-[0.98]"
-                    >
-                      <Link to={`/appointments/${appt._id}/pay-ocular-fee`} className="text-inherit no-underline">
-                        <CreditCard className="mr-2 h-4 w-4" />
-                        Pay {formatCurrency(appt.ocularFee)}
-                      </Link>
-                    </Button>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Ocular Fee</p>
-                    <p className="text-lg font-semibold text-[#1d1d1f] dark:text-slate-100 mt-1">
-                      {formatCurrency(appt.ocularFee)}
-                    </p>
-                  </>
-                )}
-                {appt.ocularFeeMethod && (
-                  <p className="text-xs text-[#6e6e73] dark:text-slate-400 capitalize mt-1">
-                    via {appt.ocularFeeMethod.replace('_', ' ')}
-                  </p>
-                )}
+                  )}
+                </div>
+              )}
+
+              <div className="mt-4">
+                <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Reschedules</p>
+                <p className="text-sm text-[#6e6e73] dark:text-slate-300">
+                  {appt.rescheduleCount} / {appt.maxReschedules} used
+                </p>
               </div>
-            )}
 
-            <div>
-              <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Reschedules</p>
-              <p className="text-sm text-[#6e6e73] dark:text-slate-300">
-                {appt.rescheduleCount} / {appt.maxReschedules} used
-              </p>
-            </div>
+              {appt.internalNotes && isStaff && (
+                <div className="mt-4">
+                  <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Internal Notes</p>
+                  <p className="text-sm text-[#6e6e73] dark:text-slate-300">{appt.internalNotes}</p>
+                </div>
+              )}
 
-            {appt.internalNotes && isStaff && (
-              <div>
-                <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Internal Notes</p>
-                <p className="text-sm text-[#6e6e73] dark:text-slate-300">{appt.internalNotes}</p>
+              <div className="mt-4">
+                <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Created</p>
+                <p className="text-sm text-[#6e6e73] dark:text-slate-300">
+                  {format(new Date(appt.createdAt), 'MMM d, yyyy h:mm a')}
+                </p>
               </div>
-            )}
-
-            <div>
-              <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Created</p>
-              <p className="text-sm text-[#6e6e73] dark:text-slate-300">
-                {format(new Date(appt.createdAt), 'MMM d, yyyy h:mm a')}
-              </p>
             </div>
           </CardContent>
         </Card>
-
-
 
       {/* Customer: Submit Location for Ocular Visit */}
-      {isCustomer && appt.type === 'ocular' && appt.status === AppointmentStatus.REQUESTED && !appt.customerLocation && !appt.ocularFeePaid && (
+      {canCustomerSubmitOcularLocation && (
         <Card className="rounded-xl border-blue-200 bg-blue-50/50 shadow-sm dark:border-blue-500/30 dark:bg-blue-900/10 lg:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg text-blue-900 dark:text-blue-100">
               <MapPin className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              Provide Your Location
+              Submit Site Location
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-blue-800 dark:text-blue-200/90">
-              An ocular visit has been scheduled for{' '}
-              <strong>{format(new Date(appt.date), 'MMMM d, yyyy')}</strong>.
-              Please pin your site location on the map so we can calculate the visit fee and finalize your appointment.
+              {isReadyForOcularConsultation ? (
+                'Your consultation is ready for an ocular visit. Please pin your site location on the map so we can calculate the visit fee and continue scheduling.'
+              ) : (
+                <>
+                  An ocular visit has been scheduled for{' '}
+                  <strong>{format(new Date(appt.date), 'MMMM d, yyyy')}</strong>.
+                  Please pin your site location on the map so we can calculate the visit fee and finalize your appointment.
+                </>
+              )}
             </p>
             <Suspense fallback={<MapPanelFallback message="Loading the site-pin picker so you can submit your visit location." />}>
               <LazyLocationPicker
@@ -658,7 +871,7 @@ export function AppointmentDetailPage() {
             {customerAddress && (
               <div className="rounded-lg border border-blue-200 bg-white p-3 dark:border-[#35557d] dark:bg-[#0d1724]">
                 <p className="text-xs font-medium text-blue-700 dark:text-[#8dbcf2]">Resolved Address</p>
-                <p className="mt-0.5 text-sm text-[#3a3a3e] dark:text-slate-200">{customerAddress}</p>
+                <p className="mt-0.5 break-words text-sm text-[#3a3a3e] dark:text-slate-200">{customerAddress}</p>
               </div>
             )}
 
@@ -789,14 +1002,17 @@ export function AppointmentDetailPage() {
                     return;
                   }
                   try {
-                    await submitLocationMutation.mutateAsync({
+                    const updatedAppointment = await submitLocationMutation.mutateAsync({
                       id: id!,
                       customerLocation: customerLocationPin,
                       formattedAddress: customerAddress || undefined,
                       addressStructured,
                     });
                     if (redirect) {
-                      navigate(`/appointments/${id}/pay-ocular-fee`);
+                      navigate(`/appointments/${updatedAppointment._id}/pay-ocular-fee`);
+                    } else if (updatedAppointment._id !== id) {
+                      toast.success('Location submitted! Your ocular appointment is ready for sales to finalize.');
+                      navigate(`/appointments/${updatedAppointment._id}`);
                     } else {
                       toast.success('Location submitted! Your assigned sales staff will finalize your appointment.');
                     }
@@ -816,7 +1032,7 @@ export function AppointmentDetailPage() {
                     ) : (
                       <>
                         <MapPin className="mr-2 h-4 w-4" />
-                        Submit Location
+                        Submit Site Location
                       </>
                     )}
                   </Button>
@@ -839,6 +1055,20 @@ export function AppointmentDetailPage() {
                 );
               })()
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {isSalesStaff && appt.type === 'ocular' && !appt.customerLocation && (
+        <Card className="rounded-xl border-amber-200 bg-amber-50/50 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 lg:col-span-2">
+          <CardContent className="flex items-start gap-3 py-5">
+            <Info className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-300" />
+            <div>
+              <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">Waiting for Customer Location</p>
+              <p className="mt-1 text-sm text-amber-800 dark:text-amber-200/90">
+                The customer must submit their site address and map pin before you can start the ocular site visit workflow.
+              </p>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -1154,7 +1384,7 @@ export function AppointmentDetailPage() {
             {appt.address && (
               <div className="rounded-lg border border-emerald-200 bg-white/70 p-3 dark:border-emerald-500/25 dark:bg-emerald-500/10">
                 <p className="text-xs font-medium text-emerald-700 dark:text-emerald-200">Customer Address</p>
-                <p className="mt-0.5 text-sm text-emerald-900 dark:text-slate-100">{appt.address}</p>
+                <p className="mt-0.5 break-words text-sm text-emerald-900 dark:text-slate-100">{appt.address}</p>
               </div>
             )}
             {appt.ocularFee != null && appt.ocularFee > 0 && (
@@ -1220,10 +1450,16 @@ export function AppointmentDetailPage() {
               </Button>
             )}
             {/* Ocular: CONFIRMED → On The Way */}
-            {appt.type === 'ocular' && (
+            {isOcularAppointment && (
               <Button
-                onClick={() => visitStatusMutation.mutateAsync({ id: id!, status: 'on_the_way' }).then(() => toast.success('Status updated: On the Way — the customer has been notified.')).catch((err: unknown) => toast.error(extractErrorMessage(err, 'Failed to update')))}
-                disabled={visitStatusMutation.isPending}
+                onClick={() => {
+                  if (!canStartOcularProgress) {
+                    toast.error(customerSiteLocationRequiredMessage);
+                    return;
+                  }
+                  visitStatusMutation.mutateAsync({ id: id!, status: 'on_the_way' }).then(() => toast.success('Status updated: On the Way — the customer has been notified.')).catch((err: unknown) => toast.error(extractErrorMessage(err, 'Failed to update')));
+                }}
+                disabled={visitStatusMutation.isPending || !canStartOcularProgress}
                 className="rounded-xl [background-image:none] bg-[#1d1d1f] text-white hover:bg-[#2d2d2f] dark:border dark:border-[#39577a] dark:[background-image:none] dark:bg-[#21364f] dark:text-[#e3efff] dark:shadow-[0_12px_24px_rgba(19,47,79,0.24)] dark:hover:bg-[#294465]"
               >
                 {visitStatusMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating...</> : 'On The Way'}
@@ -1232,8 +1468,96 @@ export function AppointmentDetailPage() {
           </>
         )}
 
-        {/* Sales staff: ON_THE_WAY → Complete */}
+        {/* Sales staff: ON_THE_WAY → Arrived at Site */}
         {canCompleteAppointment && appt.status === AppointmentStatus.ON_THE_WAY && (
+          <>
+            {visitReports && visitReports.length > 0 ? (
+              <Button
+                asChild
+                variant="outline"
+                className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
+              >
+                <Link to={`/visit-reports/${visitReports[0]!._id}`}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  Go to Visit Report
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                asChild
+                variant="outline"
+                className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
+              >
+                <Link to="/visit-reports">
+                  <FileText className="mr-2 h-4 w-4" />
+                  Visit Reports
+                </Link>
+              </Button>
+            )}
+            {isOcularAppointment && (
+              <Button
+                onClick={() => {
+                  if (!canStartOcularProgress) {
+                    toast.error(customerSiteLocationRequiredMessage);
+                    return;
+                  }
+                  visitStatusMutation.mutateAsync({ id: id!, status: 'arrived_at_site' }).then(() => toast.success('Status updated: Arrived at Site.')).catch((err: unknown) => toast.error(extractErrorMessage(err, 'Failed to update')));
+                }}
+                disabled={visitStatusMutation.isPending || !canStartOcularProgress}
+                className="rounded-xl [background-image:none] bg-[#1d1d1f] text-white hover:bg-[#2d2d2f] dark:border dark:border-[#39577a] dark:[background-image:none] dark:bg-[#21364f] dark:text-[#e3efff] dark:shadow-[0_12px_24px_rgba(19,47,79,0.24)] dark:hover:bg-[#294465]"
+              >
+                {visitStatusMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating...</> : 'Arrived at Site'}
+              </Button>
+            )}
+          </>
+        )}
+
+        {/* Sales staff: ARRIVED_AT_SITE → Start Site Visit */}
+        {canCompleteAppointment && appt.status === AppointmentStatus.ARRIVED_AT_SITE && (
+          <>
+            {visitReports && visitReports.length > 0 ? (
+              <Button
+                asChild
+                variant="outline"
+                className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
+              >
+                <Link to={`/visit-reports/${visitReports[0]!._id}`}>
+                  <FileText className="mr-2 h-4 w-4" />
+                  Go to Visit Report
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                asChild
+                variant="outline"
+                className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
+              >
+                <Link to="/visit-reports">
+                  <FileText className="mr-2 h-4 w-4" />
+                  Visit Reports
+                </Link>
+              </Button>
+            )}
+            {isOcularAppointment && (
+              <Button
+                onClick={() => {
+                  if (!canStartOcularProgress) {
+                    toast.error(customerSiteLocationRequiredMessage);
+                    return;
+                  }
+                  visitStatusMutation.mutateAsync({ id: id!, status: 'in_progress' }).then(() => toast.success('Status updated: Site Visit in Progress.')).catch((err: unknown) => toast.error(extractErrorMessage(err, 'Failed to update')));
+                }}
+                disabled={visitStatusMutation.isPending || !canStartOcularProgress}
+                className="rounded-xl [background-image:none] bg-[#1d1d1f] text-white hover:bg-[#2d2d2f] dark:border dark:border-[#39577a] dark:[background-image:none] dark:bg-[#21364f] dark:text-[#e3efff] dark:shadow-[0_12px_24px_rgba(19,47,79,0.24)] dark:hover:bg-[#294465]"
+              >
+                {visitStatusMutation.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating...</> : 'Start Site Visit'}
+              </Button>
+            )}
+          </>
+        )}
+
+        {/* Sales staff: IN_PROGRESS → Visit Report link */}
+        {canCompleteAppointment && appt.status === AppointmentStatus.IN_PROGRESS && (
           <>
             {visitReports && visitReports.length > 0 ? (
               <Button

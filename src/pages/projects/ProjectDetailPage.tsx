@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState, useCallback, useMemo, useEffect } from 'react';
+import { Suspense, lazy, useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
@@ -33,8 +33,6 @@ import { PageError } from '@/components/shared/PageError';
 import { AuthImage } from '@/components/shared/AuthImage';
 import {
   useProject,
-  useGenerateContract,
-  useSignContract,
   useAssignEngineers,
   useReassignProjectSales,
   useAssignFabrication,
@@ -45,18 +43,17 @@ import {
   useSkipProjectReview,
 } from '@/hooks/useProjects';
 import { useLatestBlueprint } from '@/hooks/useBlueprints';
-import { usePaymentPlan, usePaymentsByProject } from '@/hooks/usePayments';
+import { usePaymentPlan, usePaymentsByProject, useProjectPaymentPlans } from '@/hooks/usePayments';
 import { useGetDownloadUrl, openAuthenticatedFile } from '@/hooks/useUploads';
-import { useUsers, useSignature } from '@/hooks/useUsers';
+import { useUsers } from '@/hooks/useUsers';
 import { useAuthStore } from '@/stores/auth.store';
 import { useThemeStore } from '@/stores/theme.store';
 import { api } from '@/lib/api';
-import { Role, StaffAvailabilityStatus, ProjectStatus, ServiceType, SERVICE_TYPE_LABELS } from '@/lib/constants';
+import { ContractStatus, Role, StaffAvailabilityStatus, ProjectStatus, ServiceType, SERVICE_TYPE_LABELS } from '@/lib/constants';
 import { canManageFabricationUpdates, canViewFabricationUpdates, isAssignedEngineer as isProjectEngineerAssigned, isAssignedFabricationMember } from '@/lib/project-access';
 import { cn, extractErrorMessage } from '@/lib/utils';
 import type { ApiResponse, ProjectItem, VisitReport } from '@/lib/types';
 import toast from 'react-hot-toast';
-import { SignaturePad } from '@/components/shared/SignaturePad';
 
 const LazyBlueprintTab = lazy(() =>
   import('./tabs/BlueprintTab').then((module) => ({ default: module.BlueprintTab })),
@@ -633,6 +630,7 @@ export function ProjectDetailPage() {
   // Determine initial tab from URL path segment (e.g., /projects/:id/blueprint)
   const initialTab = useMemo<TabKey>(() => {
     const path = location.pathname;
+    if (path.endsWith('/contract')) return 'contract';
     if (path.endsWith('/blueprint')) return 'blueprint';
     if (path.endsWith('/payments')) return 'payments';
     if (path.endsWith('/fabrication')) return 'fabrication';
@@ -643,6 +641,10 @@ export function ProjectDetailPage() {
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [activeProjectItem, setActiveProjectItem] = useState('');
   const [isProjectOverviewOpen, setIsProjectOverviewOpen] = useState(false);
+
+  useEffect(() => {
+    setActiveTab(initialTab);
+  }, [initialTab]);
 
   const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, currentKey: TabKey) => {
     const currentIndex = tabs.findIndex((tab) => tab.key === currentKey);
@@ -672,6 +674,18 @@ export function ProjectDetailPage() {
   // ── Data queries ──
   const { data: project, isLoading, isError, refetch } = useProject(id!);
   const projectServiceItems = useMemo(() => getProjectServiceItems(project), [project]);
+  const linkedProjectItemId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('projectItemId') || params.get('itemId') || '';
+  }, [location.search]);
+
+  useEffect(() => {
+    if (!linkedProjectItemId || !projectServiceItems.length) return;
+    const matchedItem = projectServiceItems.find((item) => item.id === linkedProjectItemId);
+    if (!matchedItem) return;
+    setActiveProjectItem(matchedItem.id);
+  }, [linkedProjectItemId, projectServiceItems]);
+
   const activeProjectItemId = useMemo(() => {
     if (!projectServiceItems.length) return undefined;
     if (activeProjectItem && projectServiceItems.some((item) => item.id === activeProjectItem)) {
@@ -685,10 +699,13 @@ export function ProjectDetailPage() {
   const { data: blueprint } = useLatestBlueprint(id!, activeProjectItemRecord?._id);
   const { data: paymentPlan } = usePaymentPlan(id!, activeProjectItemRecord?._id);
   const { data: payments } = usePaymentsByProject(id!, activeProjectItemRecord?._id);
+  const projectPaymentPlanItemIds = useMemo(
+    () => projectServiceItems.map((item) => item.id),
+    [projectServiceItems],
+  );
+  const projectPaymentPlanQueries = useProjectPaymentPlans(id!, projectPaymentPlanItemIds);
 
   // ── Mutations ──
-  const generateContract = useGenerateContract();
-  const signContractMutation = useSignContract();
   const assignEngineers = useAssignEngineers();
   const reassignProjectSales = useReassignProjectSales();
   const assignFabrication = useAssignFabrication();
@@ -706,9 +723,6 @@ export function ProjectDetailPage() {
   const shouldHideAmount = user?.roles?.some((r: string) => [Role.ADMIN, Role.APPOINTMENT_AGENT, Role.ENGINEER, Role.FABRICATION_STAFF].includes(r as Role));
   const isFabricationStaff = user?.roles?.some((r: string) => r === Role.FABRICATION_STAFF);
   const isStaff = !isCustomer; // any non-customer role
-  const canGenerate = user?.roles?.some((r: string) =>
-    [Role.ADMIN, Role.CASHIER, Role.SALES_STAFF].includes(r as Role),
-  );
 
   const tabs = useMemo(() => {
     if (isEngineer || isFabricationStaff) {
@@ -740,6 +754,7 @@ export function ProjectDetailPage() {
   const [showFabForm, setShowFabForm] = useState(false);
   const [fabLeadId, setFabLeadId] = useState('');
   const [fabAssistantIds, setFabAssistantIds] = useState<string[]>([]);
+  const fabricationAssignFormRef = useRef<HTMLDivElement | null>(null);
   const [designReviewNotes, setDesignReviewNotes] = useState('');
   const [projectReviewRating, setProjectReviewRating] = useState('5');
   const [projectReviewComment, setProjectReviewComment] = useState('');
@@ -839,11 +854,51 @@ export function ProjectDetailPage() {
     && ![ProjectStatus.CANCELLED, ProjectStatus.COMPLETED].includes(project.status as ProjectStatus),
   );
   const canEngineerClaimProject = Boolean(
-    isEngineer && project?.status === 'submitted' && project.engineerIds.length === 0 && !isAssignedEngineer,
+    isEngineer
+    && project?.status === 'submitted'
+    && project.contractStatus === ContractStatus.UPLOADED
+    && project.engineerIds.length === 0
+    && !isAssignedEngineer,
   );
   const hasProjectReviewSubmitted = Boolean(project?.customerReview?.submittedAt);
   const hasProjectReviewSkipped = Boolean(project?.customerReview?.skippedAt);
   const canPromptProjectReview = Boolean(isCustomer && project?.status === 'completed' && !hasProjectReviewSubmitted && !hasProjectReviewSkipped);
+  const showDesignReviewTabIndicator = Boolean(
+    isAssignedEngineer
+    && hasInitialDesign
+    && !hasBackfilledInitialDesign
+    && !blueprint
+    && ['pending', 'not_required'].includes(activeDesignReviewStatus),
+  );
+  const showBlueprintTabIndicator = Boolean(
+    isAssignedEngineer
+    && project
+    && activeWorkflowStatus === ProjectStatus.BLUEPRINT
+    && (!blueprint || blueprint.status === 'revision_requested'),
+  );
+  const paymentTabPendingCount = useMemo(() => (
+    projectPaymentPlanQueries.reduce((count, query) => {
+      const plan = query.data;
+      if (!plan?.stages?.length) return count;
+      return count + (plan.stages.some((stage) => String(stage.status) !== 'verified') ? 1 : 0);
+    }, 0)
+  ), [projectPaymentPlanQueries]);
+  const showPaymentsTabIndicator = paymentTabPendingCount > 0;
+  const hasVerifiedInitialFabricationPayment = Boolean(
+    project?.status === ProjectStatus.FABRICATION
+    || project?.status === ProjectStatus.COMPLETED
+    || paymentPlan?.stages?.[0]?.status === 'verified'
+    || projectPaymentPlanQueries.some((query) => query.data?.stages?.[0]?.status === 'verified'),
+  );
+  const hasReachedFabricationPaymentStage = Boolean(
+    project
+    && [ProjectStatus.PAYMENT_PENDING, ProjectStatus.FABRICATION, ProjectStatus.COMPLETED].includes(project.status as ProjectStatus)
+    && hasVerifiedInitialFabricationPayment,
+  );
+  const canStartFabricationSetup = Boolean(
+    project
+    && hasReachedFabricationPaymentStage,
+  );
 
   const availabilityLabel = (status?: StaffAvailabilityStatus) => {
     switch (status) {
@@ -888,37 +943,13 @@ export function ProjectDetailPage() {
     );
   }, [activeInitialDesignKeys, activeInitialDesignNotes, project?.initialDesignBackfill?.reason]);
 
-  // ── Handlers ──
-  const [contractSignatureKey, setContractSignatureKey] = useState('');
-  const [lightboxKey, setLightboxKey] = useState<string | null>(null);
-  const [useNewSignature, setUseNewSignature] = useState(false);
-  const { data: savedSignature } = useSignature();
-  const usingSavedContractSignature = Boolean(
-    savedSignature?.signatureKey && !useNewSignature && contractSignatureKey === savedSignature.signatureKey,
-  );
-
   useEffect(() => {
-    if (useNewSignature) {
-      if (contractSignatureKey === savedSignature?.signatureKey) {
-        setContractSignatureKey('');
-      }
-      return;
-    }
+    // Keep engineer review input scoped per active project item.
+    setDesignReviewNotes(activeDesignReviewNotes || '');
+  }, [activeProjectItemRecord?._id, activeDesignReviewNotes]);
 
-    if (savedSignature?.signatureKey) {
-      setContractSignatureKey((prev) => prev || savedSignature.signatureKey || '');
-    }
-  }, [contractSignatureKey, savedSignature?.signatureKey, useNewSignature]);
-
-  const handleGenerateContract = async () => {
-    try {
-      await generateContract.mutateAsync(id!);
-      toast.success('Contract generated! The customer can now review and sign it.', { duration: 5000 });
-      refetch();
-    } catch (err) {
-      toast.error(extractErrorMessage(err, 'Failed to generate contract'));
-    }
-  };
+  // ── Handlers ──
+  const [lightboxKey, setLightboxKey] = useState<string | null>(null);
 
   const handleReviewInitialDesign = async (decision: 'approved' | 'declined') => {
     if (!project) return;
@@ -1001,36 +1032,12 @@ export function ProjectDetailPage() {
     }
   };
 
-  const handleSignContract = async () => {
-    if (!contractSignatureKey) {
-      toast.error('Please draw your signature first');
-      return;
-    }
-    try {
-      await signContractMutation.mutateAsync({
-        projectId: id!,
-        signatureKey: contractSignatureKey,
-      });
-      toast.success('Contract signed! Redirecting to payments — complete the down-payment to start fabrication.', { duration: 5000 });
-      setContractSignatureKey('');
-      // Redirect customer to payments page with this project pre-selected
-      setTimeout(() => {
-        navigate('/payments', { state: { projectId: id } });
-      }, 1200);
-    } catch (err) {
-      toast.error(extractErrorMessage(err, 'Failed to sign contract'));
-    }
-  };
 
-  const handleDownloadContract = async (copy: 'original' | 'copy') => {
+  const handleDownloadContract = async () => {
     try {
       const { data } = await api.get(`/projects/${id}/contract-url`, {
-        params: { copy },
       });
       window.open(data.data.url, '_blank');
-      if (copy === 'original') {
-        refetch(); // refresh project to update originalContractDownloadedAt
-      }
     } catch (err: any) {
       toast.error(extractErrorMessage(err, 'Failed to get download link'));
     }
@@ -1095,6 +1102,13 @@ export function ProjectDetailPage() {
     setFabAssistantIds((prev) =>
       prev.includes(staffId) ? prev.filter((id) => id !== staffId) : [...prev, staffId],
     );
+  };
+
+  const handleOpenFabricationAssign = () => {
+    setShowFabForm(true);
+    requestAnimationFrame(() => {
+      fabricationAssignFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   };
 
   const handleSubmitProjectReview = async () => {
@@ -1167,7 +1181,7 @@ export function ProjectDetailPage() {
                 {project.projectNumber}
               </span>
             )}
-            <StatusBadge status={project.status} />
+            <StatusBadge status={activeWorkflowStatus} />
           </div>
           <p className="text-xs sm:text-sm text-[var(--text-metal-color)] dark:text-slate-300 mt-0.5">
             Created {format(new Date(project.createdAt), 'MMM d, yyyy')}
@@ -1194,7 +1208,7 @@ export function ProjectDetailPage() {
               aria-controls={`project-panel-${tab.key}`}
               tabIndex={activeTab === tab.key ? 0 : -1}
               className={cn(
-                'flex min-w-fit items-center gap-1.5 whitespace-nowrap rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition-colors sm:gap-2 sm:px-4',
+                'relative flex min-w-fit items-center gap-1.5 whitespace-nowrap rounded-xl border px-3.5 py-2.5 pr-6 text-sm font-semibold transition-colors sm:gap-2 sm:px-4 sm:pr-7',
                 activeTab === tab.key
                   ? 'border-sky-300 bg-sky-50 text-sky-950 shadow-sm dark:border-sky-400/40 dark:bg-sky-500/10 dark:text-sky-50'
                   : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-slate-50',
@@ -1202,6 +1216,45 @@ export function ProjectDetailPage() {
             >
               <tab.icon className="h-4 w-4" />
               {tab.label}
+              {tab.key === 'design_review' && showDesignReviewTabIndicator && (
+                <span
+                  aria-label="Design review requires attention"
+                  className={cn(
+                    'absolute right-2 top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none',
+                    activeTab === tab.key
+                      ? 'bg-sky-700 text-white dark:bg-sky-300 dark:text-slate-950'
+                      : 'bg-rose-500 text-white dark:bg-rose-400 dark:text-slate-950',
+                  )}
+                >
+                  1
+                </span>
+              )}
+              {tab.key === 'blueprint' && showBlueprintTabIndicator && (
+                <span
+                  aria-label="Blueprint requires attention"
+                  className={cn(
+                    'absolute right-2 top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none',
+                    activeTab === tab.key
+                      ? 'bg-sky-700 text-white dark:bg-sky-300 dark:text-slate-950'
+                      : 'bg-rose-500 text-white dark:bg-rose-400 dark:text-slate-950',
+                  )}
+                >
+                  1
+                </span>
+              )}
+              {tab.key === 'payments' && showPaymentsTabIndicator && (
+                <span
+                  aria-label="Payments require attention"
+                  className={cn(
+                    'absolute right-2 top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none',
+                    activeTab === tab.key
+                      ? 'bg-sky-700 text-white dark:bg-sky-300 dark:text-slate-950'
+                      : 'bg-rose-500 text-white dark:bg-rose-400 dark:text-slate-950',
+                  )}
+                >
+                  {paymentTabPendingCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -1264,11 +1317,15 @@ export function ProjectDetailPage() {
           <CardContent className="flex items-start gap-3 py-3 px-4">
             <Info className={cn('mt-0.5 h-5 w-5 shrink-0', isDark ? 'text-slate-300' : 'text-blue-600')} />
             <div>
-              <p className={cn('text-sm font-semibold', isDark ? 'text-slate-100' : 'text-blue-900')}>Awaiting ocular visit</p>
+              <p className={cn('text-sm font-semibold', isDark ? 'text-slate-100' : 'text-blue-900')}>
+                {visitReport.consultationOutcome === 'no_ocular' ? 'Complete project details' : 'Awaiting ocular visit'}
+              </p>
               <p className={cn('mt-0.5 text-xs', isDark ? 'text-slate-400' : 'text-blue-700')}>
-                {isEngineer
-                  ? 'Engineering work starts after the ocular visit is finalized and its report moves this project into the submitted stage.'
-                  : 'This draft came from the consultation stage. The next step is to finalize the ocular visit before engineering begins.'}
+                {visitReport.consultationOutcome === 'no_ocular'
+                  ? 'Ocular was skipped for this consultation. Complete and review the project details before submitting it to engineering.'
+                  : isEngineer
+                    ? 'Engineering work starts after the ocular visit is finalized and its report moves this project into the submitted stage.'
+                    : 'This draft came from the consultation stage. The next step is to finalize the ocular visit before engineering begins.'}
               </p>
             </div>
           </CardContent>
@@ -1302,7 +1359,7 @@ export function ProjectDetailPage() {
           </CardContent>
         </Card>
       )}
-      {isCustomer && project.status === 'approved' && !paymentPlan && (
+      {isCustomer && ['approved', 'payment_pending'].includes(project.status) && !paymentPlan && (
         <Card className={cn(
           'rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x',
           isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60' : 'border-emerald-200 bg-emerald-50/50'
@@ -1311,23 +1368,12 @@ export function ProjectDetailPage() {
             <CreditCard className={cn('mt-0.5 h-5 w-5 shrink-0', isDark ? 'text-emerald-300' : 'text-emerald-600')} />
             <div>
               <p className={cn('text-sm font-semibold', isDark ? 'text-slate-100' : 'text-emerald-900')}>Choose Your Payment Plan</p>
-              <p className={cn('mt-0.5 text-xs', isDark ? 'text-slate-400' : 'text-emerald-700')}>Your blueprint is approved. Open the Blueprint tab to choose full payment or installment, then your contract will be generated for signing.</p>
+              <p className={cn('mt-0.5 text-xs', isDark ? 'text-slate-400' : 'text-emerald-700')}>Your blueprint is approved. Open the Blueprint tab to choose full payment or installment.</p>
             </div>
           </CardContent>
         </Card>
       )}
-      {isCustomer && project.status === 'payment_pending' && !project.contractSignedAt && (
-        <Card className="rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/40">
-          <CardContent className="flex items-start gap-3 py-3 px-4">
-            <PenTool className="h-5 w-5 text-amber-600 dark:text-amber-300 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">Contract Ready for Signature</p>
-              <p className="text-xs text-amber-700 dark:text-amber-200 mt-0.5">Your payment plan is set. Review and sign the contract before making your first payment.</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      {isCustomer && project.status === 'payment_pending' && !!project.contractSignedAt && (
+      {isCustomer && project.status === 'payment_pending' && !!paymentPlan && (
         <Card className="rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/40">
           <CardContent className="flex items-start gap-3 py-3 px-4">
             <CreditCard className="h-5 w-5 text-amber-600 dark:text-amber-300 mt-0.5 shrink-0" />
@@ -1483,13 +1529,13 @@ export function ProjectDetailPage() {
         />
         <SummaryMetricCard
           label="Commercial Status"
-          value={project.contractSignedAt
-            ? 'Contract signed'
-            : paymentPlan
-              ? 'Payment plan ready'
-              : blueprint
-                ? 'Blueprint under review'
-                : 'Pre-contract'}
+          value={paymentPlan
+            ? 'Payment plan ready'
+            : blueprint
+              ? 'Blueprint under review'
+              : project.contractStatus === ContractStatus.UPLOADED
+                ? 'Contract uploaded'
+                : 'Missing contract'}
         />
       </div>
 
@@ -1556,7 +1602,7 @@ export function ProjectDetailPage() {
               </CardContent>
             </Card>
           )}
-          {['approved', 'payment_pending'].includes(project.status) && isAssignedEngineer && !hasFabLead && (
+          {canStartFabricationSetup && isAssignedEngineer && !hasFabLead && (
             <Card className={cn(
               'rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x',
               isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60' : 'border-violet-200 bg-violet-50/50'
@@ -1572,13 +1618,8 @@ export function ProjectDetailPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className={cn(
-                    'w-full sm:w-auto',
-                    isDark
-                      ? 'border-white/12 bg-white/[0.05] text-slate-100 hover:bg-white/[0.08]'
-                      : 'border-violet-300 text-violet-700 hover:bg-violet-100'
-                  )}
-                  onClick={() => setShowFabForm(true)}
+                  className="w-full sm:w-auto !border-violet-500/70 !bg-violet-600 !text-white hover:!bg-violet-700 dark:!border-violet-400/70 dark:!bg-violet-500 dark:hover:!bg-violet-400"
+                  onClick={handleOpenFabricationAssign}
                 >
                   <Users className="mr-1.5 h-4 w-4" />
                   Assign Team
@@ -1827,8 +1868,11 @@ export function ProjectDetailPage() {
               )}
 
               {/* Assign Fabrication Team (inline form for engineers) */}
-              {isEngineer && isAssignedEngineer && (showFabForm || (!hasFabLead && ['approved', 'payment_pending', 'fabrication'].includes(project.status))) && (
-                <div className="mt-4 rounded-xl border border-violet-200 dark:border-violet-900/60 bg-violet-50/30 dark:bg-violet-950/30 p-4 space-y-4">
+              {isEngineer && isAssignedEngineer && (showFabForm || (!hasFabLead && canStartFabricationSetup)) && (
+                <div
+                  ref={fabricationAssignFormRef}
+                  className="mt-4 rounded-xl border border-violet-200 dark:border-violet-900/60 bg-violet-50/30 dark:bg-violet-950/30 p-4 space-y-4"
+                >
                   <p className="text-sm font-semibold text-violet-800 dark:text-violet-200 flex items-center gap-2">
                     <Users className="h-4 w-4" />
                     Assign Fabrication Team
@@ -2287,7 +2331,7 @@ export function ProjectDetailPage() {
                       placeholder="Add internal review notes. Required when declining."
                       className="min-h-[96px] rounded-2xl border border-[color:var(--color-border)]/55 bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
                     />
-                    <div className="flex flex-col gap-2 sm:flex-row sm:justify-between">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                       <Button
                         variant="destructive"
                         className="w-full sm:w-auto"
@@ -2298,7 +2342,7 @@ export function ProjectDetailPage() {
                         Decline Initial Design
                       </Button>
                       <Button
-                        className="w-full bg-[linear-gradient(180deg,#2ca36f_0%,#1e7c54_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_12px_24px_rgba(21,98,70,0.24)] hover:bg-[linear-gradient(180deg,#33b47b_0%,#238960_100%)] dark:border dark:border-emerald-600/40 dark:bg-[linear-gradient(180deg,#34c084_0%,#238960_100%)] dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_14px_28px_rgba(7,58,40,0.28)] dark:hover:bg-[linear-gradient(180deg,#3ad18f_0%,#28976a_100%)] sm:ml-auto sm:w-auto"
+                        className="w-full bg-[linear-gradient(180deg,#2ca36f_0%,#1e7c54_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_12px_24px_rgba(21,98,70,0.24)] hover:bg-[linear-gradient(180deg,#33b47b_0%,#238960_100%)] dark:border dark:border-emerald-600/40 dark:bg-[linear-gradient(180deg,#34c084_0%,#238960_100%)] dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_14px_28px_rgba(7,58,40,0.28)] dark:hover:bg-[linear-gradient(180deg,#3ad18f_0%,#28976a_100%)] sm:w-auto"
                         onClick={() => requestReviewInitialDesign('approved')}
                         disabled={reviewInitialDesign.isPending}
                       >
@@ -2323,181 +2367,103 @@ export function ProjectDetailPage() {
       {/* ════════════════  CONTRACT TAB  ════════════════ */}
       {activeTab === 'contract' && (
         <div
-          className="grid gap-5 lg:grid-cols-2"
+          className="grid gap-5"
           role="tabpanel"
           id="project-panel-contract"
           aria-labelledby="project-tab-contract"
         >
-          <DetailSectionCard title="Contract" icon={ScrollText} className="lg:col-span-2">
-            {project.contractKey ? (
-              <div className="space-y-4">
-                <div className="space-y-3">
-                  <p className="text-sm text-slate-600 dark:text-slate-300">
-                    Contract generated on{' '}
-                    {project.contractGeneratedAt
-                      ? format(new Date(project.contractGeneratedAt), 'MMM d, yyyy h:mm a')
-                      : 'N/A'}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
+          <DetailSectionCard title="Signed Contract" icon={ScrollText}>
+            <div className="space-y-5">
+              <div className={cn(
+                'rounded-2xl border p-4',
+                project.contractStatus === ContractStatus.UPLOADED
+                  ? 'border-emerald-500/35 bg-emerald-500/10'
+                  : 'border-amber-500/35 bg-amber-500/10',
+              )}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <div className={cn(
+                      'mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
+                      project.contractStatus === ContractStatus.UPLOADED
+                        ? 'bg-emerald-500/15 text-emerald-300'
+                        : 'bg-amber-500/15 text-amber-300',
+                    )}>
+                      {project.contractStatus === ContractStatus.UPLOADED ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+                    </div>
+                    <div>
+                      <p className={cn('text-sm font-semibold', isDark ? 'text-slate-100' : 'text-slate-950')}>
+                        {project.contractStatus === ContractStatus.UPLOADED ? 'Signed contract uploaded' : 'Signed contract missing'}
+                      </p>
+                      <p className={cn('mt-1 text-xs', isDark ? 'text-slate-400' : 'text-slate-600')}>
+                        {project.contractStatus === ContractStatus.UPLOADED
+                          ? 'This project uses the manually signed contract uploaded by sales or admin.'
+                          : 'Upload the manually signed contract before engineers can claim this project.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {project.contractStatus === ContractStatus.UPLOADED && project.contractFileKey && (
                     <Button
                       size="sm"
                       variant="prominent"
-                      onClick={() => handleDownloadContract('original')}
-                      disabled={!!project.originalContractDownloadedAt}
+                      onClick={handleDownloadContract}
+                      className="w-full sm:w-auto"
                     >
                       <Download className="mr-1.5 h-4 w-4" />
-                      {project.originalContractDownloadedAt ? 'Original Downloaded' : 'Download Original'}
+                      View / Download
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleDownloadContract('copy')}
-                      className={isDark ? 'border-white/12 bg-white/[0.05] text-slate-100 hover:bg-white/[0.08]' : 'border-[color:var(--color-border)] bg-white text-[var(--color-card-foreground)] hover:bg-[color:var(--color-muted)]'}
-                    >
-                      <Download className="mr-1.5 h-4 w-4" />
-                      Download Copy
-                    </Button>
-                    {canGenerate && (
+                  )}
+                </div>
+              </div>
+
+              {project.contractStatus === ContractStatus.UPLOADED && project.contractFileKey && (
+                <div className="rounded-2xl border border-[color:var(--color-border)]/55 bg-slate-50 p-4 dark:bg-white/[0.04]">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">File</p>
+                      <p className="mt-1 break-all text-sm font-medium text-slate-950 dark:text-slate-100">
+                        {project.contractFileName || getFileName(project.contractFileKey)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Uploaded</p>
+                      <p className="mt-1 text-sm font-medium text-slate-950 dark:text-slate-100">
+                        {project.contractUploadedAt ? format(new Date(project.contractUploadedAt), 'MMM d, yyyy h:mm a') : 'Recorded'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Status</p>
+                      <p className="mt-1 text-sm font-medium text-emerald-600 dark:text-emerald-300">Ready for engineering</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-2xl border border-[color:var(--color-border)]/55 bg-slate-50 p-4 dark:bg-white/[0.04]">
+                {project.contractStatus === ContractStatus.UPLOADED ? (
+                  <p className="text-sm text-slate-700 dark:text-slate-300">
+                    Contract tab is view-only. Use this tab to check status and download the uploaded signed contract.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-slate-700 dark:text-slate-300">
+                      Contract tab is view-only. The signed contract has not been uploaded yet.
+                    </p>
+                    {(isAssignedSales || isAdmin) && (
                       <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={handleGenerateContract}
-                        disabled={generateContract.isPending}
-                        className={isDark ? 'text-slate-300 hover:text-slate-100' : 'text-[var(--text-metal-color)] hover:text-[var(--color-card-foreground)]'}
+                        type="button"
+                        variant="prominent"
+                        className="w-full sm:w-auto"
+                        onClick={() => navigate(`/projects/${id}/contract`)}
                       >
-                        {generateContract.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-                        Regenerate
+                        <Upload className="mr-1.5 h-4 w-4" />
+                        Go to Contract Upload
                       </Button>
                     )}
                   </div>
-                </div>
-
-                {project.contractSignedAt ? (
-                  <div className="rounded-2xl border border-[color:var(--color-border)]/55 bg-slate-50 p-4 dark:bg-white/[0.04]">
-                    <div className="flex items-center gap-2 text-slate-950 dark:text-slate-100">
-                      <Check className="h-5 w-5" />
-                      <span className="text-sm font-semibold">Contract Signed</span>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Signed on {format(new Date(project.contractSignedAt), 'MMM d, yyyy h:mm a')}
-                    </p>
-                  </div>
-                ) : isCustomer ? (
-                  <div className={`space-y-3 rounded-2xl border-2 p-4 ${isDark ? 'border-amber-400/70 bg-[linear-gradient(180deg,rgba(120,53,15,0.18)_0%,rgba(15,23,42,0.96)_22%,rgba(2,6,23,0.98)_100%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_24px_48px_rgba(2,6,23,0.32)]' : 'border-amber-300 bg-amber-50/50'}`}>
-                    <div>
-                      <p className={`flex items-center gap-1.5 text-sm font-semibold ${isDark ? 'text-amber-200' : 'text-amber-800'}`}>
-                        <PenTool className="h-3.5 w-3.5" />
-                        E-Sign Your Contract
-                      </p>
-                      <p className={`mt-0.5 text-[11px] ${isDark ? 'text-amber-100/80' : 'text-amber-700'}`}>
-                        Review the contract above, then sign below.
-                      </p>
-                    </div>
-
-                    {savedSignature?.signatureKey && !useNewSignature && (
-                      <div className="space-y-1.5">
-                        <p className={`text-[10px] font-medium uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-gray-500'}`}>Your Saved Signature</p>
-                        <div className={`flex items-center gap-2 rounded-lg border p-2 transition-colors ${isDark ? (usingSavedContractSignature ? 'border-emerald-400/55 bg-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_0_1px_rgba(52,211,153,0.18)]' : 'border-slate-700 bg-slate-950/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]') : (usingSavedContractSignature ? 'border-emerald-300 bg-white shadow-[0_0_0_1px_rgba(16,185,129,0.14)]' : 'border-gray-200 bg-white')}`}>
-                          <AuthImage fileKey={savedSignature.signatureKey} alt="Saved signature" className="h-9 max-w-[140px] object-contain" />
-                          <div className="flex-1" />
-                          <Button
-                            size="sm"
-                            disabled={usingSavedContractSignature}
-                            className={isDark
-                              ? (usingSavedContractSignature
-                                ? 'rounded-lg border border-emerald-400/45 bg-emerald-500/18 text-emerald-200 shadow-none disabled:opacity-100'
-                                : 'rounded-lg border border-slate-300/70 bg-[linear-gradient(180deg,#f8fafc_0%,#e2e8f0_100%)] text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.88),0_12px_28px_rgba(2,6,23,0.24)] hover:bg-[linear-gradient(180deg,#ffffff_0%,#edf2f7_100%)]')
-                              : (usingSavedContractSignature
-                                ? 'rounded-lg border border-emerald-300 bg-emerald-50 text-emerald-700 shadow-none disabled:opacity-100'
-                                : 'rounded-lg bg-[#1d1d1f] text-white hover:bg-[#2d2d2f]')}
-                            onClick={() => setContractSignatureKey(savedSignature.signatureKey!)}
-                          >
-                            <Check className="mr-1.5 h-3.5 w-3.5" />
-                            {usingSavedContractSignature ? 'Selected' : 'Use This'}
-                          </Button>
-                        </div>
-                        <button
-                          type="button"
-                          className={`text-[11px] underline underline-offset-2 ${isDark ? 'text-amber-300 hover:text-amber-200' : 'text-amber-700 hover:text-amber-900'}`}
-                          onClick={() => {
-                            setUseNewSignature(true);
-                            if (contractSignatureKey === savedSignature.signatureKey) {
-                              setContractSignatureKey('');
-                            }
-                          }}
-                        >
-                          Draw a new signature instead
-                        </button>
-                      </div>
-                    )}
-
-                    {(!savedSignature?.signatureKey || useNewSignature) && (
-                      <div className="space-y-2">
-                        {useNewSignature && (
-                          <button
-                            type="button"
-                            className={`text-[11px] underline underline-offset-2 ${isDark ? 'text-amber-300 hover:text-amber-200' : 'text-amber-700 hover:text-amber-900'}`}
-                            onClick={() => {
-                              setUseNewSignature(false);
-                              if (savedSignature?.signatureKey) {
-                                setContractSignatureKey(savedSignature.signatureKey);
-                              }
-                            }}
-                          >
-                            &larr; Use saved signature instead
-                          </button>
-                        )}
-                        <SignaturePad
-                          onSave={(key) => setContractSignatureKey(key)}
-                          existingKey={null}
-                          width={400}
-                          height={80}
-                          hideSaveButton={false}
-                        />
-                      </div>
-                    )}
-
-                    {contractSignatureKey && (
-                      <p className={`flex items-center gap-1 text-xs ${isDark ? 'text-emerald-300' : 'text-[#6e6e73]'}`}>
-                        <Check className="h-3.5 w-3.5" /> Signature captured
-                      </p>
-                    )}
-                    <Button
-                      onClick={handleSignContract}
-                      disabled={!contractSignatureKey || signContractMutation.isPending}
-                      className={isDark ? 'w-full rounded-lg border border-emerald-400/60 bg-[linear-gradient(180deg,#34d399_0%,#15803d_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_16px_32px_rgba(6,78,59,0.28)] hover:bg-[linear-gradient(180deg,#6ee7b7_0%,#16a34a_100%)] disabled:opacity-100 dark:disabled:border-white/10 dark:disabled:bg-[#1b2432] dark:disabled:text-slate-500 dark:disabled:shadow-none' : 'w-full rounded-lg bg-[#1d1d1f] text-white hover:bg-[#2d2d2f] disabled:opacity-40'}
-                    >
-                      {signContractMutation.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <PenTool className="mr-1.5 h-4 w-4" />}
-                      {signContractMutation.isPending ? 'Signing...' : 'Sign Contract'}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className={`rounded-xl border p-3 ${isDark ? 'border-amber-500/35 bg-amber-500/10' : 'border-amber-200 bg-amber-50/50'}`}>
-                    <p className={`text-sm ${isDark ? 'text-amber-200' : 'text-amber-700'}`}>
-                      Awaiting customer signature. The customer must e-sign this contract before payments can proceed.
-                    </p>
-                  </div>
                 )}
               </div>
-            ) : canGenerate &&
-              ['payment_pending', 'fabrication', 'completed'].includes(project.status) ? (
-              <div className="space-y-2">
-                <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>No contract has been generated yet.</p>
-                <Button size="sm" variant="prominent" onClick={handleGenerateContract} disabled={generateContract.isPending}>
-                  {generateContract.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-                  <ScrollText className="mr-1.5 h-4 w-4" />
-                  Generate Contract
-                </Button>
-              </div>
-            ) : (
-              <p className={`py-2 text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
-                {project.status === 'approved'
-                  ? 'Contract will be generated after the customer chooses a payment plan.'
-                  : ['payment_pending', 'fabrication', 'completed'].includes(project.status)
-                    ? 'No contract generated yet.'
-                    : 'Contract will be available after blueprint acceptance.'}
-              </p>
-            )}
+            </div>
           </DetailSectionCard>
         </div>
       )}
@@ -2514,14 +2480,13 @@ export function ProjectDetailPage() {
             <LazyBlueprintTab
               projectId={id!}
               projectItemId={activeProjectItemRecord?._id}
-              onNavigateToDetails={() => setActiveTab('details')}
             />
           </Suspense>
         )}
       </div>
 
       {/* ════════════════  PAYMENTS TAB  ════════════════ */}
-      {activeTab === 'payments' && isCustomer && !project?.contractSignedAt && (
+      {activeTab === 'payments' && isCustomer && !paymentPlan && (
         <div
           className="w-full"
           role="tabpanel"
@@ -2531,38 +2496,26 @@ export function ProjectDetailPage() {
           <Card className="rounded-2xl border border-[color:var(--color-border)]/60 bg-white shadow-sm dark:bg-slate-950/45">
             <CardContent className="flex flex-col items-center text-center py-12 px-6">
               <div className="silver-sheen mb-4 flex h-14 w-14 items-center justify-center rounded-full">
-                <ScrollText className="h-7 w-7 text-[#33414d] dark:text-[#33414d]" />
+                <CreditCard className="h-7 w-7 text-[#33414d] dark:text-[#33414d]" />
               </div>
-              <h3 className={`mb-1 text-base font-semibold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>Sign Your Contract First</h3>
+              <h3 className={`mb-1 text-base font-semibold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>
+                Choose Payment Plan First
+              </h3>
               <p className={`mb-6 max-w-sm text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
-                {project?.status === 'approved' && !project?.contractKey
-                  ? 'Choose your payment plan in the Blueprint tab first. That step generates the contract you need to sign.'
-                  : project?.contractKey
-                  ? 'Your contract has been generated and is ready for signing. Please read and sign it before making any payments.'
-                  : 'Your contract is being prepared by our team. Once it\'s ready, you\'ll be able to read and sign it here.'}
+                Choose your payment plan in the Blueprint tab first. After that, you can continue directly to payment.
               </p>
-              {project?.status === 'approved' && !project?.contractKey ? (
-                <Button
-                  className="bg-[#1d1d1f] hover:bg-[#3a3a3e] text-white rounded-xl px-6"
-                  onClick={() => setActiveTab('blueprint')}
-                >
-                  <CreditCard className="mr-2 h-4 w-4" />
-                  Choose Payment Plan
-                </Button>
-              ) : project?.contractKey && (
-                <Button
-                  className="bg-[#1d1d1f] hover:bg-[#3a3a3e] text-white rounded-xl px-6"
-                  onClick={() => setActiveTab('details')}
-                >
-                  <ScrollText className="mr-2 h-4 w-4" />
-                  Go to Contract &amp; Sign
-                </Button>
-              )}
+              <Button
+                className="rounded-xl border border-emerald-300/70 !bg-emerald-600 !bg-none px-6 !text-white shadow-[0_12px_28px_rgba(16,185,129,0.28)] hover:!bg-emerald-500 dark:border-emerald-300/55 dark:!bg-emerald-500 dark:!text-slate-950 dark:hover:!bg-emerald-400"
+                onClick={() => setActiveTab('blueprint')}
+              >
+                <CreditCard className="mr-2 h-4 w-4" />
+                Choose Payment Plan
+              </Button>
             </CardContent>
           </Card>
         </div>
       )}
-      {activeTab === 'payments' && (!isCustomer || project?.contractSignedAt) && (
+      {activeTab === 'payments' && (!isCustomer || paymentPlan) && (
         <div
           className="space-y-4"
           role="tabpanel"
@@ -2688,7 +2641,10 @@ export function ProjectDetailPage() {
               projectId={id!}
               projectItemId={activeProjectItemRecord?._id}
               projectStatus={project.status}
-              installationConfirmedAt={project?.installationConfirmedAt}
+              installationConfirmedAt={
+                activeProjectItemRecord?.installationConfirmedAt
+                  || (!project.items?.length ? project?.installationConfirmedAt : undefined)
+              }
               canViewUpdates={canViewFabrication}
               canManageUpdates={canManageFabrication}
               showAssignmentNotice={showFabricationAssignmentNotice}

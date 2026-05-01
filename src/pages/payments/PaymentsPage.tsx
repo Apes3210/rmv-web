@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { format, differenceInDays } from 'date-fns';
-import { CreditCard, AlertTriangle, MapPin, QrCode, Zap, Banknote, Download, ScrollText, PenTool, Receipt, Search, Calendar, Hash, Tag, AlertCircle, Clock, Lock, ArrowLeft, ChevronRight, CheckCircle, MoreHorizontal, ShieldCheck } from 'lucide-react';
+import { CreditCard, AlertTriangle, MapPin, QrCode, Zap, Banknote, Download, Receipt, Search, Calendar, Hash, Tag, AlertCircle, Clock, Lock, ArrowLeft, ChevronRight, CheckCircle, MoreHorizontal, ShieldCheck } from 'lucide-react';
 import { Link, useLocation, useSearchParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -22,6 +22,7 @@ import { useThemeStore } from '@/stores/theme.store';
 import { useProjects } from '@/hooks/useProjects';
 import {
   usePaymentPlan,
+  useProjectPaymentPlans,
   usePaymentsByProject,
   useStageCheckout,
   useRequestStageCashPayment,
@@ -56,6 +57,8 @@ import { OcularFeeQueuePage } from '../appointments/OcularFeeQueuePage';
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(v);
+
+const PAYMENT_READY_PROJECT_STATUSES = new Set(['payment_pending', 'fabrication', 'completed']);
 
 const historyStatusConfig: Record<string, { label: string; className: string }> = {
   verified: { label: 'Paid', className: 'border border-[#7aa18a] bg-[linear-gradient(180deg,#e1f1e6_0%,#c6e0cf_100%)] text-[#234b32] shadow-[inset_0_1px_0_rgba(255,255,255,0.62)] dark:border-emerald-600/50 dark:bg-[linear-gradient(180deg,rgba(39,84,59,0.9)_0%,rgba(24,53,38,0.92)_100%)] dark:text-emerald-100' },
@@ -167,20 +170,32 @@ export function PaymentsPage() {
   const selectedProject = projects?.items?.find(
     (p) => String(p._id) === selectedProjectId,
   );
-  const contractSigned = !!selectedProject?.contractSignedAt;
-
-  // Auto-select first item when a project is selected
+  const selectedProjectItemIds = useMemo(
+    () => (selectedProject?.items || []).map((item) => String(item._id)),
+    [selectedProject?.items],
+  );
+  const selectedProjectPlanQueries = useProjectPaymentPlans(selectedProjectId, selectedProjectItemIds);
+  const selectedProjectPlansLoading = selectedProjectPlanQueries.some((query) => query.isLoading);
+  const paymentReadyItems = useMemo(() => (
+    (selectedProject?.items || []).filter((_item, index) => Boolean(selectedProjectPlanQueries[index]?.data))
+  ), [selectedProject?.items, selectedProjectPlanQueries]);
+  // Auto-select the first item that actually has a payment plan when a project is selected.
   useEffect(() => {
     const items = selectedProject?.items;
     if (selectedProjectId && items && items.length > 0) {
-      if (!selectedProjectItemId || !items.find(i => String(i._id) === selectedProjectItemId)) {
-        setSelectedProjectItemId(String(items[0]?._id || ''));
+      if (selectedProjectPlansLoading) return;
+      if (paymentReadyItems.length === 0) {
+        setSelectedProjectItemId('');
+        return;
+      }
+      if (!selectedProjectItemId || !paymentReadyItems.find(i => String(i._id) === selectedProjectItemId)) {
+        setSelectedProjectItemId(String(paymentReadyItems[0]?._id || ''));
       }
     } else if (selectedProjectId) {
       // Keep it empty for project-level plans
       setSelectedProjectItemId('');
     }
-  }, [selectedProjectId, selectedProject, selectedProjectItemId]);
+  }, [selectedProjectId, selectedProject, selectedProjectItemId, paymentReadyItems, selectedProjectPlansLoading]);
 
   // Handle ?tab= query param for deep linking
   useEffect(() => {
@@ -211,7 +226,9 @@ export function PaymentsPage() {
   // Filtered project list for table view
   const filteredProjects = useMemo(() => {
     if (!projects?.items) return [];
-    let items = projects.items;
+    let items = isCustomer
+      ? projects.items.filter((p) => PAYMENT_READY_PROJECT_STATUSES.has(String(p.status)))
+      : projects.items;
     if (statusFilter !== 'all') {
       items = items.filter((p) => String(p.status) === statusFilter);
     }
@@ -224,13 +241,16 @@ export function PaymentsPage() {
       );
     }
     return items;
-  }, [projects, statusFilter, projectSearch]);
+  }, [projects, statusFilter, projectSearch, isCustomer]);
 
   // Unique statuses for filter dropdown
   const projectStatuses = useMemo(() => {
     if (!projects?.items) return [];
-    return [...new Set(projects.items.map((p) => String(p.status)))];
-  }, [projects]);
+    const items = isCustomer
+      ? projects.items.filter((p) => PAYMENT_READY_PROJECT_STATUSES.has(String(p.status)))
+      : projects.items;
+    return [...new Set(items.map((p) => String(p.status)))];
+  }, [projects, isCustomer]);
 
 
 
@@ -644,9 +664,9 @@ export function PaymentsPage() {
           </div>
 
           {/* Item Selector (if multi-item) */}
-          {selectedProject?.items && selectedProject.items.length > 1 && (
+          {paymentReadyItems.length > 1 && (
             <div className="flex gap-2 mt-4 overflow-x-auto pb-1 no-scrollbar scroll-smooth">
-              {selectedProject.items.map((item) => (
+              {paymentReadyItems.map((item) => (
                 <button
                   key={String(item._id)}
                   onClick={() => setSelectedProjectItemId(String(item._id))}
@@ -669,7 +689,7 @@ export function PaymentsPage() {
           )}
 
           {/* Detail content */}
-          {planLoading ? (
+          {planLoading || selectedProjectPlansLoading ? (
         <Card className="rounded-none overflow-hidden border-x-0 sm:rounded-xl sm:border-x">
           <CardContent className="p-4">
             <Skeleton className="h-32 w-full" />
@@ -681,24 +701,6 @@ export function PaymentsPage() {
           title="No payment plan"
           description="A payment plan hasn't been created for this project yet."
         />
-      ) : isCustomer && !contractSigned ? (
-        <Card className="metal-panel-strong rounded-none overflow-hidden border-x-0 sm:rounded-xl sm:border-x">
-          <CardContent className="flex flex-col items-center text-center py-10 px-6">
-            <div className="silver-sheen mb-4 flex h-14 w-14 items-center justify-center rounded-full">
-              <PenTool className="h-6 w-6 text-[#616a74]" />
-            </div>
-            <h3 className="mb-1 text-base font-semibold text-[#171b21] dark:text-slate-100">Sign Your Contract First</h3>
-            <p className="mb-5 max-w-xs text-sm text-[#616a74] dark:text-slate-400">
-              You must review and e-sign the project contract before making any payments.
-            </p>
-            <Button asChild className="px-6">
-              <Link to={`/projects/${selectedProjectId}`}>
-                <ScrollText className="mr-1.5 h-4 w-4" />
-                Go to Project &amp; Sign Contract
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
       ) : (
         <>
           {/* ── Payment Status Banner ── */}
@@ -781,11 +783,11 @@ export function PaymentsPage() {
 
                   /* Timing badge */
                   const timingBadge = isOverdue ? (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-[#cb8b86] bg-[linear-gradient(180deg,#fbefed_0%,#efd7d4_100%)] px-2 py-0.5 text-[10px] font-medium text-[#87544f]">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-rose-300 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700 dark:border-rose-400/40 dark:bg-rose-500/12 dark:text-rose-200">
                       <AlertTriangle className="h-3 w-3" /> Overdue ({daysSinceActivation}d)
                     </span>
                   ) : isActivated && !isVerified && !isProofSubmitted ? (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-[#c7aa7a] bg-[linear-gradient(180deg,#f8f0e5_0%,#ebdcc6_100%)] px-2 py-0.5 text-[10px] font-medium text-[#7e6239]">
+                    <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-400/40 dark:bg-amber-500/12 dark:text-amber-200">
                       <AlertCircle className="h-3 w-3" /> Due Now
                     </span>
                   ) : isHeadsUp ? (
@@ -815,9 +817,12 @@ export function PaymentsPage() {
                   return (
                     <div
                       key={String(stage.stageId)}
-                      className={`px-4 sm:px-6 py-3.5 transition-colors ${
-                        isOverdue ? 'bg-[linear-gradient(180deg,rgba(251,239,237,0.75)_0%,rgba(239,215,212,0.42)_100%)]' : 'hover:bg-[color:var(--color-muted)]/70'
-                      }`}
+                      className={cn(
+                        'px-4 py-3.5 transition-colors sm:px-6',
+                        isOverdue
+                          ? 'border-l-4 border-l-rose-400 bg-rose-50/80 dark:border-l-rose-400/70 dark:bg-rose-950/18 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]'
+                          : 'hover:bg-[color:var(--color-muted)]/70',
+                      )}
                     >
                       {/* ─── Mobile layout ─── */}
                       <div className="sm:hidden space-y-2.5">

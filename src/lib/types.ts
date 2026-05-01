@@ -142,11 +142,19 @@ export interface Appointment {
   date: string;
   slotCode: string;
   status: string;
+  attendanceStatus?: string;
+  actualArrivalAt?: string;
+  consultationStartedAt?: string;
+  consultationCompletedAt?: string;
+  attendanceNotes?: string;
+  attendanceUpdatedAt?: string;
+  attendanceOverrideReason?: string;
   purpose?: string;
   serviceTypes?: string[];
   serviceType?: string;
   serviceTypeCustom?: string;
   address?: string;
+  customerAddress?: string;
   formattedAddress?: string;
   addressStructured?: {
     street: string;
@@ -278,6 +286,13 @@ export interface Project {
   visitReportId?: string | VisitReport;
   items?: ProjectItem[];
   mediaKeys: string[];
+  contractStatus?: 'missing' | 'uploaded';
+  contractFileKey?: string;
+  contractFileName?: string;
+  contractContentType?: string;
+  contractFileSize?: number;
+  contractUploadedAt?: string;
+  contractUploadedBy?: string | { _id: string; firstName: string; lastName: string };
   contractKey?: string;
   contractGeneratedAt?: string;
   contractSignedAt?: string;
@@ -330,6 +345,7 @@ export interface ProjectItem {
   designReviewedBy?: string | User;
   designReviewedAt?: string;
   designReviewNotes?: string;
+  installationConfirmedAt?: string;
   mediaKeys?: string[];
   createdAt: string;
   updatedAt: string;
@@ -576,7 +592,7 @@ export interface SiteConditions {
 
 export interface VisitReport {
   _id: string;
-  appointmentId: string;
+  appointmentId: string | (Partial<Appointment> & { _id: string });
   projectItemId?: string;
   customerId: string;
   customerName?: string;
@@ -613,6 +629,8 @@ export interface VisitReport {
 
   // Consultation-specific fields
   discussionNotes?: string;
+  consultationOutcome?: 'schedule_ocular' | 'no_ocular';
+  noOcularReason?: string;
   productsDiscussed?: string;
   designPreferences?: string;
   materialOptions?: string;
@@ -621,6 +639,7 @@ export interface VisitReport {
   initialDesignNotes?: string;
   recommendedOcularDate?: string;
   recommendedOcularSlot?: string;
+  relatedOcularAppointment?: Partial<Appointment> & { _id: string };
   linkedProjectId?: string;
 
   photoKeys: string[];

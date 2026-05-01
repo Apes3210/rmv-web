@@ -64,7 +64,7 @@ export function useProjectByVisitReport(visitReportId: string | undefined) {
   return useQuery({
     queryKey: KEYS.byVisitReport(visitReportId!),
     queryFn: async () => {
-      const { data } = await api.get<ApiResponse<Pick<Project, '_id' | 'title' | 'serviceType' | 'status'> | null>>(
+      const { data } = await api.get<ApiResponse<Pick<Project, '_id' | 'title' | 'serviceType' | 'status' | 'contractStatus'> | null>>(
         `/projects/by-visit-report/${visitReportId}`,
       );
       return data.data;
@@ -272,9 +272,13 @@ export function useSelectProjectPaymentPlan() {
       paymentType: 'full' | 'installment';
       projectItemId?: string;
     }) => {
-      const { data } = await api.post<ApiResponse<{ paymentPlan: unknown; contractKey: string; project: Project }>>(
+      const cleanProjectItemId = projectItemId?.trim() || undefined;
+      const { data } = await api.post<ApiResponse<{ paymentPlan: unknown; paymentPlans?: unknown[]; project: Project }>>(
         `/projects/${id}/select-payment-plan`,
-        { paymentType, projectItemId },
+        {
+          paymentType,
+          ...(cleanProjectItemId ? { projectItemId: cleanProjectItemId } : {}),
+        },
       );
       return data.data;
     },
@@ -282,6 +286,41 @@ export function useSelectProjectPaymentPlan() {
       qc.invalidateQueries({ queryKey: KEYS.all });
       qc.invalidateQueries({ queryKey: KEYS.detail(variables.id) });
       qc.invalidateQueries({ queryKey: ['payment-plans'] });
+    },
+  });
+}
+
+export function useUploadProjectContract() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      contractFileKey,
+      contractFileName,
+      contractContentType,
+      contractFileSize,
+    }: {
+      id: string;
+      contractFileKey: string;
+      contractFileName?: string;
+      contractContentType?: string;
+      contractFileSize?: number;
+    }) => {
+      const { data } = await api.post<ApiResponse<Project>>(
+        `/projects/${id}/contract`,
+        {
+          contractFileKey,
+          contractFileName,
+          contractContentType,
+          contractFileSize,
+        },
+      );
+      return data.data;
+    },
+    onSuccess: (project, variables) => {
+      syncProjectCaches(qc, project);
+      qc.invalidateQueries({ queryKey: KEYS.all });
+      qc.invalidateQueries({ queryKey: KEYS.detail(variables.id) });
     },
   });
 }
@@ -350,14 +389,23 @@ export function useContractDownloadUrl(projectId: string, copy: 'original' | 'co
 export function useConfirmInstallation() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (projectId: string) => {
+    mutationFn: async ({
+      projectId,
+      projectItemId,
+    }: {
+      projectId: string;
+      projectItemId?: string;
+    }) => {
       const { data } = await api.post<ApiResponse<Project>>(
         `/projects/${projectId}/confirm-installation`,
+        projectItemId ? { projectItemId } : undefined,
       );
       return data.data;
     },
-    onSuccess: (_data, projectId) => {
+    onSuccess: (_data, { projectId }) => {
       qc.invalidateQueries({ queryKey: KEYS.detail(projectId) });
+      qc.invalidateQueries({ queryKey: ['fabrication', 'project', projectId] });
+      qc.invalidateQueries({ queryKey: ['fabrication', 'status', projectId] });
     },
   });
 }

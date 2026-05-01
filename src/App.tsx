@@ -132,6 +132,11 @@ const ProjectDetailPage = lazy(() =>
     default: module.ProjectDetailPage,
   })),
 );
+const ProjectContractUploadPage = lazy(() =>
+  import('@/pages/projects/ProjectContractUploadPage').then((module) => ({
+    default: module.ProjectContractUploadPage,
+  })),
+);
 const VisitReportPage = lazy(() =>
   import('@/pages/visit-reports/VisitReportPage').then((module) => ({
     default: module.VisitReportPage,
@@ -330,6 +335,7 @@ export default function App() {
               >
                 <Route path="/projects" element={<ProjectsPage />} />
                 <Route path="/projects/:id" element={<ProjectDetailPage />} />
+                <Route path="/projects/:id/contract" element={<ProjectContractUploadPage />} />
                 <Route path="/projects/:id/blueprint" element={<ProjectDetailPage />} />
                 <Route path="/projects/:id/payments" element={<ProjectDetailPage />} />
                 <Route path="/projects/:id/fabrication" element={<ProjectDetailPage />} />

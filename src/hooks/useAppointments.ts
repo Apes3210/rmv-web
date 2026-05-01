@@ -182,12 +182,44 @@ export function useCompleteAppointment() {
 export function useUpdateVisitStatus() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: 'preparing' | 'on_the_way' }) => {
+    mutationFn: async ({
+      id,
+      status,
+    }: {
+      id: string;
+      status: 'preparing' | 'on_the_way' | 'arrived_at_site' | 'in_progress';
+    }) => {
       const { data } = await api.post<ApiResponse<Appointment>>(`/appointments/${id}/visit-status/${status}`);
       return data.data;
     },
     onSuccess: (appointment) => {
       syncAppointmentCaches(qc, appointment);
+    },
+  });
+}
+
+export function useUpdateConsultationAttendance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...body
+    }: {
+      id: string;
+      action: 'check_in' | 'start' | 'complete' | 'no_show' | 'reschedule';
+      actualArrivalAt?: string;
+      notes?: string;
+      overrideReason?: string;
+    }) => {
+      const { data } = await api.post<ApiResponse<Appointment>>(
+        `/appointments/${id}/consultation-attendance`,
+        body,
+      );
+      return data.data;
+    },
+    onSuccess: (appointment) => {
+      syncAppointmentCaches(qc, appointment);
+      qc.invalidateQueries({ queryKey: ['visit-reports'] });
     },
   });
 }

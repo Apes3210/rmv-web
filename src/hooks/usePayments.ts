@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { ApiResponse, Payment, PaymentPlan } from '@/lib/types';
 import { extractItems } from '@/lib/utils';
@@ -43,6 +43,23 @@ export function usePaymentPlan(projectId: string, projectItemId?: string) {
     },
     enabled: !!projectId,
     refetchInterval: () => getActiveTabRefetchInterval(30_000),
+  });
+}
+
+export function useProjectPaymentPlans(projectId: string, projectItemIds: string[]) {
+  return useQueries({
+    queries: projectItemIds.map((projectItemId) => ({
+      queryKey: KEYS.planByProject(projectId, projectItemId),
+      queryFn: async () => {
+        const { data } = await api.get<ApiResponse<PaymentPlan>>(
+          `/payments/plan/${projectId}`,
+          { params: { projectItemId } },
+        );
+        return data.data;
+      },
+      enabled: !!projectId && !!projectItemId,
+      refetchInterval: () => getActiveTabRefetchInterval(30_000),
+    })),
   });
 }
 

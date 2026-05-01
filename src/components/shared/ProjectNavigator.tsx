@@ -200,8 +200,14 @@ export function ProjectNavigator({
   const [adding, setAdding] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<VisitReport | null>(null);
+  const [optimisticActiveId, setOptimisticActiveId] = useState<string | null>(null);
 
   const reports: VisitReport[] = siblings ?? [];
+  const displayedActiveId = optimisticActiveId || String(activeReportId);
+
+  useEffect(() => {
+    setOptimisticActiveId(null);
+  }, [activeReportId]);
 
   // Don't render when there's only 1 report and the user can't add more
   if (reports.length <= 1 && !canAdd) return null;
@@ -254,9 +260,13 @@ export function ProjectNavigator({
 
   const handleNavigate = async (nextReportId: string) => {
     if (nextReportId === String(activeReportId)) return;
+    setOptimisticActiveId(nextReportId);
     if (onBeforeNavigate) {
       const shouldNavigate = await onBeforeNavigate(nextReportId);
-      if (!shouldNavigate) return;
+      if (!shouldNavigate) {
+        setOptimisticActiveId(null);
+        return;
+      }
     }
     navigate(`/visit-reports/${nextReportId}`);
   };
@@ -293,7 +303,7 @@ export function ProjectNavigator({
       <div className="flex gap-3 overflow-x-auto overflow-y-visible pb-1 -mx-0.5 px-0.5 snap-x snap-mandatory no-scrollbar">
         {reports.map((report, idx) => {
           const id = String(report._id);
-          const isActive = id === String(activeReportId);
+          const isActive = id === displayedActiveId;
           const isRenaming = renamingId === id;
           const canDeleteThisReport =
             canEdit

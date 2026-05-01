@@ -249,7 +249,10 @@ export function FabricationTab({
   }
 
   const isReadyForDelivery = fabricationStatus?.currentStatus === FabricationStatus.READY_FOR_DELIVERY;
-  const installationConfirmed = !!installationConfirmedAt;
+  const installationConfirmed = Boolean(
+    selectedItem?.installationConfirmedAt
+      || (!selectedFabricationItemId && installationConfirmedAt),
+  );
   const currentFabricationStepIndex = FABRICATION_STEP_MARKERS.findIndex(
     (step) => step.key === fabricationStatus?.currentStatus,
   );
@@ -257,7 +260,10 @@ export function FabricationTab({
   const handleConfirmInstallation = async () => {
     try {
       setBlockedAction(null);
-      await confirmInstallationMutation.mutateAsync(projectId);
+      await confirmInstallationMutation.mutateAsync({
+        projectId,
+        projectItemId: selectedFabricationItemId,
+      });
       toast.success('Installation confirmed! The fabrication team will coordinate delivery and installation.', { duration: 5000 });
     } catch (err) {
       setBlockedAction(resolveBlockedAction(err, '/help/projects-fabrication/fabrication-gates-and-payments#overview'));

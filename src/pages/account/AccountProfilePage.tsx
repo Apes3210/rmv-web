@@ -227,7 +227,7 @@ export function AccountProfilePage() {
         <div className="rounded-2xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-card)]/85 p-4">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-muted-foreground)]">E-signature</p>
           <p className="mt-1 text-sm font-semibold text-[var(--color-card-foreground)]">{hasSavedSignature ? 'Signature on file' : 'Signature not saved yet'}</p>
-          <p className="mt-1 text-xs text-[var(--text-metal-muted-color)]">Saving your signature now keeps contract signing quicker later in the project flow.</p>
+          <p className="mt-1 text-xs text-[var(--text-metal-muted-color)]">Saving your signature now keeps approvals and payment verification quicker later in the project flow.</p>
         </div>
       </CardContent>
     </Card>

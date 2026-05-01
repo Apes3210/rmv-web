@@ -111,6 +111,7 @@ export function useUpsertBlueprintDraft() {
   return useMutation({
     mutationFn: async ({
       projectId,
+      projectItemId,
       ...body
     }: {
       projectId: string;
@@ -126,7 +127,8 @@ export function useUpsertBlueprintDraft() {
     }) => {
       const { data } = await api.put<ApiResponse<BlueprintDraft>>(
         `/blueprints/project/${projectId}/draft`,
-        body,
+        { ...body, projectItemId },
+        { params: projectItemId ? { projectItemId } : undefined },
       );
       return data.data;
     },

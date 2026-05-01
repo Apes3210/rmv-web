@@ -1,7 +1,7 @@
 import { useState, Fragment } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { FolderOpen, ChevronRight, Calendar, User, Wrench } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -332,11 +332,18 @@ export function ProjectsPage() {
 
                       {/* Date */}
                       <TableCell className="py-5 hidden lg:table-cell">
-                        <div className="flex items-center gap-1.5 text-xs text-[var(--text-metal-color)]">
-                          <Calendar className="h-3 w-3 shrink-0 text-[var(--text-metal-muted-color)]" />
-                          {project.createdAt
-                            ? format(new Date(String(project.createdAt)), 'MMM d, yyyy')
-                            : ''}
+                        <div>
+                          <div className="flex items-center gap-1.5 text-xs text-[var(--text-metal-color)]">
+                            <Calendar className="h-3 w-3 shrink-0 text-[var(--text-metal-muted-color)]" />
+                            {project.createdAt
+                              ? format(new Date(String(project.createdAt)), 'MMM d, yyyy')
+                              : ''}
+                          </div>
+                          {project.updatedAt && (
+                            <p className="mt-1 text-[10px] font-medium italic text-[var(--text-metal-muted-color)]">
+                              Updated {format(new Date(String(project.updatedAt)), 'MMM d, h:mm a')} ({formatDistanceToNow(new Date(String(project.updatedAt)), { addSuffix: true })})
+                            </p>
+                          )}
                         </div>
                       </TableCell>
 
@@ -425,6 +432,11 @@ export function ProjectsPage() {
                       <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-metal-color)]">
                         <Calendar className="h-3 w-3 shrink-0" />
                         <span>{format(new Date(String(project.createdAt)), 'MMM d, yyyy')}</span>
+                      </div>
+                    )}
+                    {project.updatedAt && (
+                      <div className="text-[10px] text-[var(--text-metal-muted-color)]">
+                        Last updated {formatDistanceToNow(new Date(String(project.updatedAt)), { addSuffix: true })}
                       </div>
                     )}
                   </div>

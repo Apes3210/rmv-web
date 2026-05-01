@@ -17,6 +17,19 @@ function rawId(field: unknown): string | null {
   return null;
 }
 
+function syncVisitReportCaches(qc: ReturnType<typeof useQueryClient>, report: VisitReport) {
+  qc.setQueryData(KEYS.detail(String(report._id)), report);
+
+  const appointmentId = rawId(report.appointmentId);
+  if (appointmentId) {
+    qc.setQueryData(KEYS.byAppointment(appointmentId), (existing: VisitReport[] | undefined) => {
+      if (!existing) return existing;
+      const next = existing.map((item) => (String(item._id) === String(report._id) ? report : item));
+      return next.some((item) => String(item._id) === String(report._id)) ? next : [report, ...next];
+    });
+  }
+}
+
 export function useVisitReports(params?: Record<string, string>) {
   return useQuery({
     queryKey: KEYS.list(params),
@@ -84,6 +97,7 @@ export function useCreateVisitReport() {
       return data.data;
     },
     onSuccess: (report) => {
+      syncVisitReportCaches(qc, report);
       qc.invalidateQueries({ queryKey: KEYS.all });
       qc.invalidateQueries({ queryKey: KEYS.detail(String(report._id)) });
       const appointmentId = rawId(report.appointmentId);
@@ -114,6 +128,8 @@ export function useUpdateVisitReport() {
       customerRequirements?: string;
       notes?: string;
       discussionNotes?: string;
+      consultationOutcome?: 'schedule_ocular' | 'no_ocular';
+      noOcularReason?: string;
       photoKeys?: string[];
       videoKeys?: string[];
       sketchKeys?: string[];
@@ -134,6 +150,7 @@ export function useUpdateVisitReport() {
       return data.data;
     },
     onSuccess: (report) => {
+      syncVisitReportCaches(qc, report);
       qc.invalidateQueries({ queryKey: KEYS.all });
       qc.invalidateQueries({ queryKey: KEYS.detail(String(report._id)) });
       const appointmentId = rawId(report.appointmentId);
@@ -152,6 +169,7 @@ export function useSubmitVisitReport() {
       return data.data;
     },
     onSuccess: (report) => {
+      syncVisitReportCaches(qc, report);
       qc.invalidateQueries({ queryKey: KEYS.all });
       qc.invalidateQueries({ queryKey: KEYS.detail(String(report._id)) });
       const appointmentId = rawId(report.appointmentId);
@@ -172,6 +190,7 @@ export function useReturnVisitReport() {
       return data.data;
     },
     onSuccess: (report) => {
+      syncVisitReportCaches(qc, report);
       qc.invalidateQueries({ queryKey: KEYS.all });
       qc.invalidateQueries({ queryKey: KEYS.detail(String(report._id)) });
       const appointmentId = rawId(report.appointmentId);
@@ -191,6 +210,7 @@ export function useReopenVisitReportForRepair() {
       return data.data;
     },
     onSuccess: (report) => {
+      syncVisitReportCaches(qc, report);
       qc.invalidateQueries({ queryKey: KEYS.all });
       qc.invalidateQueries({ queryKey: KEYS.detail(String(report._id)) });
       const appointmentId = rawId(report.appointmentId);

@@ -36,21 +36,55 @@ import {
   useFinalizeBlueprintDraft,
 } from '@/hooks/useBlueprints';
 import { useConfigs } from '@/hooks/useConfig';
+import { usePaymentPlan } from '@/hooks/usePayments';
 import { uploadFileToR2 } from '@/hooks/useUploads';
 import { useProject, useSelectProjectPaymentPlan } from '@/hooks/useProjects';
 import { useAuthStore } from '@/stores/auth.store';
 import { useThemeStore } from '@/stores/theme.store';
 import { api } from '@/lib/api';
 import { Role } from '@/lib/constants';
-import type { Blueprint, VisitReport } from '@/lib/types';
+import type { Blueprint, BlueprintDraft, VisitReport } from '@/lib/types';
 
 interface BlueprintTabProps {
   projectId: string;
   projectItemId?: string;
-  onNavigateToDetails?: () => void;
 }
 
 type DraftFileMeta = { name: string; type: string; size: number; key: string; uploadedAt: string };
+type QuotationLineItemState = { label: string; quantity: number; materials: string; labor: string };
+type QuotationDraftState = {
+  lineItems: QuotationLineItemState[];
+  fees: string;
+  validityDays: string;
+  breakdown: string;
+  estimatedDuration: string;
+  engineerNotes: string;
+  paymentMilestones: { label: string; description: string }[];
+};
+
+function getEmptyQuotation(): QuotationDraftState {
+  return {
+    lineItems: [],
+    fees: '',
+    validityDays: '30',
+    breakdown: '',
+    estimatedDuration: '',
+    engineerNotes: '',
+    paymentMilestones: [],
+  };
+}
+
+function normalizeDraftQuotation(quotation?: BlueprintDraft['quotation']): QuotationDraftState {
+  return {
+    lineItems: quotation?.lineItems || [],
+    fees: '',
+    validityDays: quotation?.validityDays || '30',
+    breakdown: quotation?.breakdown || '',
+    estimatedDuration: quotation?.estimatedDuration || '',
+    engineerNotes: quotation?.engineerNotes || '',
+    paymentMilestones: quotation?.paymentMilestones || [],
+  };
+}
 
 function requestSignedUploadUrl(body: {
   folder: string;
@@ -239,7 +273,7 @@ function FilePreviewThumb({ fileKey, label }: { fileKey: string | undefined | nu
   );
 }
 
-export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: BlueprintTabProps) {
+export function BlueprintTab({ projectId, projectItemId }: BlueprintTabProps) {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const { resolvedTheme } = useThemeStore();
@@ -251,6 +285,7 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
   const { data: project, refetch: refetchProject } = useProject(projectId);
   const { data: blueprint, refetch: refetchBlueprint } = useLatestBlueprint(projectId, projectItemId);
   const { data: blueprints, isLoading, isError, refetch } = useBlueprintsByProject(projectId, projectItemId);
+  const { data: paymentPlan } = usePaymentPlan(projectId, projectItemId);
 
   // Engineer-specific mutations
   const upsertDraftMutation = useUpsertBlueprintDraft();
@@ -276,8 +311,22 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
       (e: any) => (typeof e === 'string' ? e : e._id) === user._id,
     );
   })();
+  const activeProjectItem = project?.items?.find((item) => item._id === projectItemId);
+  const canUploadInitialBlueprint = Boolean(
+    isAssigned
+    && project
+    && (
+      ['blueprint', 'submitted'].includes(project.status)
+      || (
+        project.status === 'approved'
+        && activeProjectItem
+        && activeProjectItem.status !== 'approved'
+      )
+    ),
+  );
 
   const canReviewBlueprint = isCustomer;
+  const hasActiveItemPaymentPlan = Boolean(paymentPlan);
 
   // ── Customer review state ──
   const [revisionDialog, setRevisionDialog] = useState<{ open: boolean; blueprintId: string }>({
@@ -305,7 +354,6 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
   const [uploadingFile, setUploadingFile] = useState<'blueprint'|'design'|'costing'|null>(null);
   const [uploading, setUploading] = useState(false);
   const [quotLineItems, setQuotLineItems] = useState<{ label: string; quantity: number; materials: string; labor: string }[]>([]);
-  const [quotFees, setQuotFees] = useState('');
   const [quotValidityDays, setQuotValidityDays] = useState('30');
   const [quotBreakdown, setQuotBreakdown] = useState('');
   const [quotDuration, setQuotDuration] = useState('');
@@ -314,17 +362,30 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
   const [quotInitialized, setQuotInitialized] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
 
+  const currentQuotation = useMemo(() => ({
+    lineItems: quotLineItems,
+    fees: '',
+    validityDays: quotValidityDays,
+    breakdown: quotBreakdown,
+    estimatedDuration: quotDuration,
+    engineerNotes: quotNotes,
+    paymentMilestones: quotMilestones,
+  }), [quotLineItems, quotValidityDays, quotBreakdown, quotDuration, quotNotes, quotMilestones]);
+
+  const lastSavedQuotation = useRef(currentQuotation);
+
   useEffect(() => {
+    const emptyQuotation = getEmptyQuotation();
     setBlueprintFileMeta(null);
     setDesignFileMeta(null);
     setCostingFileMeta(null);
-    setQuotLineItems([]);
-    setQuotFees('');
-    setQuotValidityDays('30');
-    setQuotBreakdown('');
-    setQuotDuration('');
-    setQuotNotes('');
-    setQuotMilestones([]);
+    setQuotLineItems(emptyQuotation.lineItems || []);
+    setQuotValidityDays(emptyQuotation.validityDays || '30');
+    setQuotBreakdown(emptyQuotation.breakdown || '');
+    setQuotDuration(emptyQuotation.estimatedDuration || '');
+    setQuotNotes(emptyQuotation.engineerNotes || '');
+    setQuotMilestones(emptyQuotation.paymentMilestones || []);
+    lastSavedQuotation.current = emptyQuotation;
     setQuotInitialized(false);
   }, [projectItemId]);
 
@@ -350,7 +411,7 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
   })();
   const cfgDescriptions: string[] = (() => {
     const c = configs?.find(cfg => cfg.key === 'installment_stage_descriptions');
-    return Array.isArray(c?.value) ? (c.value as string[]) : ['Due upon contract signing', 'Due when fabrication is complete', 'Due after installation & acceptance'];
+    return Array.isArray(c?.value) ? (c.value as string[]) : ['Initial payment before fabrication', 'Due when fabrication is complete', 'Due after installation & acceptance'];
   })();
 
   // Hydrate from DB Draft
@@ -358,56 +419,53 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
     if (quotInitialized) return;
 
     if (dbDraft) {
+      const draftProjectItemId = dbDraft.projectItemId ? String(dbDraft.projectItemId) : undefined;
+      const activeProjectItemId = projectItemId || undefined;
+      if (draftProjectItemId !== activeProjectItemId) return;
+
       if (dbDraft.files?.blueprint) setBlueprintFileMeta(dbDraft.files.blueprint as DraftFileMeta);
       if (dbDraft.files?.design) setDesignFileMeta(dbDraft.files.design as DraftFileMeta);
       if (dbDraft.files?.costing) setCostingFileMeta(dbDraft.files.costing as DraftFileMeta);
 
+      const nextQuotation = normalizeDraftQuotation(dbDraft.quotation);
       if (dbDraft.quotation) {
-        setQuotLineItems(dbDraft.quotation.lineItems || []);
-        setQuotFees(dbDraft.quotation.fees || '');
-        setQuotValidityDays(dbDraft.quotation.validityDays || '30');
-        setQuotBreakdown(dbDraft.quotation.breakdown || '');
-        setQuotDuration(dbDraft.quotation.estimatedDuration || '');
-        setQuotNotes(dbDraft.quotation.engineerNotes || '');
-        setQuotMilestones(dbDraft.quotation.paymentMilestones || []);
+        setQuotLineItems(nextQuotation.lineItems || []);
+        setQuotValidityDays(nextQuotation.validityDays || '30');
+        setQuotBreakdown(nextQuotation.breakdown || '');
+        setQuotDuration(nextQuotation.estimatedDuration || '');
+        setQuotNotes(nextQuotation.engineerNotes || '');
+        setQuotMilestones(nextQuotation.paymentMilestones || []);
       }
+      lastSavedQuotation.current = nextQuotation;
       setQuotInitialized(true);
       return;
     } else if (dbDraft === null) {
       // null means successfully fetched but no draft exists
+      const nextQuotation = getEmptyQuotation();
       if (vrLineItems && vrLineItems.length > 0) {
-        setQuotLineItems(vrLineItems.map((li) => ({
+        nextQuotation.lineItems = vrLineItems.map((li) => ({
           label: li.label,
           quantity: li.quantity || 1,
           materials: '',
           labor: '',
-        })));
+        }));
+        setQuotLineItems(nextQuotation.lineItems);
       }
 
       if (cfgSplit.length > 0) {
-        setQuotMilestones(cfgSplit.map((_, idx) => ({
+        nextQuotation.paymentMilestones = cfgSplit.map((_, idx) => ({
           label: cfgLabels[idx] || `Stage ${idx + 1}`,
           description: cfgDescriptions[idx] || '',
-        })));
+        }));
+        setQuotMilestones(nextQuotation.paymentMilestones);
       }
 
+      lastSavedQuotation.current = nextQuotation;
       setQuotInitialized(true);
     }
-  }, [dbDraft, cfgDescriptions, cfgLabels, cfgSplit, quotInitialized, vrLineItems]);
+  }, [dbDraft, cfgDescriptions, cfgLabels, cfgSplit, projectItemId, quotInitialized, vrLineItems]);
 
   // DB Autosave Form Hook
-  const currentQuotation = useMemo(() => ({
-    lineItems: quotLineItems,
-    fees: quotFees,
-    validityDays: quotValidityDays,
-    breakdown: quotBreakdown,
-    estimatedDuration: quotDuration,
-    engineerNotes: quotNotes,
-    paymentMilestones: quotMilestones,
-  }), [quotLineItems, quotFees, quotValidityDays, quotBreakdown, quotDuration, quotNotes, quotMilestones]);
-
-  const lastSavedQuotation = useRef(currentQuotation);
-
   useEffect(() => {
     if (!quotInitialized) return;
     const isDifferent = JSON.stringify(currentQuotation) !== JSON.stringify(lastSavedQuotation.current);
@@ -512,8 +570,7 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
     return (m + l) * li.quantity;
   });
   const quotSubtotal = quotItemTotals.reduce((s, v) => s + v, 0);
-  const quotFeesNum = Number(quotFees) || 0;
-  const quotGrandTotal = quotSubtotal + quotFeesNum;
+  const quotGrandTotal = quotSubtotal;
   const quotTotalMaterials = quotLineItems.reduce((s, li) => s + (Number(li.materials) || 0) * li.quantity, 0);
   const quotTotalLabor = quotLineItems.reduce((s, li) => s + (Number(li.labor) || 0) * li.quantity, 0);
 
@@ -537,6 +594,12 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
     const val = Number(n);
     return `₱${(Number.isFinite(val) ? val : 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
+  const getPayableQuotationTotal = (bp?: Blueprint | null) => {
+    if (!bp?.quotation) return 0;
+    const total = Number(bp.quotation.total);
+    return Number.isFinite(total) && total > 0 ? total : 1;
+  };
+  const hasPayableQuotation = (bp?: Blueprint | null) => Boolean(bp?.quotation);
 
   // Shared quotation form used in both first-upload and revision-upload
   const quotationFormJSX = (
@@ -605,13 +668,8 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
         <Plus className="h-3.5 w-3.5" /> Add Item
       </Button>
 
-      {/* Other Fees */}
-      <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3">
-        <div>
-          <label className={`mb-1 block text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Other Fees (₱)</label>
-          <input type="number" value={quotFees} onChange={(e) => setQuotFees(e.target.value)} min={0} step={0.01} placeholder="Delivery, permits, etc." className={inputCls} />
-        </div>
-        <div>
+      <div className="grid grid-cols-1 gap-3">
+        <div className="max-w-md">
           <label className={`mb-1 block text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Quotation Validity</label>
           <Select value={quotValidityDays} onValueChange={setQuotValidityDays}>
             <SelectTrigger className={`h-9 w-full rounded-lg border px-3 text-sm transition-colors focus:outline-none focus:ring-2 ${isDark ? 'border-slate-700 bg-slate-950/70 text-slate-100 focus:border-sky-400/70 focus:ring-sky-400/25' : 'border-[#d2d2d7] bg-[#f5f5f7]/50 focus:border-[#b8b8bd] focus:ring-[#6e6e73]'}`}>
@@ -638,12 +696,6 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
             <span>Labor</span>
             <span>{formatCurrency(quotTotalLabor)}</span>
           </div>
-          {quotFeesNum > 0 && (
-            <div className={`flex justify-between text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>
-              <span>Other Fees</span>
-              <span>{formatCurrency(quotFeesNum)}</span>
-            </div>
-          )}
           <div className={`flex justify-between border-t pt-1.5 text-sm font-bold ${isDark ? 'border-slate-800 text-emerald-300' : 'border-[#d2d2d7] text-emerald-700'}`}>
             <span>Grand Total</span>
             <span>{formatCurrency(quotGrandTotal)}</span>
@@ -707,7 +759,7 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
               <input
                 value={ms.description}
                 onChange={e => setQuotMilestones(prev => prev.map((m, i) => i === idx ? { ...m, description: e.target.value } : m))}
-                placeholder="When is this due? (e.g. Due upon contract signing)"
+                placeholder="When is this due? (e.g. Before fabrication starts)"
                 className={inputCls}
               />
             </div>
@@ -731,6 +783,11 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
 
   // ── Customer handlers ──
   const handleApprove = (blueprintId: string, component: 'blueprint' | 'costing') => {
+    if (component === 'costing' && !hasPayableQuotation(blueprint)) {
+      toast.error('Billing cannot be approved until engineering provides a valid quotation total.');
+      return;
+    }
+
     setApprovingComponent(component);
     approveMutation.mutate(
       { id: blueprintId, component },
@@ -778,12 +835,17 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
 
   const handleChoosePaymentPlan = () => {
     if (!acceptDialog.blueprint) return;
+    if (!hasPayableQuotation(acceptDialog.blueprint)) {
+      toast.error('Payment plan cannot be created because this item has no valid quotation total.');
+      return;
+    }
+
       setBlockedAction(null);
       selectPaymentPlanMutation.mutate(
         { id: projectId, paymentType, projectItemId },
       {
         onSuccess: () => {
-          toast.success('Payment plan created. Your contract is now ready for signing.', { duration: 6000 });
+          toast.success('Payment plan created. You can now continue to payments.', { duration: 6000 });
           setAcceptDialog({ open: false, blueprint: null });
           setPaymentType('full');
           refetch();
@@ -833,7 +895,6 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
       setDesignFileMeta(null);
       setCostingFileMeta(null);
       setQuotLineItems([]);
-      setQuotFees('');
       setQuotValidityDays('30');
       setQuotBreakdown('');
       setQuotDuration('');
@@ -1008,7 +1069,7 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
           ) : (
             <div>
               {/* First blueprint upload */}
-              {isAssigned && project && ['blueprint', 'submitted'].includes(project.status) ? (
+              {canUploadInitialBlueprint ? (
                 <div className={`space-y-3 rounded-xl border border-dashed p-4 ${isDark ? 'border-slate-700 bg-slate-950/35' : 'border-[#c8c8cd]'}`}>
                   <p className={`text-sm font-medium ${isDark ? 'text-slate-100' : 'text-[#3a3a3e]'}`}>Upload Blueprint, Design & Costing</p>
                   <div className="grid gap-3 sm:grid-cols-3">
@@ -1077,7 +1138,14 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
       return (
         <div className="space-y-4">
           {[1, 2].map((i) => (
-            <div key={i} className="h-36 rounded-xl bg-gray-100 animate-pulse" />
+            <div
+              key={i}
+              className={`h-36 rounded-xl animate-pulse ${
+                isDark
+                  ? 'bg-slate-900/75 ring-1 ring-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]'
+                  : 'bg-[color:var(--color-muted)]/55'
+              }`}
+            />
           ))}
         </div>
       );
@@ -1226,7 +1294,14 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
     return (
       <div className="space-y-4">
         {[1, 2].map((i) => (
-          <div key={i} className="h-36 rounded-xl bg-gray-100 animate-pulse" />
+          <div
+            key={i}
+            className={`h-36 rounded-xl animate-pulse ${
+              isDark
+                ? 'bg-slate-900/75 ring-1 ring-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]'
+                : 'bg-[color:var(--color-muted)]/55'
+            }`}
+          />
         ))}
       </div>
     );
@@ -1358,7 +1433,7 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
                   </Button>
                   {canReviewBlueprint && !bp.blueprintApproved && (
                     <Button
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl"
+                      className="flex-1 rounded-xl border border-emerald-500/70 bg-[linear-gradient(180deg,#22c55e_0%,#15803d_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_24px_rgba(6,95,70,0.3)] hover:bg-[linear-gradient(180deg,#34d399_0%,#16a34a_100%)] hover:text-white dark:border-emerald-400/55 dark:bg-[linear-gradient(180deg,#34d399_0%,#15803d_100%)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_12px_28px_rgba(6,78,59,0.34)] dark:hover:bg-[linear-gradient(180deg,#6ee7b7_0%,#16a34a_100%)]"
                       onClick={() => setApproveConfirmDialog({ open: true, blueprintId: bp._id, component: 'blueprint' })}
                       disabled={approveMutation.isPending}
                     >
@@ -1395,7 +1470,7 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
                   <div className={`rounded-xl border border-[color:var(--color-border)]/50 p-4 ${isDark ? 'bg-slate-900/45 dark:border-slate-700' : 'bg-[color:var(--color-muted)]/55'}`}>
                     <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>Total Billing</p>
                     <p className={`mt-1 text-2xl font-bold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>
-                      {formatCurrency(bp.quotation?.total || 0)}
+                      {formatCurrency(getPayableQuotationTotal(bp))}
                     </p>
                     {bp.quotation?.estimatedDuration && (
                       <p className={`mt-1 text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>Estimated duration: {bp.quotation.estimatedDuration}</p>
@@ -1412,9 +1487,9 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
                   )}
                   {canReviewBlueprint && !bp.costingApproved && (
                     <Button
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl"
+                      className="flex-1 rounded-xl border border-emerald-500/70 bg-[linear-gradient(180deg,#22c55e_0%,#15803d_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_24px_rgba(6,95,70,0.3)] hover:bg-[linear-gradient(180deg,#34d399_0%,#16a34a_100%)] hover:text-white dark:border-emerald-400/55 dark:bg-[linear-gradient(180deg,#34d399_0%,#15803d_100%)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_12px_28px_rgba(6,78,59,0.34)] dark:hover:bg-[linear-gradient(180deg,#6ee7b7_0%,#16a34a_100%)]"
                       onClick={() => setApproveConfirmDialog({ open: true, blueprintId: bp._id, component: 'costing' })}
-                      disabled={approveMutation.isPending}
+                      disabled={approveMutation.isPending || !hasPayableQuotation(bp)}
                     >
                       {approvingComponent === 'costing' && approveMutation.isPending ? (
                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Approving...</>
@@ -1458,57 +1533,32 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
                 <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/20">
                   <CreditCard className="h-6 w-6 text-emerald-700 dark:text-emerald-300" />
                 </div>
-                {project && ['payment_pending', 'in_progress', 'fabrication', 'ready_for_delivery', 'delivered', 'completed'].includes(project.status) ? (
-                  /* Payment plan exists — show contract-aware CTA */
-                  project.contractSignedAt ? (
-                    /* Contract signed — Go to Payments */
-                    <>
-                      <div className="flex-1 text-center sm:text-left">
-                        <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Contract Signed &amp; Payment Plan Ready!</p>
-                        <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">Your contract is signed. Head to Payments to view or pay.</p>
-                      </div>
-                      <Button
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-6 w-full sm:w-auto flex-shrink-0 dark:bg-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
-                        onClick={() => navigate('/payments')}
-                      >
-                        <ArrowRight className="mr-2 h-4 w-4" />
-                        Go to Payments
-                      </Button>
-                    </>
-                  ) : project.contractKey ? (
-                    /* Contract generated but not signed — prompt to sign */
-                    <>
-                      <div className="flex-1 text-center sm:text-left">
-                        <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Contract Ready for Signing</p>
-                        <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">Your contract has been generated. Please read and sign it before proceeding to payments.</p>
-                      </div>
-                      <Button
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-6 w-full sm:w-auto flex-shrink-0 dark:bg-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
-                        onClick={() => onNavigateToDetails ? onNavigateToDetails() : navigate(`/projects/${projectId}`)}
-                      >
-                        <FileText className="mr-2 h-4 w-4" />
-                        Read &amp; Sign Contract
-                      </Button>
-                    </>
-                  ) : (
-                    /* Payment plan selected but contract still syncing */
-                    <>
-                      <div className="flex-1 text-center sm:text-left">
-                        <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Payment Plan Created!</p>
-                        <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">Your contract is being finalized. Refresh in a moment if the signing prompt doesn&apos;t appear right away.</p>
-                      </div>
-                      <div className="flex items-center gap-2 px-4 text-emerald-600 dark:text-emerald-300">
-                        <Clock className="h-4 w-4 animate-pulse" />
-                        <span className="text-xs font-medium">Pending</span>
-                      </div>
-                    </>
-                  )
+                {project && hasActiveItemPaymentPlan ? (
+                  <>
+                    <div className="flex-1 text-center sm:text-left">
+                      <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Payment Plan Ready</p>
+                      <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">Head to Payments to view the schedule or pay the active stage.</p>
+                    </div>
+                    <Button
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl px-6 w-full sm:w-auto flex-shrink-0 dark:bg-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white"
+                      onClick={() => navigate('/payments')}
+                    >
+                      <ArrowRight className="mr-2 h-4 w-4" />
+                      Go to Payments
+                    </Button>
+                  </>
                 ) : (
                   /* No plan yet — show payment-plan CTA */
                   <>
                     <div className="flex-1 text-center sm:text-left">
-                      <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">Blueprint Approved</p>
-                      <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">Choose your payment plan to generate the contract and move into signing.</p>
+                      <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+                        {hasPayableQuotation(bp) ? 'Blueprint Approved' : 'Quotation Needed'}
+                      </p>
+                      <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">
+                        {hasPayableQuotation(bp)
+                          ? 'Choose your payment plan to continue directly to payment.'
+                          : 'Engineering needs to upload costing with a valid total before a payment plan can be created.'}
+                      </p>
                     </div>
                     <Button
                       className="w-full flex-shrink-0 rounded-xl border border-emerald-500/70 bg-[linear-gradient(180deg,#22c55e_0%,#15803d_100%)] px-6 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_16px_32px_rgba(8,68,39,0.28)] hover:bg-[linear-gradient(180deg,#34d399_0%,#16a34a_100%)] hover:text-white sm:w-auto dark:border-emerald-400/55 dark:bg-[linear-gradient(180deg,#34d399_0%,#15803d_100%)] dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_34px_rgba(6,78,59,0.36)] dark:hover:bg-[linear-gradient(180deg,#6ee7b7_0%,#16a34a_100%)]"
@@ -1516,6 +1566,7 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
                         setBlockedAction(null);
                         setAcceptDialog({ open: true, blueprint: bp });
                       }}
+                      disabled={!hasPayableQuotation(bp)}
                     >
                       <CheckCircle className="mr-2 h-4 w-4" />
                       Choose Payment Plan
@@ -1627,12 +1678,6 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
                       </div>
                     </>
                   )}
-                  {bp.quotation.fees > 0 && (
-                    <div className={`flex justify-between text-xs ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>
-                      <span>Other Fees</span>
-                      <span>{formatCurrency(bp.quotation.fees)}</span>
-                    </div>
-                  )}
                   <div className={`flex justify-between border-t border-[color:var(--color-border)]/55 pt-1.5 text-sm font-bold ${isDark ? 'text-emerald-300 dark:border-slate-600' : 'text-emerald-600'}`}>
                     <span>Grand Total</span>
                     <span>{formatCurrency(bp.quotation.total)}</span>
@@ -1736,13 +1781,13 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
           <DialogFooter className="mt-2">
             <Button
               variant="outline"
-              className="rounded-lg border-gray-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+              className="rounded-lg border border-rose-500/70 bg-[linear-gradient(180deg,#f87171_0%,#dc2626_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_10px_24px_rgba(127,29,29,0.28)] hover:bg-[linear-gradient(180deg,#fb7185_0%,#ef4444_100%)] hover:text-white dark:border-rose-400/55 dark:bg-[linear-gradient(180deg,#fb7185_0%,#dc2626_100%)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_12px_28px_rgba(127,29,29,0.34)] dark:hover:bg-[linear-gradient(180deg,#fda4af_0%,#ef4444_100%)]"
               onClick={() => setApproveConfirmDialog({ open: false, blueprintId: '', component: null })}
             >
               Go Back
             </Button>
             <Button
-              className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg"
+              className="rounded-lg border border-emerald-500/70 bg-[linear-gradient(180deg,#22c55e_0%,#15803d_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_10px_24px_rgba(6,95,70,0.3)] hover:bg-[linear-gradient(180deg,#34d399_0%,#16a34a_100%)] hover:text-white dark:border-emerald-400/55 dark:bg-[linear-gradient(180deg,#34d399_0%,#15803d_100%)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_12px_28px_rgba(6,78,59,0.34)] dark:hover:bg-[linear-gradient(180deg,#6ee7b7_0%,#16a34a_100%)]"
               onClick={() => {
                 if (approveConfirmDialog.blueprintId && approveConfirmDialog.component) {
                   handleApprove(approveConfirmDialog.blueprintId, approveConfirmDialog.component);
@@ -1841,7 +1886,7 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
           <DialogHeader>
             <DialogTitle className="text-gray-900 dark:text-slate-100">Choose Payment Plan</DialogTitle>
             <DialogDescription className="text-gray-500 dark:text-slate-400">
-              Select how you want to pay. This generates your contract for signing.
+              Select how you want to pay. This creates your payment schedule.
             </DialogDescription>
           </DialogHeader>
 
@@ -1855,11 +1900,9 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
                   <span className="text-right font-medium dark:text-slate-100">{formatCurrency(acceptDialog.blueprint.quotation.materials)}</span>
                   <span className="text-gray-500 dark:text-slate-400">Labor</span>
                   <span className="text-right font-medium dark:text-slate-100">{formatCurrency(acceptDialog.blueprint.quotation.labor)}</span>
-                  <span className="text-gray-500 dark:text-slate-400">Other Fees</span>
-                  <span className="text-right font-medium dark:text-slate-100">{formatCurrency(acceptDialog.blueprint.quotation.fees)}</span>
                   <span className="border-t border-gray-200 pt-2 font-semibold text-gray-700 dark:border-slate-600 dark:text-slate-200">Base Total</span>
                   <span className="border-t border-gray-200 pt-2 text-right font-bold text-emerald-700 dark:border-slate-600 dark:text-emerald-300">
-                    {formatCurrency(acceptDialog.blueprint.quotation.total)}
+                    {formatCurrency(getPayableQuotationTotal(acceptDialog.blueprint))}
                   </span>
                 </div>
               </div>
@@ -1890,7 +1933,7 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
                       Pay the full amount in one go — no surcharge.
                     </p>
                     <p className="mt-1 text-sm font-bold text-emerald-700 dark:text-emerald-300">
-                      {formatCurrency(acceptDialog.blueprint.quotation.total)}
+                      {formatCurrency(getPayableQuotationTotal(acceptDialog.blueprint))}
                     </p>
                   </div>
                 </label>
@@ -1918,7 +1961,7 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
                     </p>
                     <p className="mt-1 text-sm font-bold text-blue-700 dark:text-blue-300">
                       {formatCurrency(
-                        (acceptDialog.blueprint.quotation.total || 0) *
+                        getPayableQuotationTotal(acceptDialog.blueprint) *
                           (1 + surchargePercent / 100),
                       )}{' '}
                       <span className="text-xs font-normal text-gray-400 dark:text-slate-500">
@@ -1928,7 +1971,7 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
                     {/* Milestone breakdown */}
                     {paymentType === 'installment' && (() => {
                       const milestones = acceptDialog.blueprint?.quotation?.paymentMilestones;
-                      const installTotal = (acceptDialog.blueprint.quotation.total || 0) * (1 + surchargePercent / 100);
+                      const installTotal = getPayableQuotationTotal(acceptDialog.blueprint) * (1 + surchargePercent / 100);
                       return (
                         <div className="mt-2.5 space-y-1.5 border-t border-blue-200 pt-2">
                           {cfgSplit.map((pct, idx) => {
@@ -1978,10 +2021,10 @@ export function BlueprintTab({ projectId, projectItemId, onNavigateToDetails }: 
             </Button>
             <Button
               onClick={handleChoosePaymentPlan}
-              disabled={selectPaymentPlanMutation.isPending}
+              disabled={selectPaymentPlanMutation.isPending || !hasPayableQuotation(acceptDialog.blueprint)}
               className="rounded-lg border border-emerald-500/70 bg-[linear-gradient(180deg,#22c55e_0%,#15803d_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_16px_32px_rgba(8,68,39,0.28)] hover:bg-[linear-gradient(180deg,#34d399_0%,#16a34a_100%)] hover:text-white dark:border-emerald-400/55 dark:bg-[linear-gradient(180deg,#34d399_0%,#15803d_100%)] dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_34px_rgba(6,78,59,0.36)] dark:hover:bg-[linear-gradient(180deg,#6ee7b7_0%,#16a34a_100%)]"
             >
-              {selectPaymentPlanMutation.isPending ? 'Creating Plan...' : 'Create Plan & Generate Contract'}
+              {selectPaymentPlanMutation.isPending ? 'Creating Plan...' : 'Create Payment Plan'}
             </Button>
           </DialogFooter>
         </DialogContent>
