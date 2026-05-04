@@ -20,6 +20,7 @@ import { PageError } from '@/components/shared/PageError';
 import { useProjects } from '@/hooks/useProjects';
 import { useAuthStore } from '@/stores/auth.store';
 import { ProjectStatus, BlueprintStatus, Role, SERVICE_TYPE_LABELS } from '@/lib/constants';
+import { formatPersonName } from '@/lib/address';
 import { VisitReportsListPage } from '@/pages/visit-reports/VisitReportsListPage';
 
 const STATUS_FILTERS = [
@@ -93,22 +94,46 @@ function deriveDisplayStatus(project: { status?: string; latestBlueprintStatus?:
 }
 
 function getActionSortTime(project: any) {
-  const candidates = [
-    project.targetDate,
-    project.deadline,
-    project.dueDate,
-    project.fabricationTargetDate,
-    project.fabricationDeadline,
-    project.createdAt,
-  ];
+  const value = project.createdAt;
+  if (!value) return 0;
+  const time = new Date(String(value)).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
 
-  for (const value of candidates) {
-    if (!value) continue;
-    const time = new Date(String(value)).getTime();
-    if (!Number.isNaN(time)) return time;
-  }
+function getAppointmentDate(project: any) {
+  const appointment = project.appointmentId;
+  if (appointment && typeof appointment === 'object' && appointment.date) return String(appointment.date);
+  return '';
+}
 
-  return 0;
+function getAppointmentSlot(project: any) {
+  const appointment = project.appointmentId;
+  if (appointment && typeof appointment === 'object' && appointment.slotCode) return String(appointment.slotCode);
+  return '';
+}
+
+function salesActiveSort(a: any, b: any) {
+  const today = new Date().toISOString().slice(0, 10);
+  const rank = (project: any) => {
+    const date = getAppointmentDate(project);
+    if (!date) return 3;
+    if (date === today) return 0;
+    if (date > today) return 1;
+    return 2;
+  };
+
+  const rankDiff = rank(a) - rank(b);
+  if (rankDiff !== 0) return rankDiff;
+
+  const aDate = getAppointmentDate(a);
+  const bDate = getAppointmentDate(b);
+  if (aDate && bDate && aDate !== bDate) return aDate < bDate ? -1 : 1;
+
+  const aSlot = getAppointmentSlot(a);
+  const bSlot = getAppointmentSlot(b);
+  if (aSlot && bSlot && aSlot !== bSlot) return aSlot < bSlot ? -1 : 1;
+
+  return getActionSortTime(b) - getActionSortTime(a);
 }
 
 export function ProjectsPage() {
@@ -118,6 +143,10 @@ export function ProjectsPage() {
   const { user } = useAuthStore();
   const isCustomer = user?.roles?.some((r: string) => r === Role.CUSTOMER);
   const isStaff = !isCustomer;
+  const isSalesOnly = Boolean(
+    user?.roles?.includes(Role.SALES_STAFF)
+    && !user.roles.some((role) => [Role.ADMIN, Role.APPOINTMENT_AGENT].includes(role as Role)),
+  );
   const canSeeVisitReports = user?.roles?.some((r: string) =>
     [Role.SALES_STAFF, Role.ENGINEER, Role.ADMIN].includes(r as Role),
   );
@@ -140,7 +169,11 @@ export function ProjectsPage() {
 
   const upcomingItems = projects
     .filter((p: any) => ![ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(p.status as ProjectStatus))
-    .sort((a: any, b: any) => getActionSortTime(a) - getActionSortTime(b));
+    .sort((a: any, b: any) => (
+      isSalesOnly && statusFilter === 'active'
+        ? salesActiveSort(a, b)
+        : getActionSortTime(b) - getActionSortTime(a)
+    ));
     
   const recentItems = projects
     .filter((p: any) => [ProjectStatus.COMPLETED, ProjectStatus.CANCELLED].includes(p.status as ProjectStatus))
@@ -324,7 +357,7 @@ export function ProjectsPage() {
                             <div className="flex items-center gap-1.5 text-xs text-[var(--text-metal-color)]">
                               <User className="h-3 w-3 shrink-0 text-[var(--text-metal-muted-color)]" />
                               <span className="truncate max-w-[140px]">
-                                {customer.firstName} {customer.lastName}
+                                {formatPersonName(customer.firstName, customer.lastName)}
                               </span>
                             </div>
                           ) : (
@@ -340,7 +373,7 @@ export function ProjectsPage() {
                             <div className="flex items-center gap-1.5 text-xs text-[var(--text-metal-color)]">
                               <Wrench className="h-3 w-3 shrink-0 text-[var(--text-metal-muted-color)]" />
                               <span className="truncate max-w-[140px]">
-                                {engineers.map((e) => `${e.firstName} ${e.lastName}`).join(', ')}
+                                {engineers.map((e) => formatPersonName(e.firstName, e.lastName)).join(', ')}
                               </span>
                             </div>
                           ) : (
@@ -444,7 +477,7 @@ export function ProjectsPage() {
                     {isStaff && customer && (
                       <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-metal-color)]">
                         <User className="h-3 w-3 shrink-0" />
-                        <span>{customer.firstName} {customer.lastName}</span>
+                        <span>{formatPersonName(customer.firstName, customer.lastName)}</span>
                       </div>
                     )}
                     {project.createdAt && (

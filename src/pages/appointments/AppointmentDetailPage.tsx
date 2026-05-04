@@ -4,6 +4,7 @@ import { ArrowLeft, MapPin, Clock, User, Phone, CreditCard, CheckCircle2, Users,
 import toast from 'react-hot-toast';
 
 import { extractErrorMessage, cn } from '@/lib/utils';
+import { parsePinnedSiteAddress } from '@/lib/address';
 import { reverseGeocodeLocation, fetchOcularFeePreview, type MapPoint, type OcularFeePreview } from '@/lib/maps';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -203,16 +204,14 @@ export function AppointmentDetailPage() {
   const canStartOcularProgress = !isOcularAppointment || hasCustomerSiteLocation;
   const customerSiteLocationRequiredMessage = 'Customer site location is required before starting the ocular visit.';
   const usePinnedAddressForOfficialAddress = () => {
-    const parts = customerAddress
-      .split(',')
-      .map((part) => part.trim())
-      .filter(Boolean);
-    if (!parts.length) return;
+    const parsed = parsePinnedSiteAddress(customerAddress);
+    if (!parsed.street && !parsed.barangay && !parsed.city && !parsed.province && !parsed.zip) return;
 
-    setAddrStreet(parts[0] || customerAddress);
-    if (!addrBarangay && parts.length > 3) setAddrBarangay(parts[1] || '');
-    if (!addrCity && parts.length > 2) setAddrCity(parts[parts.length - 3] || parts[parts.length - 2] || '');
-    if (!addrProvince && parts.length > 1) setAddrProvince(parts[parts.length - 2] || '');
+    setAddrStreet(parsed.street);
+    setAddrBarangay(parsed.barangay);
+    setAddrCity(parsed.city);
+    setAddrProvince(parsed.province);
+    setAddrZip(parsed.zip);
     toast.success('Pinned map address copied. You can still edit the official address.');
   };
 
