@@ -49,10 +49,10 @@ export function SiteConditionsPanel({
       <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label className="text-[11px] font-medium text-gray-500 uppercase tracking-wider dark:text-slate-500">
-            Floor Type (Optional / N/A OK)
+            Floor Type
           </Label>
           <Input
-            placeholder="e.g., Tile, Concrete, N/A"
+            placeholder="e.g., Tile, Concrete"
             value={value.floorType || ''}
             onChange={(e) => update('floorType', e.target.value || undefined)}
             disabled={disabled}

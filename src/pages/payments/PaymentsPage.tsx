@@ -22,6 +22,7 @@ import { useThemeStore } from '@/stores/theme.store';
 import { useProjects } from '@/hooks/useProjects';
 import {
   usePaymentPlan,
+  usePaymentPlanQueries,
   useProjectPaymentPlans,
   usePaymentsByProject,
   useStageCheckout,
@@ -61,19 +62,27 @@ const formatCurrency = (v: number) =>
 const PAYMENT_READY_PROJECT_STATUSES = new Set(['payment_pending', 'fabrication', 'completed']);
 const PAYMENT_READY_ITEM_STATUSES = new Set(['payment_pending', 'fabrication', 'completed']);
 
-const getPaymentListStatus = (project: { status: string; items?: { status: string }[] }) => {
+const PAYMENT_STAGE_PRIORITY = ['payment_pending', 'fabrication', 'completed'];
+
+const getProjectStageStatus = (project: { status: string; items?: { status: string }[] }) => {
   if (PAYMENT_READY_PROJECT_STATUSES.has(String(project.status))) {
     return String(project.status);
   }
 
-  return project.items?.some((item) => PAYMENT_READY_ITEM_STATUSES.has(String(item.status)))
-    ? 'payment_pending'
+  const paymentReadyItem = PAYMENT_STAGE_PRIORITY.find((status) =>
+    project.items?.some((item) => String(item.status) === status),
+  );
+
+  return paymentReadyItem
+    ? paymentReadyItem
     : String(project.status);
 };
 
 const isPaymentListReady = (project: { status: string; items?: { status: string }[] }) =>
   PAYMENT_READY_PROJECT_STATUSES.has(String(project.status))
   || Boolean(project.items?.some((item) => PAYMENT_READY_ITEM_STATUSES.has(String(item.status))));
+
+type PaymentListStatus = 'payment_pending' | 'for_verification' | 'partially_paid' | 'paid';
 
 type PaymentListProject = {
   _id: string;
@@ -84,31 +93,65 @@ type PaymentListProject = {
   items?: { _id: string; status: string }[];
 };
 
+const PAYMENT_STATUS_LABELS: Record<PaymentListStatus, string> = {
+  payment_pending: 'Payment Pending',
+  for_verification: 'For Verification',
+  partially_paid: 'Partially Paid',
+  paid: 'Paid',
+};
+
+const PAYMENT_STATUS_BADGES: Record<PaymentListStatus, { status: string; label: string }> = {
+  payment_pending: { status: 'payment_pending', label: 'Payment Pending' },
+  for_verification: { status: 'proof_submitted', label: 'For Verification' },
+  partially_paid: { status: 'approved', label: 'Partially Paid' },
+  paid: { status: 'verified', label: 'Paid' },
+};
+
+const formatStatusLabel = (status: string) =>
+  status.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+
+const derivePaymentListStatus = (plans: any[]): PaymentListStatus => {
+  const stages = plans.flatMap((plan) => Array.isArray(plan?.stages) ? plan.stages : []);
+  if (!stages.length) return 'payment_pending';
+
+  const verifiedCount = stages.filter((stage) => stage.status === PaymentStageStatus.VERIFIED).length;
+  if (verifiedCount === stages.length) return 'paid';
+  if (stages.some((stage) => stage.status === PaymentStageStatus.PROOF_SUBMITTED)) return 'for_verification';
+  if (verifiedCount > 0) return 'partially_paid';
+  return 'payment_pending';
+};
+
+const getPaymentPlanTargets = (project: PaymentListProject) => {
+  const paymentReadyItems = (project.items || []).filter((item) =>
+    PAYMENT_READY_ITEM_STATUSES.has(String(item.status)),
+  );
+
+  if (paymentReadyItems.length > 0) {
+    return paymentReadyItems.map((item) => ({
+      projectId: String(project._id),
+      projectItemId: String(item._id),
+    }));
+  }
+
+  if (PAYMENT_READY_PROJECT_STATUSES.has(String(project.status))) {
+    return [{ projectId: String(project._id) }];
+  }
+
+  return [];
+};
+
 function PaymentProjectRow({
   project,
+  projectStage,
+  paymentStatus,
   onSelect,
 }: {
   project: PaymentListProject;
+  projectStage: string;
+  paymentStatus: PaymentListStatus;
   onSelect: (projectId: string) => void;
 }) {
-  const projectItemIds = useMemo(
-    () => (project.items || []).map((item) => String(item._id)),
-    [project.items],
-  );
-  const planQueries = useProjectPaymentPlans(String(project._id), projectItemIds);
-  const listStatus = useMemo(() => {
-    const plans = planQueries.map((query) => query.data).filter(Boolean);
-    const hasPlans = plans.length > 0;
-    const allStagesVerified = hasPlans && plans.every((plan) =>
-      Array.isArray(plan?.stages)
-      && plan.stages.length > 0
-      && plan.stages.every((stage) => stage.status === PaymentStageStatus.VERIFIED),
-    );
-    return {
-      status: allStagesVerified ? 'verified' : getPaymentListStatus(project),
-      label: allStagesVerified ? 'Paid' : undefined,
-    };
-  }, [planQueries, project]);
+  const paymentBadge = PAYMENT_STATUS_BADGES[paymentStatus];
 
   return (
     <button
@@ -123,10 +166,13 @@ function PaymentProjectRow({
             {String(project.serviceType || '').replace(/_/g, ' ')}
           </p>
         </div>
-        <StatusBadge status={listStatus.status} label={listStatus.label} />
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <StatusBadge status={projectStage} label={formatStatusLabel(projectStage)} />
+          <StatusBadge status={paymentBadge.status} label={paymentBadge.label} />
+        </div>
         <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-metal-muted-color)] transition-colors group-hover:text-[var(--text-metal-color)]" />
       </div>
-      <div className="hidden sm:grid sm:grid-cols-[1fr_140px_140px_32px] gap-3 items-center">
+      <div className="hidden sm:grid sm:grid-cols-[1fr_140px_140px_150px_32px] gap-3 items-center">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-[var(--color-card-foreground)] group-hover:text-[var(--text-metal-color)] dark:group-hover:text-slate-200">{String(project.title)}</p>
           {project.siteAddress && (
@@ -140,7 +186,10 @@ function PaymentProjectRow({
           {String(project.serviceType || '').replace(/_/g, ' ')}
         </p>
         <div className="flex justify-center">
-          <StatusBadge status={listStatus.status} label={listStatus.label} />
+          <StatusBadge status={projectStage} label={formatStatusLabel(projectStage)} />
+        </div>
+        <div className="flex justify-center">
+          <StatusBadge status={paymentBadge.status} label={paymentBadge.label} />
         </div>
         <ChevronRight className="h-4 w-4 text-[var(--text-metal-muted-color)] group-hover:text-[var(--color-card-foreground)] transition-colors dark:group-hover:text-slate-100" />
       </div>
@@ -162,7 +211,8 @@ export function PaymentsPage() {
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [selectedProjectItemId, setSelectedProjectItemId] = useState('');
   const [projectSearch, setProjectSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [projectStageFilter, setProjectStageFilter] = useState('all');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('all');
   const [activeTab, setActiveTab] = useState('payments');
 
 
@@ -327,14 +377,45 @@ export function PaymentsPage() {
     }
   }, [searchParams, setSearchParams]);
 
-  // Filtered project list for table view
-  const filteredProjects = useMemo(() => {
+  const basePaymentProjects = useMemo(() => {
     if (!projects?.items) return [];
-    let items = isCustomer
+    return isCustomer
       ? projects.items.filter((p) => isPaymentListReady(p))
       : projects.items;
-    if (statusFilter !== 'all') {
-      items = items.filter((p) => getPaymentListStatus(p) === statusFilter);
+  }, [projects, isCustomer]);
+
+  const paymentPlanTargets = useMemo(
+    () => basePaymentProjects.flatMap((project) => getPaymentPlanTargets(project as PaymentListProject)),
+    [basePaymentProjects],
+  );
+  const paymentPlanQueries = usePaymentPlanQueries(paymentPlanTargets);
+
+  const paymentStatusByProject = useMemo(() => {
+    const plansByProject = new Map<string, any[]>();
+
+    paymentPlanTargets.forEach((target, index) => {
+      const plan = paymentPlanQueries[index]?.data;
+      if (!plan) return;
+      const existing = plansByProject.get(target.projectId) || [];
+      plansByProject.set(target.projectId, [...existing, plan]);
+    });
+
+    return new Map(
+      basePaymentProjects.map((project) => {
+        const plans = plansByProject.get(String(project._id)) || [];
+        return [String(project._id), derivePaymentListStatus(plans)];
+      }),
+    );
+  }, [basePaymentProjects, paymentPlanQueries, paymentPlanTargets]);
+
+  // Filtered project list for table view
+  const filteredProjects = useMemo(() => {
+    let items = basePaymentProjects;
+    if (projectStageFilter !== 'all') {
+      items = items.filter((p) => getProjectStageStatus(p) === projectStageFilter);
+    }
+    if (paymentStatusFilter !== 'all') {
+      items = items.filter((p) => paymentStatusByProject.get(String(p._id)) === paymentStatusFilter);
     }
     if (projectSearch.trim()) {
       const q = projectSearch.toLowerCase();
@@ -345,16 +426,13 @@ export function PaymentsPage() {
       );
     }
     return items;
-  }, [projects, statusFilter, projectSearch, isCustomer]);
+  }, [basePaymentProjects, projectStageFilter, paymentStatusFilter, paymentStatusByProject, projectSearch]);
 
-  // Unique statuses for filter dropdown
-  const projectStatuses = useMemo(() => {
-    if (!projects?.items) return [];
-    const items = isCustomer
-      ? projects.items.filter((p) => isPaymentListReady(p))
-      : projects.items;
-    return [...new Set(items.map((p) => getPaymentListStatus(p)))];
-  }, [projects, isCustomer]);
+  // Unique project stages for the stage filter dropdown
+  const projectStages = useMemo(
+    () => [...new Set(basePaymentProjects.map((p) => getProjectStageStatus(p)))],
+    [basePaymentProjects],
+  );
 
 
 
@@ -528,29 +606,59 @@ export function PaymentsPage() {
             <div className="px-4 pb-3 pt-4 sm:px-6">
               <CollectionToolbar
                 title="Find a payment-ready project"
-                description="Search by project details, then narrow the list by project stage before opening the payment view."
+                description="Search by project details, then filter project stage separately from payment status."
                 searchPlaceholder="Search projects"
                 searchValue={projectSearch}
                 onSearchChange={setProjectSearch}
                 filters={[
-                  { value: 'all', label: 'All Statuses' },
-                  ...projectStatuses.map((status) => ({
+                  { value: 'all', label: 'All Project Stages' },
+                  ...projectStages.map((status) => ({
                     value: status,
-                    label: status.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+                    label: formatStatusLabel(status),
                   })),
                 ]}
-                activeFilter={statusFilter}
-                onFilterChange={setStatusFilter}
+                activeFilter={projectStageFilter}
+                onFilterChange={setProjectStageFilter}
+                filterGroupLabel="Project stage filters"
                 className="border-0 bg-transparent p-0 shadow-none"
                 searchWidthClassName="lg:max-w-sm"
               />
+              <div
+                className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar lg:flex-wrap lg:overflow-visible"
+                role="group"
+                aria-label="Payment status filters"
+              >
+                <span className="shrink-0 text-xs font-semibold uppercase tracking-wider text-[var(--text-metal-color)]">
+                  Payment Status
+                </span>
+                {[
+                  { value: 'all', label: 'All Payment Statuses' },
+                  ...Object.entries(PAYMENT_STATUS_LABELS).map(([value, label]) => ({ value, label })),
+                ].map((filter) => (
+                  <button
+                    type="button"
+                    key={filter.value}
+                    onClick={() => setPaymentStatusFilter(filter.value)}
+                    aria-pressed={paymentStatusFilter === filter.value}
+                    className={cn(
+                      'whitespace-nowrap rounded-2xl border px-4 py-2 text-xs font-semibold transition-colors',
+                      paymentStatusFilter === filter.value
+                        ? 'border-emerald-300 bg-emerald-500/15 text-emerald-800 dark:border-emerald-400/50 dark:bg-emerald-400/15 dark:text-emerald-100'
+                        : 'border-[color:var(--color-border)] bg-[color:var(--color-muted)]/40 text-[var(--text-metal-color)] hover:bg-[color:var(--color-muted)]',
+                    )}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Desktop table header */}
-            <div className="hidden gap-3 border-b border-[color:var(--color-border)] px-6 pb-2 text-xs font-medium uppercase tracking-wider text-[var(--text-metal-color)] sm:grid sm:grid-cols-[1fr_140px_140px_32px]">
+            <div className="hidden gap-3 border-b border-[color:var(--color-border)] px-6 pb-2 text-xs font-medium uppercase tracking-wider text-[var(--text-metal-color)] sm:grid sm:grid-cols-[1fr_140px_140px_150px_32px]">
               <span>Project</span>
               <span>Service</span>
-              <span className="text-center">Status</span>
+              <span className="text-center">Project Stage</span>
+              <span className="text-center">Payment Status</span>
               <span />
             </div>
 
@@ -561,6 +669,8 @@ export function PaymentsPage() {
                   <PaymentProjectRow
                     key={String(p._id)}
                     project={p as PaymentListProject}
+                    projectStage={getProjectStageStatus(p)}
+                    paymentStatus={paymentStatusByProject.get(String(p._id)) || 'payment_pending'}
                     onSelect={setSelectedProjectId}
                   />
                 ))
@@ -568,9 +678,9 @@ export function PaymentsPage() {
                 <div className="p-4">
                   <EmptyState
                     icon={<CreditCard className="h-6 w-6" />}
-                    title={projectSearch || statusFilter !== 'all' ? 'No matching projects' : 'No projects found'}
-                    description={projectSearch || statusFilter !== 'all'
-                      ? 'Try adjusting the search terms or status filter.'
+                    title={projectSearch || projectStageFilter !== 'all' || paymentStatusFilter !== 'all' ? 'No matching projects' : 'No projects found'}
+                    description={projectSearch || projectStageFilter !== 'all' || paymentStatusFilter !== 'all'
+                      ? 'Try adjusting the search terms, project stage, or payment status filter.'
                       : 'Projects with payment plans will appear here once payment-ready work is created.'}
                     className="border-0 bg-transparent py-10 shadow-none"
                   />

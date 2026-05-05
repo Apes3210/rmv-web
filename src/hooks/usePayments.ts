@@ -63,6 +63,28 @@ export function useProjectPaymentPlans(projectId: string, projectItemIds: string
   });
 }
 
+export type PaymentPlanQueryTarget = {
+  projectId: string;
+  projectItemId?: string;
+};
+
+export function usePaymentPlanQueries(targets: PaymentPlanQueryTarget[]) {
+  return useQueries({
+    queries: targets.map((target) => ({
+      queryKey: KEYS.planByProject(target.projectId, target.projectItemId),
+      queryFn: async () => {
+        const { data } = await api.get<ApiResponse<PaymentPlan>>(
+          `/payments/plan/${target.projectId}`,
+          { params: target.projectItemId ? { projectItemId: target.projectItemId } : undefined },
+        );
+        return data.data;
+      },
+      enabled: !!target.projectId,
+      refetchInterval: () => getActiveTabRefetchInterval(30_000),
+    })),
+  });
+}
+
 export function usePaymentsByProject(projectId: string, projectItemId?: string) {
   return useQuery({
     queryKey: KEYS.byProject(projectId, projectItemId),

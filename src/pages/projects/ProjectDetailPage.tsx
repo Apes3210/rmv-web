@@ -1802,31 +1802,6 @@ export function ProjectDetailPage() {
               </CardContent>
             </Card>
           )}
-          {canStartFabricationSetup && isAssignedEngineer && !hasFabLead && (
-            <Card className={cn(
-              'rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x',
-              isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60' : 'border-violet-200 bg-violet-50/50'
-            )}>
-              <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-                <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <Users className={cn('h-5 w-5 shrink-0 mt-0.5 sm:mt-0', isDark ? 'text-violet-300' : 'text-violet-600')} />
-                  <div className="flex-1 min-w-0">
-                    <p className={cn('text-sm font-semibold', isDark ? 'text-slate-100' : 'text-violet-800')}>Assign fabrication team</p>
-                    <p className={cn('text-xs', isDark ? 'text-slate-400' : 'text-violet-700')}>Select a lead fabricator and assistants for this project.</p>
-                  </div>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full sm:w-auto !border-violet-500/70 !bg-violet-600 !text-white hover:!bg-violet-700 dark:!border-violet-400/70 dark:!bg-violet-500 dark:hover:!bg-violet-400"
-                  onClick={handleOpenFabricationAssign}
-                >
-                  <Users className="mr-1.5 h-4 w-4" />
-                  Assign Team
-                </Button>
-              </CardContent>
-            </Card>
-          )}
         </>
       )}
 
@@ -2067,126 +2042,6 @@ export function ProjectDetailPage() {
                 </div>
               )}
 
-              {showLockedFabricationAssignmentCallout && (
-                <div className="mt-4 rounded-xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/30 p-4">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-300" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">Fabrication assignment locked</p>
-                      <p className="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-200">
-                        Your part is complete for now. Team assignment is locked because the next action is still with the customer and payment verification.
-                      </p>
-                      <p className="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-200">
-                        Team assignment will unlock after customer payment is verified.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Assign Fabrication Team (inline form for engineers) */}
-              {isEngineer && isAssignedEngineer && (showFabForm || (!hasFabLead && canStartFabricationSetup)) && (
-                <div
-                  ref={fabricationAssignFormRef}
-                  className="mt-4 rounded-xl border border-violet-200 dark:border-violet-900/60 bg-violet-50/30 dark:bg-violet-950/30 p-4 space-y-4"
-                >
-                  <p className="text-sm font-semibold text-violet-800 dark:text-violet-200 flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Assign Fabrication Team
-                  </p>
-
-                  {/* Lead Select */}
-                  <div>
-                    <label className="text-xs font-medium text-[#6e6e73] dark:text-slate-400 block mb-1">Lead Fabricator *</label>
-                    <Select value={fabLeadId} onValueChange={setFabLeadId}>
-                      <SelectTrigger className="bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100">
-                        <SelectValue placeholder="Select lead fabricator" />
-                      </SelectTrigger>
-                      <SelectContent className="dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100">
-                        {fabStaffList?.map((s) => (
-                          <SelectItem key={s._id} value={s._id}>
-                            {s.firstName} {s.lastName}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Assistants Multi-Select (checkbox list) */}
-                  <div>
-                    <label className="text-xs font-medium text-[#6e6e73] dark:text-slate-400 block mb-1">Assistants (optional)</label>
-                    <div className="max-h-40 overflow-y-auto rounded-lg border border-[#d2d2d7] dark:border-slate-700 bg-white dark:bg-slate-900 divide-y divide-[#e8e8ed] dark:divide-slate-700">
-                      {fabStaffList
-                        ?.filter((s) => s._id !== fabLeadId)
-                        .map((s) => (
-                          <button
-                            type="button"
-                            key={s._id}
-                            onClick={() => toggleAssistant(s._id)}
-                            className={cn(
-                              'flex items-center gap-2 w-full px-3 py-2 text-sm text-left dark:text-slate-100 hover:bg-[#f5f5f7] dark:hover:bg-slate-800 transition-colors',
-                              fabAssistantIds.includes(s._id) && 'bg-violet-50 dark:bg-violet-950/40',
-                            )}
-                          >
-                            <div
-                              className={cn(
-                                'h-4 w-4 rounded border flex items-center justify-center',
-                                fabAssistantIds.includes(s._id)
-                                  ? 'bg-violet-500 border-violet-500'
-                                    : 'border-[#c8c8cd] dark:border-slate-600',
-                              )}
-                            >
-                              {fabAssistantIds.includes(s._id) && (
-                                <Check className="h-3 w-3 text-white" />
-                              )}
-                            </div>
-                            {s.firstName} {s.lastName}
-                          </button>
-                        ))}
-                      {(!fabStaffList || fabStaffList.filter((s) => s._id !== fabLeadId).length === 0) && (
-                        <p className="px-3 py-2 text-xs text-[#86868b] dark:text-slate-400">No other fabrication staff available</p>
-                      )}
-                    </div>
-                    {fabAssistantIds.length > 0 && (
-                      <p className="text-xs text-[#6e6e73] dark:text-slate-400 mt-1">{fabAssistantIds.length} selected</p>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        className="bg-violet-600 text-white hover:bg-violet-700 dark:bg-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_18px_34px_rgba(0,0,0,0.34)]"
-                        onClick={handleAssignFabrication}
-                        disabled={assignFabrication.isPending || !fabLeadId}
-                      >
-                        {assignFabrication.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-                        Assign Team
-                      </Button>
-                    {showFabForm && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setShowFabForm(false)}
-                      >
-                        Cancel
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Reassign button if already assigned */}
-              {isEngineer && isAssignedEngineer && hasFabLead && !showFabForm && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-violet-600 hover:text-violet-700"
-                  onClick={() => setShowFabForm(true)}
-                >
-                  <Users className="mr-1.5 h-4 w-4" />
-                  Reassign Fabrication Team
-                </Button>
-              )}
           </DetailSectionCard>
           ) : (
             /* Customer sees a simple info card instead of team details */
@@ -2892,11 +2747,161 @@ export function ProjectDetailPage() {
       {/* ════════════════  FABRICATION TAB  ════════════════ */}
       {activeTab === 'fabrication' && (
         <div
-          className="w-full"
+          className="w-full space-y-4"
           role="tabpanel"
           id="project-panel-fabrication"
           aria-labelledby="project-tab-fabrication"
         >
+          {showLockedFabricationAssignmentCallout && (
+            <Card className="rounded-none border-x-0 border-amber-200 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/30 sm:rounded-xl sm:border-x">
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-300" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">Fabrication assignment locked</p>
+                    <p className="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-200">
+                      Team assignment will be available once design/billing approval and payment verification are complete.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {canStartFabricationSetup && isAssignedEngineer && !hasFabLead && !showFabForm && (
+            <Card className={cn(
+              'rounded-none sm:rounded-xl border-x-0 sm:border-x',
+              isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60' : 'border-violet-200 bg-violet-50/50',
+            )}>
+              <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <Users className={cn('h-5 w-5 shrink-0 mt-0.5 sm:mt-0', isDark ? 'text-violet-300' : 'text-violet-600')} />
+                  <div className="flex-1 min-w-0">
+                    <p className={cn('text-sm font-semibold', isDark ? 'text-slate-100' : 'text-violet-800')}>Assign fabrication team</p>
+                    <p className={cn('text-xs', isDark ? 'text-slate-400' : 'text-violet-700')}>Customer payment is verified. Select a lead fabricator and assistants for this project.</p>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full sm:w-auto !border-violet-500/70 !bg-violet-600 !text-white hover:!bg-violet-700 dark:!border-violet-400/70 dark:!bg-violet-500 dark:hover:!bg-violet-400"
+                  onClick={handleOpenFabricationAssign}
+                >
+                  <Users className="mr-1.5 h-4 w-4" />
+                  Assign Team
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {isEngineer && isAssignedEngineer && showFabForm && (
+            <Card
+              ref={fabricationAssignFormRef}
+              className="rounded-none border-x-0 border-violet-200 bg-violet-50/30 dark:border-violet-900/60 dark:bg-violet-950/30 sm:rounded-xl sm:border-x"
+            >
+              <CardContent className="space-y-4 p-4">
+                <p className="flex items-center gap-2 text-sm font-semibold text-violet-800 dark:text-violet-200">
+                  <Users className="h-4 w-4" />
+                  Assign Fabrication Team
+                </p>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-[#6e6e73] dark:text-slate-400">Lead Fabricator *</label>
+                  <Select value={fabLeadId} onValueChange={setFabLeadId}>
+                    <SelectTrigger className="bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                      <SelectValue placeholder="Select lead fabricator" />
+                    </SelectTrigger>
+                    <SelectContent className="dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
+                      {fabStaffList?.map((s) => (
+                        <SelectItem key={s._id} value={s._id}>
+                          {s.firstName} {s.lastName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-[#6e6e73] dark:text-slate-400">Assistants (optional)</label>
+                  <div className="max-h-40 overflow-y-auto rounded-lg border border-[#d2d2d7] bg-white divide-y divide-[#e8e8ed] dark:border-slate-700 dark:bg-slate-900 dark:divide-slate-700">
+                    {fabStaffList
+                      ?.filter((s) => s._id !== fabLeadId)
+                      .map((s) => (
+                        <button
+                          type="button"
+                          key={s._id}
+                          onClick={() => toggleAssistant(s._id)}
+                          className={cn(
+                            'flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[#f5f5f7] dark:text-slate-100 dark:hover:bg-slate-800',
+                            fabAssistantIds.includes(s._id) && 'bg-violet-50 dark:bg-violet-950/40',
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              'flex h-4 w-4 items-center justify-center rounded border',
+                              fabAssistantIds.includes(s._id)
+                                ? 'border-violet-500 bg-violet-500'
+                                : 'border-[#c8c8cd] dark:border-slate-600',
+                            )}
+                          >
+                            {fabAssistantIds.includes(s._id) && (
+                              <Check className="h-3 w-3 text-white" />
+                            )}
+                          </div>
+                          {s.firstName} {s.lastName}
+                        </button>
+                      ))}
+                    {(!fabStaffList || fabStaffList.filter((s) => s._id !== fabLeadId).length === 0) && (
+                      <p className="px-3 py-2 text-xs text-[#86868b] dark:text-slate-400">No other fabrication staff available</p>
+                    )}
+                  </div>
+                  {fabAssistantIds.length > 0 && (
+                    <p className="mt-1 text-xs text-[#6e6e73] dark:text-slate-400">{fabAssistantIds.length} selected</p>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    className="bg-violet-600 text-white hover:bg-violet-700 dark:bg-none dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.92),0_18px_34px_rgba(0,0,0,0.34)]"
+                    onClick={handleAssignFabrication}
+                    disabled={assignFabrication.isPending || !fabLeadId}
+                  >
+                    {assignFabrication.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+                    Assign Team
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setShowFabForm(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {isEngineer && isAssignedEngineer && hasFabLead && !showFabForm && (
+            <Card className="rounded-none border-x-0 sm:rounded-xl sm:border-x">
+              <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-[var(--color-card-foreground)]">Fabrication team assigned</p>
+                  <p className="text-xs text-[var(--text-metal-color)]">Use this section if the lead fabricator or assistants need to be updated.</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="w-full text-violet-600 hover:text-violet-700 sm:w-auto"
+                  onClick={() => setShowFabForm(true)}
+                >
+                  <Users className="mr-1.5 h-4 w-4" />
+                  Reassign Fabrication Team
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <Suspense fallback={<TabPanelFallback message="Loading fabrication updates, assignments, and delivery milestones." />}>
             <LazyFabricationTab
               projectId={id!}
