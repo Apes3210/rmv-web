@@ -218,12 +218,12 @@ export function CustomerSiteDetailsPage() {
       )}
 
       <div className="space-y-6">
-        {/* Section 1: Service Type + Customer Requirements */}
+        {/* Section 1: Items + Customer Requirements */}
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="rounded-xl border-[#c8c8cd]/50 shadow-sm">
             <CardHeader>
               <CardTitle className="text-lg text-[#1d1d1f]">
-                Service Type
+                Items
               </CardTitle>
               <CardDescription className="text-[#6e6e73]">
                 What type of fabrication do you need?

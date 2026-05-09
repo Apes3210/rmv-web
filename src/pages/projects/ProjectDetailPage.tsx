@@ -8,6 +8,8 @@ import {
   Info, CheckCircle2, AlertTriangle,
   RotateCcw, Fence, Grid3x3, DoorOpen, Armchair, ChefHat, Utensils,
   BookOpen, Frame, Umbrella, ArrowUpFromLine, Wrench, Layers, DoorClosed, Calculator,
+  MessageSquare, LockKeyhole, CalendarDays, ShieldCheck, Maximize2,
+  User,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -44,14 +46,14 @@ import {
 } from '@/hooks/useProjects';
 import { useLatestBlueprint } from '@/hooks/useBlueprints';
 import { usePaymentPlan, usePaymentsByProject, useProjectPaymentPlans } from '@/hooks/usePayments';
-import { useGetDownloadUrl, openAuthenticatedFile } from '@/hooks/useUploads';
+import { useGetDownloadUrl, openAuthenticatedFile, useAuthenticatedUrl } from '@/hooks/useUploads';
 import { useUsers } from '@/hooks/useUsers';
 import { useAuthStore } from '@/stores/auth.store';
 import { useThemeStore } from '@/stores/theme.store';
 import { api } from '@/lib/api';
 import { ContractStatus, Role, StaffAvailabilityStatus, ProjectStatus, ServiceType, SERVICE_TYPE_LABELS } from '@/lib/constants';
 import { canManageFabricationUpdates, canViewFabricationUpdates, isAssignedEngineer as isProjectEngineerAssigned, isAssignedFabricationMember } from '@/lib/project-access';
-import { getEngineerWorkflowState, type EngineerWorkflowState } from '@/lib/engineer-workflow';
+import { getServiceSpecificationSchema, hasMeaningfulSpecifications } from '@/lib/service-specifications';
 import { cn, extractErrorMessage } from '@/lib/utils';
 import type { ApiResponse, ProjectItem, VisitReport } from '@/lib/types';
 import toast from 'react-hot-toast';
@@ -96,15 +98,6 @@ const ALL_TABS: { key: TabKey; label: string; icon: React.ElementType }[] = [
   { key: 'fabrication', label: 'Fabrication', icon: Hammer },
 ];
 
-const LIFECYCLE_STEPS = [
-  { key: 'submitted', label: 'Submitted' },
-  { key: 'blueprint', label: 'Blueprint' },
-  { key: 'approved', label: 'Approved' },
-  { key: 'payment_pending', label: 'Payment' },
-  { key: 'fabrication', label: 'Fabrication' },
-  { key: 'completed', label: 'Completed' },
-] as const;
-
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(v);
 
@@ -119,6 +112,20 @@ const getFileExtension = (fileKey: string) => {
 };
 
 const isImageFileKey = (fileKey: string) => IMAGE_FILE_EXTENSIONS.has(getFileExtension(fileKey));
+
+const getFileTypeLabel = (fileKey: string) => {
+  const extension = getFileExtension(fileKey);
+  if (!extension) return 'Unknown file';
+  if (IMAGE_FILE_EXTENSIONS.has(extension)) return `${extension.toUpperCase()} Image`;
+  if (extension === 'pdf') return 'PDF Document';
+  return `${extension.toUpperCase()} File`;
+};
+
+const formatFileSize = (bytes?: number) => {
+  if (!bytes || bytes <= 0) return 'File size not recorded';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 function formatServiceTypeLabel(serviceType?: string) {
   if (!serviceType) return '';
@@ -172,13 +179,85 @@ function ProjectItemsStrip({
   isDark,
   activeItemId,
   onSelect,
+  bare = false,
 }: {
   items: Array<{ id: string; serviceType: string; label: string; status: string; Icon: React.ElementType }>;
   isDark: boolean;
   activeItemId: string;
   onSelect: (itemId: string) => void;
+  bare?: boolean;
 }) {
   if (items.length <= 1) return null;
+
+  const cards = (
+    <div className={cn('flex gap-3 overflow-x-auto overflow-y-visible', bare ? '' : 'pb-1')}>
+      {items.map(({ label, Icon }, index) => {
+        const item = items[index]!;
+        const isActive = item.id === activeItemId;
+
+        return (
+        <button
+          type="button"
+          key={`${item.id}-${index}`}
+          onClick={() => onSelect(item.id)}
+          className={cn(
+            'relative flex shrink-0 cursor-pointer items-center text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40',
+            bare
+              ? 'h-[76px] min-w-[230px] max-w-[260px] gap-3 rounded-xl border px-4 py-3'
+              : 'min-w-[210px] max-w-[300px] gap-3 rounded-2xl border px-4 py-4 sm:min-w-[240px]',
+            isActive
+              ? isDark
+                ? 'border-blue-400/70 bg-blue-500/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_16px_30px_rgba(14,165,233,0.08)] ring-1 ring-blue-300/20'
+                : 'border-sky-300 bg-sky-50 shadow-[0_12px_24px_rgba(2,132,199,0.10)] ring-1 ring-sky-200'
+              : isDark
+                ? 'border-white/10 bg-white/[0.035] hover:border-slate-500 hover:bg-white/[0.07] active:scale-[0.98]'
+                : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98]',
+          )}
+        >
+          <div className={cn(
+            'flex shrink-0 items-center justify-center rounded-full border',
+            bare ? 'h-11 w-11' : 'h-11 w-11 rounded-xl',
+            isActive
+              ? isDark
+                ? 'border-blue-400/35 bg-blue-400/12 text-sky-100'
+                : 'bg-sky-100 text-sky-800'
+              : isDark
+                ? 'border-white/10 bg-slate-950/45 text-slate-300'
+                : 'bg-slate-100 text-slate-600',
+          )}>
+            <Icon className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className={cn('truncate font-semibold text-slate-950 dark:text-slate-50', bare ? 'text-sm' : 'text-sm')}>{label}</p>
+            <span className={cn(
+              'mt-1.5 inline-flex items-center gap-1.5 rounded-full px-1.5 py-0.5 font-medium',
+              bare ? 'text-[11px]' : 'text-[10px]',
+              isDark ? 'text-slate-100' : 'bg-slate-100 text-slate-700',
+            )}>
+              <span className={cn('rounded-full', bare ? 'h-2 w-2' : 'h-1.5 w-1.5', isActive ? 'bg-blue-500' : 'bg-slate-500')} />
+              {item.status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+            </span>
+          </div>
+          <span className={cn(
+            'absolute right-2.5 top-2.5 flex items-center justify-center rounded-full font-bold',
+            bare ? 'h-5 w-5 text-[10px]' : 'h-5 w-5 text-[10px]',
+            isActive
+              ? isDark
+                ? 'border border-blue-300/20 bg-blue-400/15 text-blue-100'
+                : 'bg-sky-100 text-sky-800'
+              : isDark
+                ? 'border border-white/10 bg-slate-950/60 text-slate-300'
+                : 'bg-slate-100 text-slate-500',
+          )}>
+            {index + 1}
+          </span>
+        </button>
+        );
+      })}
+    </div>
+  );
+
+  if (bare) return cards;
 
   return (
     <div className={cn(
@@ -197,145 +276,8 @@ function ProjectItemsStrip({
           </p>
         </div>
       </div>
-      <div className="flex gap-3 overflow-x-auto overflow-y-visible pb-1">
-        {items.map(({ label, Icon }, index) => {
-          const item = items[index]!;
-          const isActive = item.id === activeItemId;
-
-          return (
-          <button
-            type="button"
-            key={`${item.id}-${index}`}
-            onClick={() => onSelect(item.id)}
-            className={cn(
-              'relative flex min-w-[210px] max-w-[300px] shrink-0 cursor-pointer items-center gap-3 rounded-2xl border px-4 py-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40 sm:min-w-[240px]',
-              isActive
-                ? isDark
-                  ? 'border-sky-400/45 bg-sky-500/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_16px_30px_rgba(14,165,233,0.08)] ring-1 ring-sky-300/20'
-                  : 'border-sky-300 bg-sky-50 shadow-[0_12px_24px_rgba(2,132,199,0.10)] ring-1 ring-sky-200'
-                : isDark
-                  ? 'border-white/10 bg-white/[0.04] hover:border-slate-500 hover:bg-white/[0.07] active:scale-[0.98]'
-                  : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98]',
-            )}
-          >
-            <div className={cn(
-              'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl',
-              isActive
-                ? isDark
-                  ? 'bg-sky-400/15 text-sky-100'
-                  : 'bg-sky-100 text-sky-800'
-                : isDark
-                  ? 'bg-slate-900 text-slate-400'
-                  : 'bg-slate-100 text-slate-600',
-            )}>
-              <Icon className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-50">{label}</p>
-              <span className={cn(
-                'mt-1 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
-                isDark ? 'bg-white/[0.08] text-slate-200' : 'bg-slate-100 text-slate-700',
-              )}>
-                <span className={cn('h-1.5 w-1.5 rounded-full', isActive ? 'bg-sky-400' : 'bg-slate-400')} />
-                {item.status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-              </span>
-            </div>
-            <span className={cn(
-              'absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold',
-              isActive
-                ? isDark
-                  ? 'bg-sky-400/15 text-sky-100'
-                  : 'bg-sky-100 text-sky-800'
-                : isDark
-                  ? 'bg-slate-900 text-slate-400'
-                  : 'bg-slate-100 text-slate-500',
-            )}>
-              {index + 1}
-            </span>
-          </button>
-          );
-        })}
-      </div>
+      {cards}
     </div>
-  );
-}
-
-function PaymentItemSummaryCard({
-  projectId,
-  itemId,
-  label,
-  isActive,
-  isDark,
-  shouldHideAmount,
-  onSelect,
-}: {
-  projectId: string;
-  itemId: string;
-  label: string;
-  isActive: boolean;
-  isDark: boolean;
-  shouldHideAmount: boolean;
-  onSelect: () => void;
-}) {
-  const { data: plan, isLoading } = usePaymentPlan(projectId, itemId);
-  const totalPaid = plan?.stages?.reduce((sum, stage) => sum + Number(stage.amountPaid || 0), 0) || 0;
-  const remaining = plan?.stages?.reduce((sum, stage) => sum + Number(stage.remainingBalance ?? stage.amount ?? 0), 0) || 0;
-  const paidStages = plan?.stages?.filter((stage) => String(stage.status) === 'verified').length || 0;
-  const totalStages = plan?.stages?.length || 0;
-  const firstStage = plan?.stages?.[0];
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={cn(
-        'rounded-2xl border p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/40',
-        isActive
-          ? isDark
-            ? 'border-sky-400/45 bg-sky-500/10 shadow-[0_16px_28px_rgba(14,165,233,0.10)]'
-            : 'border-sky-300 bg-sky-50 shadow-[0_12px_24px_rgba(2,132,199,0.10)]'
-          : isDark
-            ? 'border-white/10 bg-white/[0.04] hover:border-slate-500 hover:bg-white/[0.07]'
-            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50',
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className={cn('truncate text-sm font-semibold', isDark ? 'text-slate-50' : 'text-slate-950')}>{label}</p>
-          <p className={cn('mt-1 text-xs', isDark ? 'text-slate-400' : 'text-slate-600')}>
-            {isLoading ? 'Loading payment plan...' : plan ? `${paidStages}/${totalStages} stages verified` : 'No payment plan yet'}
-          </p>
-        </div>
-        {firstStage && <StatusBadge status={String(firstStage.status)} />}
-      </div>
-      {plan && (
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <div>
-            <p className={cn('text-[11px] font-semibold uppercase tracking-[0.14em]', isDark ? 'text-slate-500' : 'text-slate-500')}>Total</p>
-            <p className={cn('mt-1 text-sm font-semibold', isDark ? 'text-slate-100' : 'text-slate-900')}>
-              {shouldHideAmount ? '***' : formatCurrency(Number(plan.totalAmount))}
-            </p>
-          </div>
-          <div>
-            <p className={cn('text-[11px] font-semibold uppercase tracking-[0.14em]', isDark ? 'text-slate-500' : 'text-slate-500')}>Paid</p>
-            <p className={cn('mt-1 text-sm font-semibold', isDark ? 'text-emerald-200' : 'text-emerald-700')}>
-              {shouldHideAmount ? '***' : formatCurrency(totalPaid)}
-            </p>
-          </div>
-          <div className="col-span-2">
-            <div className={cn('h-2 rounded-full', isDark ? 'bg-slate-900' : 'bg-slate-200')}>
-              <div
-                className="h-2 rounded-full bg-emerald-500"
-                style={{ width: `${plan.totalAmount > 0 ? Math.min(100, Math.round((totalPaid / plan.totalAmount) * 100)) : 0}%` }}
-              />
-            </div>
-            <p className={cn('mt-1 text-xs', isDark ? 'text-slate-400' : 'text-slate-600')}>
-              {shouldHideAmount ? 'Remaining balance hidden' : `${formatCurrency(Math.max(0, remaining))} remaining`}
-            </p>
-          </div>
-        </div>
-      )}
-    </button>
   );
 }
 
@@ -446,105 +388,6 @@ function CollapsibleSection({
   );
 }
 
-function SummaryMetricCard({
-  label,
-  value,
-  accent = false,
-}: {
-  label: string;
-  value: string;
-  accent?: boolean;
-}) {
-  const { resolvedTheme } = useThemeStore();
-  const isDark = resolvedTheme === 'dark';
-  return (
-    <div className={cn(
-      'rounded-2xl border border-[color:var(--color-border)]/60 p-4 shadow-sm',
-      isDark ? 'bg-slate-950/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]' : 'bg-white',
-      accent && (isDark ? 'border-sky-400/30 bg-sky-500/10' : 'border-sky-200 bg-sky-50/70'),
-    )}>
-      <p className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>{label}</p>
-      <p className={`mt-2 text-sm ${accent ? 'font-semibold' : 'font-semibold'} sm:text-base ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>{value}</p>
-    </div>
-  );
-}
-
-function ProjectLifecycle({
-  status,
-  currentStepIndex,
-}: {
-  status: string;
-  currentStepIndex: number;
-}) {
-  const safeIndex = currentStepIndex >= 0 ? currentStepIndex : 0;
-  const currentLabel = LIFECYCLE_STEPS[safeIndex]?.label || status.replace(/_/g, ' ');
-
-  return (
-    <section className="rounded-2xl border border-[color:var(--color-border)]/60 bg-white p-4 shadow-sm dark:bg-slate-950/45 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5">
-      <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-metal-muted-color)] dark:text-slate-400">
-            Workflow
-          </p>
-          <p className="mt-1 text-sm font-semibold capitalize text-slate-950 dark:text-slate-50">
-            Current stage: {currentLabel}
-          </p>
-        </div>
-        <span className="w-fit rounded-full border border-[color:var(--color-border)]/60 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-900 dark:text-slate-200">
-          Step {safeIndex + 1} of {LIFECYCLE_STEPS.length}
-        </span>
-      </div>
-
-      <div className="overflow-x-auto pb-1">
-        <ol className="grid min-w-[720px] grid-cols-6 gap-3 sm:min-w-0">
-          {LIFECYCLE_STEPS.map((step, index) => {
-            const isCurrent = step.key === status;
-            const isPast = index < safeIndex;
-            const isDone = isPast || isCurrent;
-
-            return (
-              <li key={step.key} className="relative">
-                {index > 0 && (
-                  <div
-                    className={cn(
-                      'absolute -left-3 top-5 h-0.5 w-3',
-                      index <= safeIndex ? 'bg-sky-400 dark:bg-sky-300' : 'bg-slate-200 dark:bg-slate-800',
-                    )}
-                  />
-                )}
-                <div
-                  className={cn(
-                    'rounded-2xl border px-3 py-3 text-center transition-colors',
-                    isCurrent
-                      ? 'border-sky-300 bg-sky-50 text-sky-950 ring-1 ring-sky-200 dark:border-sky-400/45 dark:bg-sky-500/10 dark:text-sky-50 dark:ring-sky-300/20'
-                      : isPast
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-400/25 dark:bg-emerald-500/10 dark:text-emerald-100'
-                        : 'border-slate-200 bg-slate-50 text-slate-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300',
-                  )}
-                >
-                  <div
-                    className={cn(
-                      'mx-auto flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold',
-                      isCurrent
-                        ? 'bg-sky-100 text-sky-900 dark:bg-sky-400/20 dark:text-sky-50'
-                        : isPast
-                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-100'
-                          : 'bg-white text-slate-500 dark:bg-slate-900 dark:text-slate-400',
-                    )}
-                  >
-                    {isPast ? <Check className="h-4 w-4" /> : index + 1}
-                  </div>
-                  <p className={cn('mt-2 text-xs font-semibold', isDone ? '' : 'opacity-75')}>{step.label}</p>
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-      </div>
-    </section>
-  );
-}
-
 function DetailSectionCard({
   title,
   icon: Icon,
@@ -563,11 +406,11 @@ function DetailSectionCard({
       'overflow-hidden rounded-3xl border border-[color:var(--color-border)]/60 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.06)] dark:bg-slate-950/45 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_42px_rgba(0,0,0,0.18)]',
       className,
     )}>
-      <CardHeader className="border-b border-[color:var(--color-border)]/45 bg-slate-50/80 px-4 py-4 dark:bg-white/[0.03] sm:px-6">
+      <CardHeader className="border-b border-[color:var(--color-border)]/45 bg-slate-50/80 px-5 py-5 dark:bg-white/[0.02]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="flex items-center gap-3 text-base font-bold text-slate-950 dark:text-slate-50 sm:text-lg">
+          <CardTitle className="flex items-center gap-3 text-lg font-semibold text-slate-950 dark:text-slate-50">
             {Icon && (
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-100">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-100">
                 <Icon className="h-5 w-5" />
               </span>
             )}
@@ -576,7 +419,7 @@ function DetailSectionCard({
           {action}
         </div>
       </CardHeader>
-      <CardContent className="px-4 py-5 sm:px-6">
+      <CardContent className="px-5 py-5">
         {children}
       </CardContent>
     </Card>
@@ -596,13 +439,13 @@ function DetailField({
 }) {
   return (
     <div className={cn(
-      'rounded-2xl border border-[color:var(--color-border)]/50 bg-slate-50/75 p-4 dark:bg-white/[0.04]',
+      'rounded-2xl border border-[color:var(--color-border)]/50 bg-slate-50/75 px-4 py-4 dark:bg-white/[0.035]',
       className,
     )}>
       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
         {label}
       </p>
-      <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-950 dark:text-slate-100">
+      <div className="mt-2 text-sm font-semibold leading-relaxed text-slate-950 dark:text-slate-100 sm:text-base">
         {children || value || 'Not provided'}
       </div>
     </div>
@@ -643,7 +486,6 @@ export function ProjectDetailPage() {
 
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [activeProjectItem, setActiveProjectItem] = useState('');
-  const [isProjectOverviewOpen, setIsProjectOverviewOpen] = useState(false);
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -740,8 +582,11 @@ export function ProjectDetailPage() {
         .map((k) => ALL_TABS.find((t) => t.key === k))
         .filter(Boolean) as typeof ALL_TABS;
     }
+    if (isCustomer) {
+      return ALL_TABS.filter((tab) => tab.key !== 'design_review');
+    }
     return ALL_TABS;
-  }, [isEngineer, isFabricationStaff]);
+  }, [isEngineer, isFabricationStaff, isCustomer]);
 
   // ── Fabrication staff list (only fetch when engineer is on the page) ──
   const { data: fabStaffList } = useUsers(
@@ -769,10 +614,12 @@ export function ProjectDetailPage() {
   const [projectReviewSkipReason, setProjectReviewSkipReason] = useState('');
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [showSkipReviewDialog, setShowSkipReviewDialog] = useState(false);
+  const [isTeamOwnershipCollapsed, setIsTeamOwnershipCollapsed] = useState(true);
   const [initialDesignKeys, setInitialDesignKeys] = useState<string[]>([]);
   const [initialDesignNotes, setInitialDesignNotes] = useState('');
   const [initialDesignBackfillReason, setInitialDesignBackfillReason] = useState('Synthetic demo backfill for a historical project that originally skipped the initial design step.');
   const [initialDesignUploading, setInitialDesignUploading] = useState(false);
+  const [initialDesignFileSizeBytes, setInitialDesignFileSizeBytes] = useState<number | null>(null);
   const [reviewConfirmDecision, setReviewConfirmDecision] = useState<'approved' | 'declined' | null>(null);
 
   // ── Derived ──
@@ -783,9 +630,10 @@ export function ProjectDetailPage() {
     return project.visitReportId as VisitReport;
   }, [activeProjectItemRecord, project]);
 
+  const activeProjectItemHasSpecifications = hasMeaningfulSpecifications(activeProjectItemRecord?.specifications);
+  const visitReportHasSpecifications = hasMeaningfulSpecifications(visitReport?.specifications);
 
   const activeWorkflowStatus = getDisplayItemStatus(project?.status, activeProjectItemRecord?.status) || 'submitted';
-  const currentStepIndex = LIFECYCLE_STEPS.findIndex((s) => s.key === activeWorkflowStatus);
 
   const isAssignedEngineer = useMemo(() => {
     if (!project) return false;
@@ -812,10 +660,18 @@ export function ProjectDetailPage() {
     return fromList ? `${fromList.firstName} ${fromList.lastName}` : 'Assigned sales staff';
   }, [project?.salesStaffId, salesStaffList]);
   const activeInitialDesignKeys = useMemo(
-    () => (activeProjectItemRecord?.initialDesignKeys?.length
-      ? activeProjectItemRecord.initialDesignKeys
-      : project?.initialDesignKeys || []),
-    [activeProjectItemRecord?.initialDesignKeys, project?.initialDesignKeys],
+    () => {
+      if (activeProjectItemRecord?.initialDesignKeys?.length) {
+        return activeProjectItemRecord.initialDesignKeys;
+      }
+
+      if (project?.initialDesignKeys?.length) {
+        return project.initialDesignKeys;
+      }
+
+      return project?.items?.find((item) => item.initialDesignKeys?.length)?.initialDesignKeys || [];
+    },
+    [activeProjectItemRecord?.initialDesignKeys, project?.initialDesignKeys, project?.items],
   );
   const activeInitialDesignNotes = activeProjectItemRecord?.initialDesignNotes ?? project?.initialDesignNotes;
   const activeDesignReviewStatus = activeProjectItemRecord?.designReviewStatus || project?.designReviewStatus || 'not_required';
@@ -823,6 +679,15 @@ export function ProjectDetailPage() {
   const hasInitialDesign = Boolean(activeInitialDesignKeys.length || activeInitialDesignNotes);
   const initialDesignBackfill = project?.initialDesignBackfill;
   const hasBackfilledInitialDesign = Boolean(initialDesignBackfill?.backfilledAt);
+  const primaryInitialDesignKey = activeInitialDesignKeys[0];
+  const { url: primaryInitialDesignUrl } = useAuthenticatedUrl(primaryInitialDesignKey);
+  const initialDesignPreviewFileName = primaryInitialDesignKey ? getFileName(primaryInitialDesignKey) : 'Initial design file';
+  const initialDesignPreviewTypeLabel = primaryInitialDesignKey ? getFileTypeLabel(primaryInitialDesignKey) : 'No file uploaded';
+  const initialDesignSubmittedAt = activeProjectItemRecord?.updatedAt
+    || project?.updatedAt
+    || project?.createdAt;
+  const initialDesignUploaderName = project?.salesStaffName || currentSalesStaffName || 'Sales Team';
+  const initialDesignFileSizeText = formatFileSize(initialDesignFileSizeBytes ?? undefined);
   const hasVisitMeasurements = Boolean(
     visitReport?.lineItems?.some((item) =>
       item.length != null ||
@@ -898,8 +763,8 @@ export function ProjectDetailPage() {
     && blueprint.status !== 'revision_requested'
     && blueprint.blueprintKey
     && blueprint.designKey
-    && blueprint.costingKey
     && blueprint.quotation
+    && blueprint.quotationReviewStatus === 'sent_to_customer'
     && activeQuotationTotal > 0,
   );
   const showCustomerBlueprintApprovalIndicator = Boolean(
@@ -947,6 +812,52 @@ export function ProjectDetailPage() {
   );
   const projectStatusBadgeStatus = isActivePaymentPlanFullyVerified ? 'verified' : activeWorkflowStatus;
   const projectStatusBadgeLabel = isActivePaymentPlanFullyVerified ? 'Paid' : undefined;
+  const contractFileName = project?.contractFileName || (project?.contractFileKey ? getFileName(project.contractFileKey) : 'Signed contract');
+  const contractFileExtension = getFileExtension(contractFileName);
+  const contractIsPdf = contractFileExtension === 'pdf' || project?.contractContentType === 'application/pdf';
+  const contractIsImage = IMAGE_FILE_EXTENSIONS.has(contractFileExtension);
+  const contractFileSizeText = formatFileSize(project?.contractFileSize);
+  const {
+    url: contractPreviewUrl,
+    isLoading: contractPreviewLoading,
+    error: contractPreviewError,
+  } = useAuthenticatedUrl(project?.contractFileKey);
+
+  useEffect(() => {
+    if (!primaryInitialDesignUrl) {
+      setInitialDesignFileSizeBytes(null);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const resolveFileSize = async () => {
+      try {
+        const headRes = await fetch(primaryInitialDesignUrl, {
+          method: 'HEAD',
+          signal: controller.signal,
+        });
+        const headLength = Number(headRes.headers.get('content-length') || 0);
+        if (headLength > 0) {
+          setInitialDesignFileSizeBytes(headLength);
+          return;
+        }
+      } catch {
+        // Fall through to GET fallback.
+      }
+
+      try {
+        const getRes = await fetch(primaryInitialDesignUrl, { signal: controller.signal });
+        const blob = await getRes.blob();
+        setInitialDesignFileSizeBytes(blob.size > 0 ? blob.size : null);
+      } catch {
+        setInitialDesignFileSizeBytes(null);
+      }
+    };
+
+    void resolveFileSize();
+    return () => controller.abort();
+  }, [primaryInitialDesignUrl]);
 
   const availabilityLabel = (status?: StaffAvailabilityStatus) => {
     switch (status) {
@@ -1083,6 +994,10 @@ export function ProjectDetailPage() {
 
   const handleDownloadContract = async () => {
     try {
+      if (project?.contractFileKey) {
+        await openAuthenticatedFile(project.contractFileKey);
+        return;
+      }
       const { data } = await api.get(`/projects/${id}/contract-url`, {
       });
       window.open(data.data.url, '_blank');
@@ -1209,149 +1124,67 @@ export function ProjectDetailPage() {
   if (isError || !project) return <PageError onRetry={refetch} />;
 
   const hasFabLead = project.fabricationLeadId && typeof project.fabricationLeadId !== 'string';
-  const engineerSubmissionComplete = Boolean(
-    blueprint
-    && blueprint.status !== 'revision_requested'
-    && blueprint.blueprintKey
-    && blueprint.designKey
-    && blueprint.costingKey
-    && blueprint.quotation
-    && activeQuotationTotal > 0,
-  );
-  const hasCustomerApprovedDesignAndBilling = Boolean(blueprint?.blueprintApproved && blueprint?.costingApproved);
-  const engineerWorkflowState = getEngineerWorkflowState({
-    hasFabLead: Boolean(hasFabLead),
-    engineerSubmissionComplete,
-    hasCustomerApprovedDesignAndBilling,
-    canStartFabricationSetup,
-  });
-  const engineerWorkflowUi: Record<EngineerWorkflowState, {
-    title: string;
-    description: string;
-    owner: string;
-    unlock: string;
-    icon: React.ElementType;
-    tone: 'blue' | 'amber' | 'emerald' | 'violet' | 'slate';
-  }> = {
-    needs_engineer_work: {
-      title: blueprint?.status === 'revision_requested' ? 'Revision needed' : 'Engineer work needed',
-      description: blueprint?.status === 'revision_requested'
-        ? (blueprint.revisionNotes || 'Customer requested changes. Update the blueprint and costing before customer review continues.')
-        : 'Complete the blueprint, design files, costing, and quotation so the customer can review them.',
-      owner: 'Engineer',
-      unlock: 'Final blueprint and costing submission',
-      icon: Upload,
-      tone: blueprint?.status === 'revision_requested' ? 'amber' : 'blue',
-    },
-    waiting_customer_approval: {
-      title: 'Waiting for Customer Approval',
-      description: 'Your part is complete for now. Waiting for customer approval of design and billing.',
-      owner: 'Customer',
-      unlock: 'Customer approval',
-      icon: Info,
-      tone: 'amber',
-    },
-    waiting_customer_payment: {
-      title: 'Waiting for Customer Payment',
-      description: 'Team assignment will unlock after customer payment is verified.',
-      owner: 'Cashier/Payment Verification',
-      unlock: 'Verified payment',
-      icon: CreditCard,
-      tone: 'amber',
-    },
-    ready_for_team_assignment: {
-      title: 'Customer payment verified',
-      description: 'Customer payment verified. You may now assign fabrication team.',
-      owner: 'Engineer',
-      unlock: 'Fabrication team assigned',
-      icon: Users,
-      tone: 'violet',
-    },
-    team_assigned: {
-      title: 'Fabrication team assigned',
-      description: 'The fabrication team is assigned. Fabrication preparation can proceed.',
-      owner: 'Fabrication Team',
-      unlock: 'Fabrication progress updates',
-      icon: CheckCircle2,
-      tone: 'emerald',
-    },
-  };
-  const engineerWorkflow = engineerWorkflowUi[engineerWorkflowState];
-  const engineerWorkflowToneClass = {
-    blue: isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60' : 'border-blue-200 bg-blue-50/50',
-    amber: isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60' : 'border-amber-200 bg-amber-50/50',
-    emerald: isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60' : 'border-emerald-200 bg-emerald-50/50',
-    violet: isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60' : 'border-violet-200 bg-violet-50/50',
-    slate: isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60' : 'border-slate-200 bg-slate-50/60',
-  }[engineerWorkflow.tone];
-  const engineerWorkflowIconClass = {
-    blue: isDark ? 'text-slate-300' : 'text-blue-600',
-    amber: isDark ? 'text-amber-300' : 'text-amber-600',
-    emerald: isDark ? 'text-emerald-300' : 'text-emerald-600',
-    violet: isDark ? 'text-violet-300' : 'text-violet-600',
-    slate: isDark ? 'text-slate-300' : 'text-slate-600',
-  }[engineerWorkflow.tone];
-  const engineerWorkflowTextClass = {
-    blue: isDark ? 'text-slate-100' : 'text-blue-800',
-    amber: isDark ? 'text-slate-100' : 'text-amber-800',
-    emerald: isDark ? 'text-slate-100' : 'text-emerald-800',
-    violet: isDark ? 'text-slate-100' : 'text-violet-800',
-    slate: isDark ? 'text-slate-100' : 'text-slate-800',
-  }[engineerWorkflow.tone];
-  const engineerWorkflowMutedClass = {
-    blue: isDark ? 'text-slate-400' : 'text-blue-700',
-    amber: isDark ? 'text-slate-400' : 'text-amber-700',
-    emerald: isDark ? 'text-slate-400' : 'text-emerald-700',
-    violet: isDark ? 'text-slate-400' : 'text-violet-700',
-    slate: isDark ? 'text-slate-400' : 'text-slate-600',
-  }[engineerWorkflow.tone];
-  const showLockedFabricationAssignmentCallout = Boolean(
-    isEngineer
-    && isAssignedEngineer
-    && !hasFabLead
-    && ['waiting_customer_approval', 'waiting_customer_payment'].includes(engineerWorkflowState),
-  );
-  const EngineerWorkflowIcon = engineerWorkflow.icon;
   const activeProjectServiceLabel = projectServiceItems.find((item) => item.id === activeProjectItemId)?.label || '';
   const projectServiceTitle = projectServiceItems.map((item) => item.label).join(', ') || project.title;
   const headerTitle = activeProjectServiceLabel || projectServiceTitle;
-  const activeStageLabel = LIFECYCLE_STEPS[currentStepIndex]?.label || activeWorkflowStatus.replace(/_/g, ' ');
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4 sm:space-y-5">
       {/* Header */}
-      <div className="flex items-start gap-3 sm:gap-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate(-1)}
-          className="rounded-xl hover:bg-[color:var(--color-muted)]/85 dark:text-slate-300 dark:hover:text-slate-100 shrink-0 mt-0.5"
-          aria-label="Go back"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-lg sm:text-2xl font-bold tracking-tight text-[var(--color-card-foreground)] truncate">
-              {headerTitle}
-            </h1>
-            {project.projectNumber && (
-              <span className="ml-2 inline-flex items-center rounded-lg bg-[color:var(--color-muted)] dark:bg-slate-800 border border-[color:var(--color-border)] dark:border-slate-700 px-2.5 py-1 text-xs font-bold tracking-tight text-[var(--text-metal-color)] dark:text-slate-300 shadow-sm">
-                {project.projectNumber}
-              </span>
-            )}
-            <StatusBadge status={projectStatusBadgeStatus} label={projectStatusBadgeLabel} />
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate(-1)}
+            className="mt-0.5 h-10 w-10 shrink-0 rounded-xl border border-[color:var(--color-border)]/60 hover:bg-[color:var(--color-muted)]/85 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:text-slate-100"
+            aria-label="Go back"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-[1.8rem] font-semibold tracking-tight text-[var(--color-card-foreground)] truncate sm:text-[2rem]">
+                {headerTitle}
+              </h1>
+              {project.projectNumber && (
+                <span className="inline-flex h-7 items-center rounded-xl bg-[color:var(--color-muted)] dark:bg-slate-800 border border-[color:var(--color-border)] dark:border-slate-700 px-2.5 text-[11px] font-semibold tracking-tight text-[var(--text-metal-color)] dark:text-slate-300 shadow-sm">
+                  {project.projectNumber}
+                </span>
+              )}
+              <StatusBadge status={projectStatusBadgeStatus} label={projectStatusBadgeLabel} />
+            </div>
+            <p className="mt-1.5 text-sm text-[var(--text-metal-color)] dark:text-slate-300">
+              Created {format(new Date(project.createdAt), 'MMM d, yyyy')}
+            </p>
           </div>
-          <p className="text-xs sm:text-sm text-[var(--text-metal-color)] dark:text-slate-300 mt-0.5">
-            Created {format(new Date(project.createdAt), 'MMM d, yyyy')}
-          </p>
         </div>
+
+        {projectServiceItems.length > 1 && (
+          <div className={cn(
+            'rounded-2xl border border-[color:var(--color-border)]/60 px-4 py-3 shadow-sm xl:w-[520px] xl:max-w-[46%]',
+            isDark ? 'bg-slate-950/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_40px_rgba(0,0,0,0.2)]' : 'bg-white',
+          )}>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
+              Project Items
+            </p>
+            <div className="mt-2.5">
+              <ProjectItemsStrip
+                items={projectServiceItems}
+                isDark={isDark}
+                activeItemId={activeProjectItemId || ''}
+                onSelect={setActiveProjectItem}
+                bare
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
       <div>
         <div
-          className="flex gap-2 overflow-x-auto rounded-2xl border border-[color:var(--color-border)]/60 bg-white p-2 shadow-sm no-scrollbar dark:bg-slate-950/45 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+          className="flex h-12 items-center gap-3 overflow-x-auto rounded-2xl border border-[color:var(--color-border)]/60 bg-white px-3 shadow-sm no-scrollbar dark:bg-slate-950/45 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
           role="tablist"
           aria-label="Project detail sections"
         >
@@ -1367,10 +1200,10 @@ export function ProjectDetailPage() {
               aria-controls={`project-panel-${tab.key}`}
               tabIndex={activeTab === tab.key ? 0 : -1}
               className={cn(
-                'relative flex min-w-fit items-center gap-1.5 whitespace-nowrap rounded-xl border px-3.5 py-2.5 pr-6 text-sm font-semibold transition-colors sm:gap-2 sm:px-4 sm:pr-7',
+                'relative flex h-full min-w-fit items-center gap-2 whitespace-nowrap border-b-2 px-3 text-sm font-medium transition-colors',
                 activeTab === tab.key
-                  ? 'border-sky-300 bg-sky-50 text-sky-950 shadow-sm dark:border-sky-400/40 dark:bg-sky-500/10 dark:text-sky-50'
-                  : 'border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-white/[0.06] dark:hover:text-slate-50',
+                  ? 'border-blue-400 text-slate-950 dark:text-slate-50'
+                  : 'border-transparent text-slate-600 hover:text-slate-950 dark:text-slate-300 dark:hover:text-slate-50',
               )}
             >
               <tab.icon className="h-4 w-4" />
@@ -1392,26 +1225,34 @@ export function ProjectDetailPage() {
                 <span
                   aria-label={showCustomerBlueprintApprovalIndicator ? 'Blueprint approval pending' : 'Blueprint requires attention'}
                   className={cn(
-                    'absolute right-2 top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none',
-                    activeTab === tab.key
-                      ? 'bg-sky-700 text-white dark:bg-sky-300 dark:text-slate-950'
-                      : 'bg-rose-500 text-white dark:bg-rose-400 dark:text-slate-950',
+                    showCustomerBlueprintApprovalIndicator
+                      ? 'absolute right-2 top-2 inline-flex h-2.5 w-2.5 rounded-full bg-rose-500 dark:bg-rose-400'
+                      : cn(
+                        'absolute right-2 top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none',
+                        activeTab === tab.key
+                          ? 'bg-sky-700 text-white dark:bg-sky-300 dark:text-slate-950'
+                          : 'bg-rose-500 text-white dark:bg-rose-400 dark:text-slate-950',
+                      ),
                   )}
                 >
-                  1
+                  {!showCustomerBlueprintApprovalIndicator ? '1' : null}
                 </span>
               )}
               {tab.key === 'costing' && showCostingTabBadge && (
                 <span
                   aria-label={showCustomerCostingApprovalIndicator ? 'Costing approval pending' : 'Costing requires attention'}
                   className={cn(
-                    'absolute right-2 top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none',
-                    activeTab === tab.key
-                      ? 'bg-sky-700 text-white dark:bg-sky-300 dark:text-slate-950'
-                      : 'bg-rose-500 text-white dark:bg-rose-400 dark:text-slate-950',
+                    showCustomerCostingApprovalIndicator
+                      ? 'absolute right-2 top-2 inline-flex h-2.5 w-2.5 rounded-full bg-rose-500 dark:bg-rose-400'
+                      : cn(
+                        'absolute right-2 top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold leading-none',
+                        activeTab === tab.key
+                          ? 'bg-sky-700 text-white dark:bg-sky-300 dark:text-slate-950'
+                          : 'bg-rose-500 text-white dark:bg-rose-400 dark:text-slate-950',
+                      ),
                   )}
                 >
-                  1
+                  {!showCustomerCostingApprovalIndicator ? '1' : null}
                 </span>
               )}
               {tab.key === 'payments' && showPaymentsTabIndicator && (
@@ -1431,54 +1272,6 @@ export function ProjectDetailPage() {
           ))}
         </div>
       </div>
-
-      {(projectServiceItems.length > 1 || project.status !== 'cancelled') && (
-        <section className="rounded-2xl border border-[color:var(--color-border)]/60 bg-white shadow-sm dark:bg-slate-950/45 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-          <button
-            type="button"
-            onClick={() => setIsProjectOverviewOpen((open) => !open)}
-            aria-expanded={isProjectOverviewOpen}
-            className="flex w-full flex-col gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.04] sm:flex-row sm:items-center sm:justify-between sm:px-5"
-          >
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                <Layers className="h-4 w-4" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">Project Overview</p>
-                <p className="mt-0.5 truncate text-xs text-slate-600 dark:text-slate-300">
-                  {projectServiceItems.length > 1 ? `${projectServiceItems.length} items` : 'Single item'}
-                  {activeProjectServiceLabel ? ` · Viewing ${activeProjectServiceLabel}` : ''}
-                  {project.status !== 'cancelled' ? ` · ${activeStageLabel}` : ''}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 pl-12 sm:pl-0">
-              {project.status !== 'cancelled' && (
-                <span className="w-fit rounded-full border border-[color:var(--color-border)]/60 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                  Step {Math.max(currentStepIndex, 0) + 1} of {LIFECYCLE_STEPS.length}
-                </span>
-              )}
-              {isProjectOverviewOpen ? <ChevronUp className="h-4 w-4 text-slate-500" /> : <ChevronDown className="h-4 w-4 text-slate-500" />}
-            </div>
-          </button>
-
-          {isProjectOverviewOpen && (
-            <div className="space-y-4 border-t border-[color:var(--color-border)]/60 p-4 sm:p-5">
-              <ProjectItemsStrip
-                items={projectServiceItems}
-                isDark={isDark}
-                activeItemId={activeProjectItemId || ''}
-                onSelect={setActiveProjectItem}
-              />
-
-              {project.status !== 'cancelled' && (
-                <ProjectLifecycle status={activeWorkflowStatus} currentStepIndex={currentStepIndex} />
-              )}
-            </div>
-          )}
-        </section>
-      )}
 
       {/* ── Customer Status Guide Banner ── */}
       {project.status === 'draft' && visitReport?.visitType === 'consultation' && (
@@ -1517,20 +1310,6 @@ export function ProjectDetailPage() {
           </CardContent>
         </Card>
       )}
-      {isCustomer && project.status === 'blueprint' && (
-        <Card className={cn(
-          'rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x',
-          isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60' : 'border-amber-200 bg-amber-50/50'
-        )}>
-          <CardContent className="flex items-start gap-3 py-3 px-4">
-            <Info className={cn('mt-0.5 h-5 w-5 shrink-0', isDark ? 'text-amber-300' : 'text-amber-600')} />
-            <div>
-              <p className={cn('text-sm font-semibold', isDark ? 'text-slate-100' : 'text-amber-900')}>Blueprint In Progress</p>
-              <p className={cn('mt-0.5 text-xs', isDark ? 'text-slate-400' : 'text-amber-700')}>The engineer is working on your blueprint and costing. You&apos;ll be notified once it&apos;s ready for your review.</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
       {isCustomer && ['approved', 'payment_pending'].includes(project.status) && !paymentPlan && (
         <Card className={cn(
           'rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x',
@@ -1545,28 +1324,7 @@ export function ProjectDetailPage() {
           </CardContent>
         </Card>
       )}
-      {isCustomer && project.status === 'payment_pending' && !!paymentPlan && !isActivePaymentPlanFullyVerified && (
-        <Card className="rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/40">
-          <CardContent className="flex items-start gap-3 py-3 px-4">
-            <CreditCard className="h-5 w-5 text-amber-600 dark:text-amber-300 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">Payment Required</p>
-              <p className="text-xs text-amber-700 dark:text-amber-200 mt-0.5">Complete the required payments to begin fabrication. Go to the Payments tab to pay via QR or cash.</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-      {isCustomer && project.status === 'fabrication' && (
-        <Card className="rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/40">
-          <CardContent className="flex items-start gap-3 py-3 px-4">
-            <Hammer className="h-5 w-5 text-indigo-600 dark:text-indigo-300 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">Fabrication In Progress</p>
-              <p className="text-xs text-indigo-700 dark:text-indigo-200 mt-0.5">Your order is being fabricated. Check the Fabrication tab for progress updates and photos.</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
       {isCustomer && project.status === 'completed' && (
         <Card className="rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/50 dark:bg-emerald-950/40">
           <CardContent className="flex items-start gap-3 py-3 px-4">
@@ -1685,32 +1443,6 @@ export function ProjectDetailPage() {
         </Card>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryMetricCard
-          label="Project Stage"
-          value={LIFECYCLE_STEPS[currentStepIndex]?.label || project.status.replace('_', ' ')}
-          accent
-        />
-        <SummaryMetricCard
-          label="Customer"
-          value={project.customerName || 'Customer record attached'}
-        />
-        <SummaryMetricCard
-          label="Engineering"
-          value={project.engineerIds.length > 0 ? `${project.engineerIds.length} assigned` : 'Waiting for engineer'}
-        />
-        <SummaryMetricCard
-          label="Commercial Status"
-          value={paymentPlan
-            ? 'Payment plan ready'
-            : blueprint
-              ? 'Blueprint under review'
-              : project.contractStatus === ContractStatus.UPLOADED
-                ? 'Contract uploaded'
-                : 'Missing contract'}
-        />
-      </div>
-
       {/* ── Contextual Action Banner (engineer) ── */}
       {isEngineer && (
         <>
@@ -1726,7 +1458,7 @@ export function ProjectDetailPage() {
                   </div>
                   <div className="flex-1 min-w-0 mt-0.5">
                     <p className={cn("text-sm font-semibold", isDark ? "text-sky-50" : "text-sky-950")}>This project needs an engineer</p>
-                    <p className={cn("text-xs mt-0.5", isDark ? "text-sky-200/80" : "text-sky-700")}>Claim it to start working on the blueprint.</p>
+                    <p className={cn("text-xs mt-0.5", isDark ? "text-sky-200/80" : "text-sky-700")}>Take it over to start working on the blueprint.</p>
                   </div>
                 </div>
                 <Button
@@ -1739,66 +1471,8 @@ export function ProjectDetailPage() {
                   disabled={assignEngineers.isPending}
                 >
                   {assignEngineers.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <UserPlus className="mr-1.5 h-4 w-4" />}
-                  Claim Project
+                  Take Over this Project
                 </Button>
-              </CardContent>
-            </Card>
-          )}
-          {isAssignedEngineer && (
-            <Card className={cn(
-              'rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x',
-              engineerWorkflowToneClass,
-            )}>
-              <CardContent className="p-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="flex items-start gap-3 min-w-0">
-                  <EngineerWorkflowIcon className={cn('mt-0.5 h-5 w-5 shrink-0', engineerWorkflowIconClass)} />
-                  <div className="min-w-0">
-                    <p className={cn('text-sm font-semibold', engineerWorkflowTextClass)}>{engineerWorkflow.title}</p>
-                    <p className={cn('mt-0.5 text-xs leading-relaxed', engineerWorkflowMutedClass)}>
-                      {engineerWorkflow.description}
-                    </p>
-                  </div>
-                </div>
-                <div className="grid gap-2 sm:min-w-[260px] sm:grid-cols-2">
-                  <div className={cn('rounded-lg border px-3 py-2', isDark ? 'border-slate-700/80 bg-slate-950/40' : 'border-white/70 bg-white/70')}>
-                    <p className={cn('text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-slate-400' : 'text-slate-500')}>Current Owner</p>
-                    <p className={cn('mt-0.5 text-xs font-semibold', isDark ? 'text-slate-100' : 'text-slate-900')}>{engineerWorkflow.owner}</p>
-                  </div>
-                  <div className={cn('rounded-lg border px-3 py-2', isDark ? 'border-slate-700/80 bg-slate-950/40' : 'border-white/70 bg-white/70')}>
-                    <p className={cn('text-[10px] font-semibold uppercase tracking-wider', isDark ? 'text-slate-400' : 'text-slate-500')}>Unlocks On</p>
-                    <p className={cn('mt-0.5 text-xs font-semibold', isDark ? 'text-slate-100' : 'text-slate-900')}>{engineerWorkflow.unlock}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {project.status === 'blueprint' && isAssignedEngineer && !blueprint && (
-            <Card className={cn(
-              'rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x',
-              isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60' : 'border-blue-200 bg-blue-50/50'
-            )}>
-              <CardContent className="p-4 flex items-center gap-3">
-                <Upload className={cn('h-5 w-5 shrink-0', isDark ? 'text-slate-300' : 'text-blue-600')} />
-                <div className="flex-1">
-                  <p className={cn('text-sm font-semibold', isDark ? 'text-slate-100' : 'text-blue-800')}>Blueprint needed</p>
-                  <p className={cn('text-xs', isDark ? 'text-slate-400' : 'text-blue-700')}>Upload the blueprint and costing for customer review.</p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {blueprint?.status === 'revision_requested' && isAssignedEngineer && (
-            <Card className={cn(
-              'rounded-none sm:rounded-xl -mx-3 sm:mx-0 border-x-0 sm:border-x',
-              isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60' : 'border-amber-200 bg-amber-50/50'
-            )}>
-              <CardContent className="p-4 flex items-center gap-3">
-                <Upload className={cn('h-5 w-5 shrink-0', isDark ? 'text-amber-300' : 'text-amber-600')} />
-                <div className="flex-1">
-                  <p className={cn('text-sm font-semibold', isDark ? 'text-slate-100' : 'text-amber-800')}>Revision requested</p>
-                  <p className={cn('text-xs', isDark ? 'text-slate-400' : 'text-amber-700')}>
-                    {blueprint.revisionNotes || 'The customer requested changes to the blueprint.'}
-                  </p>
-                </div>
               </CardContent>
             </Card>
           )}
@@ -1820,12 +1494,9 @@ export function ProjectDetailPage() {
             className="lg:col-span-2"
             action={<StatusBadge status={projectStatusBadgeStatus} label={projectStatusBadgeLabel} />}
           >
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3">
               {project.description && (
-                <DetailField label="Description" value={project.description} className="sm:col-span-2" />
-              )}
-              {isStaff && project.customerName && (
-                <DetailField label="Customer" value={project.customerName} />
+                <DetailField label="Description" value={project.description} />
               )}
               {project.serviceType && (
                 <DetailField label="Items">
@@ -1837,17 +1508,50 @@ export function ProjectDetailPage() {
                   )}
                 </DetailField>
               )}
-              {project.siteAddress && (
-                <DetailField label="Site Address" value={project.siteAddress} className="sm:col-span-2" />
+              {isStaff && project.customerName && (
+                <DetailField label="Customer" value={project.customerName} />
               )}
-              <DetailField label="Project Status">
-                <StatusBadge status={projectStatusBadgeStatus} label={projectStatusBadgeLabel} />
-              </DetailField>
+              {project.siteAddress && (
+                <DetailField label="Site Address" value={project.siteAddress} />
+              )}
               {project.projectNumber && (
                 <DetailField label="Project Number" value={project.projectNumber} />
               )}
             </div>
           </DetailSectionCard>
+
+          {activeProjectItemHasSpecifications && activeProjectItemRecord?.specifications && (
+            <DetailSectionCard
+              title={`${activeProjectServiceLabel || 'Item'} Specifications`}
+              icon={Layers}
+              className="lg:col-span-2"
+            >
+              <div className="space-y-3">
+                {getServiceSpecificationSchema(activeProjectItemRecord.serviceType).sections.map((section) => {
+                  const sectionValues = activeProjectItemRecord.specifications?.[section.key] || {};
+                  const visibleFields = section.fields.filter((field) => {
+                    const value = sectionValues[field.key];
+                    if (typeof value === 'string') return value.trim().length > 0;
+                    if (typeof value === 'number') return Number.isFinite(value);
+                    return value === true;
+                  });
+                  if (!visibleFields.length) return null;
+                  return (
+                    <div key={section.key} className={`${isDark ? 'metal-panel' : 'bg-[color:var(--color-muted)]/55'} rounded-xl border border-[color:var(--color-border)]/45 p-3`}>
+                      <p className={`mb-2 text-[10px] font-medium uppercase ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>{section.label}</p>
+                      <div className="grid gap-1 sm:grid-cols-2">
+                        {visibleFields.map((field) => (
+                          <p key={field.key} className={`text-sm ${isDark ? 'text-slate-200' : 'text-[var(--color-card-foreground)]'}`}>
+                            <span className="font-medium">{field.label}:</span> {String(sectionValues[field.key])}{field.unit ? ` ${field.unit}` : ''}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </DetailSectionCard>
+          )}
 
           {isStaff && !hasInitialDesign && project.status !== 'draft' && (
             <Card className="rounded-none sm:rounded-xl border-x-0 sm:border-x border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/40 lg:col-span-2">
@@ -1931,133 +1635,6 @@ export function ProjectDetailPage() {
               </CardContent>
             </Card>
           )}
-
-
-          {/* Team (internal staff only — customers see simplified view) */}
-          {isStaff ? (
-          <DetailSectionCard title="Team & Ownership" icon={Users} className="lg:col-span-2">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {/* Sales Staff */}
-                <DetailField label="Sales Staff">
-                  <p>
-                    {currentSalesStaffName}
-                  </p>
-                </DetailField>
-
-                {/* Engineers */}
-                <DetailField label="Engineers">
-                  {project.engineerIds.length > 0 ? (
-                    <div className="mt-1 space-y-2">
-                      {project.engineerIds.map((eng: any) => (
-                        <div key={String(eng._id || eng)} className="flex flex-wrap items-center gap-2">
-                          <p className="text-sm">
-                            {eng.firstName ? `${eng.firstName} ${eng.lastName}` : String(eng)}
-                          </p>
-                          {eng.phone && (
-                            <a
-                              href={`tel:${eng.phone}`}
-                              className="inline-flex items-center gap-1 text-xs text-sky-700 hover:text-sky-900 dark:text-sky-200 dark:hover:text-sky-100"
-                            >
-                              <Phone className="h-3 w-3" />
-                              {eng.phone}
-                            </a>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-2">
-                      <p className="text-sm italic text-slate-500 dark:text-slate-400">Not assigned yet</p>
-                    </div>
-                  )}
-                </DetailField>
-
-                {/* Fabrication Lead */}
-                <DetailField label="Fabrication Lead">
-                  {hasFabLead ? (
-                    <p>
-                      {(project.fabricationLeadId as any).firstName} {(project.fabricationLeadId as any).lastName}
-                    </p>
-                  ) : (
-                    <p className="text-sm italic text-slate-500 dark:text-slate-400">Not assigned yet</p>
-                  )}
-                </DetailField>
-
-                {/* Fabrication Assistants */}
-                <DetailField label="Fabrication Assistants">
-                  {project.fabricationAssistantIds.length > 0 ? (
-                    <div className="mt-1 space-y-1">
-                      {project.fabricationAssistantIds.map((a: any) => (
-                        <p key={String(a._id || a)} className="text-sm">
-                          {a.firstName ? `${a.firstName} ${a.lastName}` : String(a)}
-                        </p>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm italic text-slate-500 dark:text-slate-400">Not assigned yet</p>
-                  )}
-                </DetailField>
-              </div>
-
-              {canReassignProjectSales && (
-                <div className="rounded-xl border border-cyan-200 dark:border-cyan-900/60 bg-cyan-50/40 dark:bg-cyan-950/30 p-4 space-y-4">
-                  <p className="text-sm font-semibold text-cyan-800 dark:text-cyan-200 flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Reassign Sales Staff
-                  </p>
-
-                  <div>
-                    <label className="text-xs font-medium text-[#6e6e73] dark:text-slate-400 block mb-1">Sales Staff</label>
-                    <Select value={selectedSalesStaffId} onValueChange={setSelectedSalesStaffId}>
-                      <SelectTrigger className="bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100">
-                        <SelectValue placeholder="Select replacement sales staff" />
-                      </SelectTrigger>
-                      <SelectContent className="dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100">
-                        {salesStaffList.map((staff) => (
-                          <SelectItem
-                            key={staff._id}
-                            value={staff._id}
-                            disabled={isAvailabilityBlocked(staff.availabilityStatus)}
-                          >
-                            {staff.firstName} {staff.lastName} ({availabilityLabel(staff.availabilityStatus)})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <Button
-                    size="sm"
-                    className="bg-cyan-700 text-white hover:bg-cyan-800 dark:bg-cyan-600 dark:hover:bg-cyan-500"
-                    onClick={handleReassignProjectSales}
-                    disabled={
-                      reassignProjectSales.isPending
-                      || !selectedSalesStaffId
-                      || selectedSalesStaffId === currentSalesStaffId
-                    }
-                  >
-                    {reassignProjectSales.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-                    Reassign Sales Staff
-                  </Button>
-                </div>
-              )}
-
-          </DetailSectionCard>
-          ) : (
-            /* Customer sees a simple info card instead of team details */
-            <DetailSectionCard title="Project Team" icon={Users} className="lg:col-span-2">
-                <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                  Your project is being handled by our expert team of engineers and fabrication specialists. 
-                  We&apos;ll keep you updated on progress through notifications.
-                </p>
-                {project.engineerIds.length > 0 && (
-                  <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
-                    <span className="font-semibold text-slate-950 dark:text-slate-100">{project.engineerIds.length}</span> engineer{project.engineerIds.length > 1 ? 's' : ''} assigned
-                  </p>
-                )}
-            </DetailSectionCard>
-          )}
-
           {/* ── Visit Report (Site Survey Data) — Staff only ── */}
           {isStaff && visitReport && (
             <DetailSectionCard title="Site Visit Report" icon={Camera} className="lg:col-span-2">
@@ -2123,8 +1700,35 @@ export function ProjectDetailPage() {
                   ))}
                 </CollapsibleSection>
 
+                {visitReportHasSpecifications && visitReport.specifications && (
+                  <div>
+                    <p className={`mb-2 text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>
+                      Category Specifications
+                    </p>
+                    <div className="space-y-2">
+                      {getServiceSpecificationSchema(visitReport.serviceType).sections.map((section) => {
+                        const sectionValues = visitReport.specifications?.[section.key] || {};
+                        const visibleFields = section.fields.filter((field) => sectionValues[field.key] !== undefined && sectionValues[field.key] !== '');
+                        if (!visibleFields.length) return null;
+                        return (
+                          <div key={section.key} className={`${isDark ? 'metal-panel' : 'bg-[color:var(--color-muted)]/55'} rounded-xl border border-[color:var(--color-border)]/45 p-3`}>
+                            <p className={`mb-2 text-[10px] font-medium uppercase ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>{section.label}</p>
+                            <div className="grid gap-1 sm:grid-cols-2">
+                              {visibleFields.map((field) => (
+                                <p key={field.key} className={`text-sm ${isDark ? 'text-slate-200' : 'text-[var(--color-card-foreground)]'}`}>
+                                  <span className="font-medium">{field.label}:</span> {String(sectionValues[field.key])}{field.unit ? ` ${field.unit}` : ''}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Line Items */}
-                {visitReport.lineItems && visitReport.lineItems.length > 0 && (
+                {!visitReportHasSpecifications && visitReport.lineItems && visitReport.lineItems.length > 0 && (
                   <div>
                     <p className={`mb-2 text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>
                       Line Items ({visitReport.measurementUnit || visitReport.measurements?.unit || 'cm'})
@@ -2164,7 +1768,7 @@ export function ProjectDetailPage() {
                 )}
 
                 {/* Site Conditions — ocular visits only */}
-                {visitReport.visitType === 'ocular' && visitReport.siteConditions && (
+                {!visitReportHasSpecifications && visitReport.visitType === 'ocular' && visitReport.siteConditions && (
                   <div>
                     <p className={`mb-2 text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>Site Conditions</p>
                     <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -2251,103 +1855,275 @@ export function ProjectDetailPage() {
             <DetailSectionCard
               title="Initial Design Review"
               icon={PenTool}
-              className="lg:col-span-2"
+              className="lg:col-span-2 dark:border-sky-400/15 dark:bg-slate-950/55"
               action={(
                 <span className={cn(
-                  'inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium w-fit capitalize',
+                  'inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold capitalize',
                   activeDesignReviewStatus === 'approved' && 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200',
                   activeDesignReviewStatus === 'declined' && 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200',
                   activeDesignReviewStatus === 'pending' && 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200',
                   activeDesignReviewStatus === 'not_required' && 'border-gray-200 bg-gray-50 text-gray-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
                 )}>
+                  <span className="h-2 w-2 rounded-full bg-current opacity-70" />
                   {activeDesignReviewStatus.replace('_', ' ')}
                 </span>
               )}
             >
-              <div className="space-y-4">
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  {hasBackfilledInitialDesign
-                    ? 'This package was added later as synthetic demo reference data. It documents a backfill for this historical record and does not mean the original review step happened on time.'
-                    : 'Sales uploaded the rough sketch, inspiration, or reference files collected during and after the ocular visit. Engineering should review this package before continuing.'}
-                </p>
+              <div className="space-y-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <p className="max-w-3xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                    {hasBackfilledInitialDesign
+                      ? 'This package was added later as synthetic demo reference data. It documents a backfill for this historical record and does not mean the original review step happened on time.'
+                      : 'Review the submitted initial design and provide your decision.'}
+                  </p>
+                  {!canManageInitialDesign && (
+                    <span className="inline-flex items-center gap-2 rounded-full border border-blue-500/25 bg-blue-500/10 px-3 py-1.5 text-xs font-semibold text-blue-700 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-200">
+                      <Info className="h-3.5 w-3.5" />
+                      Review Guidelines
+                    </span>
+                  )}
+                </div>
 
-                {activeInitialDesignKeys.length > 0 && (
-                  <div className="grid grid-cols-1 gap-3">
-                    {activeInitialDesignKeys.map((key) => (
+                {!canManageInitialDesign && activeInitialDesignKeys.length > 0 && (
+                  <div className="rounded-[26px] border border-[color:var(--color-border)]/55 bg-slate-50/80 p-4 dark:bg-white/[0.035] sm:p-5">
+                    <div className="mb-5 flex items-start gap-3">
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-600/16 text-sm font-bold text-blue-600 dark:bg-blue-400/15 dark:text-blue-300">
+                        1
+                      </span>
+                      <div>
+                        <p className="text-lg font-semibold text-slate-950 dark:text-slate-100">Initial Design Files</p>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Open reference files submitted by sales.</p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_380px]">
                       <button
-                        key={key}
                         type="button"
                         onClick={() => {
-                          if (isImageFileKey(key)) {
-                            setLightboxKey(key);
+                          if (!primaryInitialDesignKey) return;
+                          if (isImageFileKey(primaryInitialDesignKey)) {
+                            setLightboxKey(primaryInitialDesignKey);
                             return;
                           }
-                          openAuthenticatedFile(key);
+                          openAuthenticatedFile(primaryInitialDesignKey);
                         }}
                         className={cn(
-                          'group relative w-full overflow-hidden rounded-2xl border border-[color:var(--color-border)]/55 bg-slate-50 text-left dark:border-slate-700 dark:bg-slate-900/60',
-                          isImageFileKey(key) ? 'cursor-zoom-in' : 'cursor-pointer',
+                          'group rounded-[24px] border border-[color:var(--color-border)]/55 bg-white/90 p-4 text-left shadow-sm transition hover:border-blue-400/35 dark:border-slate-700 dark:bg-slate-950/55',
+                          primaryInitialDesignKey && isImageFileKey(primaryInitialDesignKey) ? 'cursor-zoom-in' : 'cursor-pointer',
                         )}
-                        title={isImageFileKey(key) ? 'Click to preview image' : 'Open file'}
+                        title={primaryInitialDesignKey && isImageFileKey(primaryInitialDesignKey) ? 'Click to preview image' : 'Open file'}
                       >
-                        {isImageFileKey(key) ? (
-                          <div className="relative aspect-[4/3]">
-                            <AuthImage
-                              fileKey={key}
-                              alt={getFileName(key) || 'Initial design'}
-                              className="absolute inset-0 h-full w-full object-cover transition-transform group-hover:scale-105"
-                              fallback={(
-                                <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-slate-100 px-4 py-5 text-center dark:bg-slate-900">
-                                  <Image className="h-8 w-8 text-slate-400" />
-                                  <span className="line-clamp-2 break-words text-xs font-medium text-slate-600 dark:text-slate-300">
-                                    {getFileName(key)}
-                                  </span>
-                                  <span className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                                    {getFileExtension(key) || 'file'}
-                                  </span>
-                                </div>
-                              )}
-                            />
-                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent px-3 py-2">
-                              <span 
-                                className="block truncate text-xs font-medium text-white"
-                                title={getFileName(key)}
-                              >
-                                {getFileName(key)}
+                        {primaryInitialDesignKey && isImageFileKey(primaryInitialDesignKey) ? (
+                          <div className="space-y-4">
+                            <div className="relative overflow-hidden rounded-[22px] border border-[color:var(--color-border)]/45 bg-slate-950/95 p-4 dark:border-slate-700">
+                              <div className="relative aspect-[16/9] overflow-hidden rounded-[18px] bg-slate-950">
+                                <AuthImage
+                                  fileKey={primaryInitialDesignKey}
+                                  alt={initialDesignPreviewFileName}
+                                  className="absolute inset-0 h-full w-full object-contain transition-transform duration-200 group-hover:scale-[1.02]"
+                                  fallback={(
+                                    <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-slate-100 px-4 py-5 text-center dark:bg-slate-900">
+                                      <Image className="h-8 w-8 text-slate-400" />
+                                      <span className="line-clamp-2 break-words text-xs font-medium text-slate-600 dark:text-slate-300">
+                                        {initialDesignPreviewFileName}
+                                      </span>
+                                    </div>
+                                  )}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-end justify-between gap-4">
+                              <div className="min-w-0">
+                                <p className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+                                  <Image className="h-3.5 w-3.5" />
+                                  Image Preview
+                                </p>
+                                <p className="mt-4 truncate text-base font-medium text-slate-950 dark:text-slate-100" title={initialDesignPreviewFileName}>
+                                  {initialDesignPreviewFileName}
+                                </p>
+                              </div>
+                              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white text-slate-950 shadow-[0_12px_28px_rgba(15,23,42,0.16)] dark:bg-slate-100">
+                                <Maximize2 className="h-5 w-5" />
                               </span>
                             </div>
                           </div>
-                        ) : (
-                          <div className="flex min-h-[112px] items-center gap-3 px-4 py-4 sm:min-h-[132px]">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm dark:bg-slate-800 dark:text-slate-400">
-                              <FileText className="h-6 w-6" />
+                        ) : primaryInitialDesignKey ? (
+                          <div className="flex min-h-[240px] flex-col justify-between gap-6 rounded-[22px] border border-[color:var(--color-border)]/45 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-950/65">
+                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600/12 text-blue-600 dark:bg-blue-400/15 dark:text-blue-300">
+                              <FileText className="h-7 w-7" />
                             </div>
-                            <div className="min-w-0">
-                              <p 
-                                className="truncate text-sm font-medium text-slate-950 dark:text-slate-100"
-                                title={getFileName(key)}
-                              >
-                                {getFileName(key)}
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+                                File Preview
                               </p>
-                              <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">
-                                {getFileExtension(key) || 'file'}
+                              <p className="mt-3 break-words text-base font-semibold text-slate-950 dark:text-slate-100">
+                                {initialDesignPreviewFileName}
                               </p>
-                              <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                                Tap to open this reference file.
+                              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                                {initialDesignPreviewTypeLabel} • {initialDesignFileSizeText}
                               </p>
                             </div>
                           </div>
-                        )}
+                        ) : null}
                       </button>
-                    ))}
+
+                      <div className="rounded-[24px] border border-[color:var(--color-border)]/55 bg-white/70 p-5 dark:border-slate-700 dark:bg-slate-950/40">
+                        <div className="space-y-5">
+                          <div className="flex gap-3">
+                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-200/70 text-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                              <User className="h-5 w-5" />
+                            </span>
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Uploaded By</p>
+                              <p className="mt-2 text-lg font-medium text-slate-950 dark:text-slate-100">{initialDesignUploaderName}</p>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-[color:var(--color-border)]/55 pt-5 dark:border-slate-700">
+                            <div className="flex gap-3">
+                              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-200/70 text-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                                <CalendarDays className="h-5 w-5" />
+                              </span>
+                              <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">Uploaded On</p>
+                                <p className="mt-2 text-lg font-medium text-slate-950 dark:text-slate-100">
+                                  {initialDesignSubmittedAt ? format(new Date(initialDesignSubmittedAt), 'MMM d, yyyy h:mm a') : 'Not recorded'}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-[color:var(--color-border)]/55 pt-5 dark:border-slate-700">
+                            <div className="flex gap-3">
+                              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-200/70 text-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                                <FileText className="h-5 w-5" />
+                              </span>
+                              <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">File Type</p>
+                                <p className="mt-2 text-lg font-medium text-slate-950 dark:text-slate-100">{initialDesignPreviewTypeLabel}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="border-t border-[color:var(--color-border)]/55 pt-5 dark:border-slate-700">
+                            <div className="flex gap-3">
+                              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-200/70 text-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                                <Download className="h-5 w-5" />
+                              </span>
+                              <div>
+                                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">File Size</p>
+                                <p className="mt-2 text-lg font-medium text-slate-950 dark:text-slate-100">{initialDesignFileSizeText}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {activeInitialDesignKeys.length > 1 && (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {activeInitialDesignKeys.slice(1).map((key) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => {
+                              if (isImageFileKey(key)) {
+                                setLightboxKey(key);
+                                return;
+                              }
+                              openAuthenticatedFile(key);
+                            }}
+                            className="rounded-full border border-[color:var(--color-border)]/60 bg-white/85 px-3 py-1.5 text-xs font-medium text-slate-600 transition hover:border-blue-400/35 hover:text-slate-950 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-300 dark:hover:text-slate-100"
+                          >
+                            {getFileName(key)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
-                {activeInitialDesignNotes && (
-                  <DetailField
-                    label={hasBackfilledInitialDesign ? 'Backfill Notes' : 'Sales Notes'}
-                    value={activeInitialDesignNotes}
-                  />
+                {!canManageInitialDesign && activeInitialDesignNotes && (
+                  <div className="rounded-[26px] border border-[color:var(--color-border)]/55 bg-slate-50/80 p-4 dark:bg-white/[0.035] sm:p-5">
+                    <div className="mb-5 flex items-start gap-3">
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-600/16 text-sm font-bold text-blue-600 dark:bg-blue-400/15 dark:text-blue-300">
+                        2
+                      </span>
+                      <div>
+                        <p className="text-lg font-semibold text-slate-950 dark:text-slate-100">
+                          {hasBackfilledInitialDesign ? 'Backfill Notes' : 'Sales Notes'}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Notes and requirements provided by sales.</p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[22px] border border-blue-500/10 bg-[linear-gradient(180deg,rgba(37,99,235,0.08)_0%,rgba(15,23,42,0.02)_100%)] px-5 py-6 dark:border-blue-400/10 dark:bg-[linear-gradient(180deg,rgba(59,130,246,0.10)_0%,rgba(15,23,42,0.16)_100%)]">
+                      <p className="text-base leading-9 text-slate-900 dark:text-slate-100">
+                        {activeInitialDesignNotes}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {canReviewInitialDesign && (
+                  <div className="rounded-[26px] border border-[color:var(--color-border)]/55 bg-slate-50/80 p-4 dark:bg-white/[0.035] sm:p-5">
+                    <div className="mb-5 flex items-start gap-3">
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-600/16 text-sm font-bold text-blue-600 dark:bg-blue-400/15 dark:text-blue-300">
+                        3
+                      </span>
+                      <div>
+                        <p className="text-lg font-semibold text-slate-950 dark:text-slate-100">Engineer Decision</p>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Approve if the reference is sufficient to proceed, or decline with notes for sales.</p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[22px] border border-[color:var(--color-border)]/55 bg-white/70 p-4 dark:border-slate-700 dark:bg-slate-950/45">
+                      <Label className="mb-3 block text-sm font-medium text-slate-700 dark:text-slate-200">
+                        Add internal review notes (required when declining)
+                      </Label>
+                      <div className="relative">
+                        <Textarea
+                          value={designReviewNotes}
+                          onChange={(e) => setDesignReviewNotes(e.target.value)}
+                          placeholder="Add internal review notes..."
+                          maxLength={1000}
+                          className="min-h-[132px] resize-none rounded-2xl border border-[color:var(--color-border)]/55 bg-slate-50/80 pb-10 text-sm leading-relaxed dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-100 dark:placeholder:text-slate-500"
+                        />
+                        <span className="pointer-events-none absolute bottom-3 right-4 text-xs text-slate-500 dark:text-slate-400">
+                          {designReviewNotes.length}/1000
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-[22px] border border-[color:var(--color-border)]/55 bg-white/40 px-4 py-5 dark:border-slate-700 dark:bg-slate-950/35">
+                      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <p className="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                          <Info className="h-4 w-4" />
+                          Your decision will be shared with the sales team and recorded in the project activity.
+                        </p>
+                        <div className="flex flex-col gap-3 sm:flex-row">
+                          <Button
+                            variant="destructive"
+                            className="w-full rounded-xl border-0 bg-[linear-gradient(180deg,#d97261_0%,#cb5a50_100%)] px-6 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_12px_24px_rgba(153,46,42,0.20)] hover:bg-[linear-gradient(180deg,#e17c6b_0%,#d46258_100%)] sm:w-auto"
+                            onClick={() => requestReviewInitialDesign('declined')}
+                            disabled={reviewInitialDesign.isPending}
+                          >
+                            <X className="mr-2 h-4 w-4" />
+                            Decline Initial Design
+                          </Button>
+                          <Button
+                            className="w-full rounded-xl border-0 bg-[linear-gradient(180deg,#33b87c_0%,#239762_100%)] px-6 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_12px_24px_rgba(21,98,70,0.24)] hover:bg-[linear-gradient(180deg,#39c988_0%,#28a76d_100%)] dark:text-white sm:w-auto"
+                            onClick={() => requestReviewInitialDesign('approved')}
+                            disabled={reviewInitialDesign.isPending}
+                          >
+                            {reviewInitialDesign.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
+                            Approve Initial Design
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 )}
 
                 {activeDesignReviewNotes && (
@@ -2355,14 +2131,19 @@ export function ProjectDetailPage() {
                 )}
 
                 {canManageInitialDesign && (
-                  <div className="space-y-3 rounded-2xl border border-[color:var(--color-border)]/55 bg-slate-50 p-4 dark:bg-white/[0.04]">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">Sales Resubmission</p>
-                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        {activeDesignReviewStatus === 'declined'
-                          ? 'Engineering requested changes. Update the files or notes here and resubmit for review.'
-                          : 'You can refine the initial design package before the engineer uploads the first blueprint.'}
-                      </p>
+                  <div className="space-y-5 rounded-2xl border border-[color:var(--color-border)]/55 bg-slate-50/80 p-4 dark:bg-white/[0.035] sm:p-5">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600/12 text-blue-600 dark:bg-blue-400/15 dark:text-blue-300">
+                        <Upload className="h-6 w-6" />
+                      </span>
+                      <div>
+                        <p className="text-base font-semibold text-slate-950 dark:text-slate-100">1. Sales Resubmission</p>
+                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                          {activeDesignReviewStatus === 'declined'
+                            ? 'Engineering requested changes. Upload the revised package for another review.'
+                            : 'Upload your refined initial design package for the engineer to create the first blueprint.'}
+                        </p>
+                      </div>
                     </div>
                     <FileUpload
                       folder="projects/initial-design"
@@ -2373,57 +2154,50 @@ export function ProjectDetailPage() {
                       existingKeys={initialDesignKeys}
                       onUploadComplete={setInitialDesignKeys}
                       onUploadingChange={setInitialDesignUploading}
+                      presentation="review"
                     />
-                    <Textarea
-                      value={initialDesignNotes}
-                      onChange={(e) => setInitialDesignNotes(e.target.value)}
-                      placeholder="Add sales notes, clarified customer preferences, or engineer-requested adjustments."
-                      className="min-h-[96px] rounded-2xl border border-[color:var(--color-border)]/55 bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-                    />
-                    <Button
-                      className="w-full rounded-xl [background-image:none] bg-[#223246] text-white hover:bg-[#31577a] dark:border dark:border-white/12 dark:[background-image:none] dark:bg-[#223246] dark:text-slate-100 dark:hover:bg-[#365f86] sm:w-auto"
-                      onClick={handleResubmitInitialDesign}
-                      disabled={resubmitInitialDesign.isPending || initialDesignUploading}
-                    >
-                      {resubmitInitialDesign.isPending || initialDesignUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-                      Save & Resubmit Initial Design
-                    </Button>
+
+                    <div className="border-t border-[color:var(--color-border)]/55 pt-5">
+                      <div className="mb-3 flex items-start gap-3">
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-300">
+                          <MessageSquare className="h-6 w-6" />
+                        </span>
+                        <div>
+                          <p className="text-base font-semibold text-slate-950 dark:text-slate-100">2. Sales Notes</p>
+                          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Provide clear notes to help engineering understand the requirements.</p>
+                        </div>
+                      </div>
+                      <div className="relative">
+                        <Textarea
+                          value={initialDesignNotes}
+                          onChange={(e) => setInitialDesignNotes(e.target.value)}
+                          placeholder="Add sales notes, clarified customer preferences, or engineer-requested adjustments."
+                          maxLength={1000}
+                          className="min-h-[132px] resize-none rounded-2xl border border-[color:var(--color-border)]/60 bg-white/80 pb-10 text-sm leading-relaxed text-slate-950 shadow-sm dark:border-slate-700 dark:bg-slate-950/45 dark:text-slate-100 dark:placeholder:text-slate-500"
+                        />
+                        <span className="pointer-events-none absolute bottom-3 right-4 text-xs text-slate-500 dark:text-slate-400">
+                          {initialDesignNotes.length}/1000
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center">
+                      <Button
+                        className="w-full rounded-xl !border-blue-500 !bg-blue-600 !text-white !shadow-[0_14px_28px_rgba(37,99,235,0.38)] ![background-image:none] hover:!bg-blue-500 dark:!border-blue-400 dark:!bg-blue-500 dark:!text-white dark:hover:!bg-blue-400 sm:w-auto"
+                        onClick={handleResubmitInitialDesign}
+                        disabled={resubmitInitialDesign.isPending || initialDesignUploading}
+                      >
+                        {resubmitInitialDesign.isPending || initialDesignUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                        Save & Resubmit Initial Design
+                      </Button>
+                      <p className="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                        <LockKeyhole className="h-4 w-4" />
+                        Your submission will be sent to engineering for review.
+                      </p>
+                    </div>
                   </div>
                 )}
 
-                {canReviewInitialDesign && (
-                  <div className="space-y-3 rounded-2xl border border-[color:var(--color-border)]/55 bg-slate-50 p-4 dark:bg-white/[0.04]">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">Engineer Decision</p>
-                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Approve if the reference is sufficient to proceed, or decline it with notes for sales staff.</p>
-                    </div>
-                    <Textarea
-                      value={designReviewNotes}
-                      onChange={(e) => setDesignReviewNotes(e.target.value)}
-                      placeholder="Add internal review notes. Required when declining."
-                      className="min-h-[96px] rounded-2xl border border-[color:var(--color-border)]/55 bg-white dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
-                    />
-                    <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-                      <Button
-                        variant="destructive"
-                        className="w-full sm:w-auto"
-                        onClick={() => requestReviewInitialDesign('declined')}
-                        disabled={reviewInitialDesign.isPending}
-                      >
-                        <X className="mr-2 h-4 w-4" />
-                        Decline Initial Design
-                      </Button>
-                      <Button
-                        className="w-full bg-[linear-gradient(180deg,#2ca36f_0%,#1e7c54_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_12px_24px_rgba(21,98,70,0.24)] hover:bg-[linear-gradient(180deg,#33b47b_0%,#238960_100%)] dark:border dark:border-emerald-600/40 dark:bg-[linear-gradient(180deg,#34c084_0%,#238960_100%)] dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1),0_14px_28px_rgba(7,58,40,0.28)] dark:hover:bg-[linear-gradient(180deg,#3ad18f_0%,#28976a_100%)] sm:w-auto"
-                        onClick={() => requestReviewInitialDesign('approved')}
-                        disabled={reviewInitialDesign.isPending}
-                      >
-                        {reviewInitialDesign.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
-                        Approve Initial Design
-                      </Button>
-                    </div>
-                  </div>
-                )}
               </div>
             </DetailSectionCard>
           ) : (
@@ -2444,83 +2218,185 @@ export function ProjectDetailPage() {
           id="project-panel-contract"
           aria-labelledby="project-tab-contract"
         >
-          <DetailSectionCard title="Signed Contract" icon={ScrollText}>
-            <div className="space-y-5">
-              <div className={cn(
-                'rounded-2xl border p-4',
-                project.contractStatus === ContractStatus.UPLOADED
-                  ? 'border-emerald-500/35 bg-emerald-500/10'
-                  : 'border-amber-500/35 bg-amber-500/10',
-              )}>
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className={cn(
-                      'mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
-                      project.contractStatus === ContractStatus.UPLOADED
-                        ? 'bg-emerald-500/15 text-emerald-300'
-                        : 'bg-amber-500/15 text-amber-300',
-                    )}>
-                      {project.contractStatus === ContractStatus.UPLOADED ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
-                    </div>
-                    <div>
-                      <p className={cn('text-sm font-semibold', isDark ? 'text-slate-100' : 'text-slate-950')}>
-                        {project.contractStatus === ContractStatus.UPLOADED ? 'Signed contract uploaded' : 'Signed contract missing'}
-                      </p>
-                      <p className={cn('mt-1 text-xs', isDark ? 'text-slate-400' : 'text-slate-600')}>
-                        {project.contractStatus === ContractStatus.UPLOADED
-                          ? 'This project uses the manually signed contract uploaded by sales or admin.'
-                          : 'Upload the manually signed contract before engineers can claim this project.'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {project.contractStatus === ContractStatus.UPLOADED && project.contractFileKey && (
-                    <Button
-                      size="sm"
-                      variant="prominent"
-                      onClick={handleDownloadContract}
-                      className="w-full sm:w-auto"
-                    >
-                      <Download className="mr-1.5 h-4 w-4" />
-                      View / Download
-                    </Button>
-                  )}
+          <Card className="overflow-hidden rounded-3xl border border-[color:var(--color-border)]/60 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.06)] dark:border-sky-400/15 dark:bg-slate-950/55 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_42px_rgba(0,0,0,0.18)]">
+            <CardContent className="space-y-4 p-4 sm:p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-cyan-600/15 text-cyan-700 dark:bg-cyan-400/15 dark:text-cyan-200">
+                  <ScrollText className="h-7 w-7" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-xl font-semibold tracking-[-0.01em] text-slate-950 dark:text-slate-50 sm:text-2xl">
+                    Signed Contract
+                  </h2>
+                  <p className="mt-1.5 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                    View and download the manually signed contract uploaded for this project.
+                  </p>
                 </div>
               </div>
 
-              {project.contractStatus === ContractStatus.UPLOADED && project.contractFileKey && (
-                <div className="rounded-2xl border border-[color:var(--color-border)]/55 bg-slate-50 p-4 dark:bg-white/[0.04]">
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">File</p>
-                      <p className="mt-1 break-all text-sm font-medium text-slate-950 dark:text-slate-100">
-                        {project.contractFileName || getFileName(project.contractFileKey)}
-                      </p>
+              {project.contractStatus === ContractStatus.UPLOADED && project.contractFileKey ? (
+                <>
+                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_minmax(290px,0.82fr)]">
+                    <div className="overflow-hidden rounded-2xl border border-[color:var(--color-border)]/60 bg-slate-50/80 p-2.5 dark:border-slate-700 dark:bg-slate-950/45">
+                      <div className="overflow-hidden rounded-xl border border-[color:var(--color-border)]/60 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
+                        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--color-border)]/55 px-3 py-2.5 dark:border-slate-700">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/12 text-red-600 dark:bg-red-400/15 dark:text-red-300">
+                              <FileText className="h-5 w-5" />
+                            </span>
+                            <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-100" title={contractFileName}>
+                              {contractFileName}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleDownloadContract}
+                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                            aria-label="Open contract in a new tab"
+                          >
+                            <Maximize2 className="h-4 w-4" />
+                          </button>
+                        </div>
+
+                        <div className="relative min-h-[320px] bg-slate-100 dark:bg-slate-950 sm:min-h-[360px]">
+                          {contractPreviewLoading && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
+                              <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+                              <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Loading contract preview</p>
+                            </div>
+                          )}
+
+                          {!contractPreviewLoading && contractPreviewUrl && contractIsPdf && (
+                            <iframe
+                              src={`${contractPreviewUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                              title="Signed contract preview"
+                              className="h-[320px] w-full border-0 bg-white sm:h-[360px]"
+                            />
+                          )}
+
+                          {!contractPreviewLoading && contractPreviewUrl && contractIsImage && (
+                            <img
+                              src={contractPreviewUrl}
+                              alt="Signed contract preview"
+                              className="h-[320px] w-full object-contain bg-white sm:h-[360px]"
+                            />
+                          )}
+
+                          {!contractPreviewLoading && (!contractPreviewUrl || contractPreviewError || (!contractIsPdf && !contractIsImage)) && (
+                            <div className="flex min-h-[320px] flex-col items-center justify-center gap-3 px-6 text-center sm:min-h-[360px]">
+                              <FileText className="h-10 w-10 text-slate-400" />
+                              <div>
+                                <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Preview is not available</p>
+                                <p className="mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
+                                  Open or download the file to view the signed contract.
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 border-t border-[color:var(--color-border)]/55 px-4 py-2.5 dark:border-slate-700">
+                          <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 sm:text-sm">
+                            {contractIsPdf ? '1 / 1' : 'Preview'}
+                          </p>
+                          <div className="hidden items-center gap-3 rounded-xl border border-[color:var(--color-border)]/55 px-3 py-1.5 text-sm font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300 sm:flex">
+                            <span>-</span>
+                            <span>100%</span>
+                            <span>+</span>
+                          </div>
+                          {contractPreviewUrl ? (
+                            <a
+                              href={contractPreviewUrl}
+                              download={contractFileName}
+                              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-white"
+                              aria-label="Download signed contract"
+                            >
+                              <Download className="h-5 w-5" />
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={handleDownloadContract}
+                              className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 dark:text-slate-200 dark:hover:bg-slate-800 dark:hover:text-white"
+                              aria-label="Open signed contract"
+                            >
+                              <Download className="h-5 w-5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Uploaded</p>
-                      <p className="mt-1 text-sm font-medium text-slate-950 dark:text-slate-100">
-                        {project.contractUploadedAt ? format(new Date(project.contractUploadedAt), 'MMM d, yyyy h:mm a') : 'Recorded'}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-slate-400">Status</p>
-                      <p className="mt-1 text-sm font-medium text-emerald-600 dark:text-emerald-300">Ready for engineering</p>
+
+                    <div className="rounded-2xl border border-[color:var(--color-border)]/60 bg-slate-50/80 p-4 dark:border-slate-700 dark:bg-white/[0.035]">
+                      <div className="space-y-5">
+                        <div className="flex gap-3">
+                          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-200/75 text-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                            <CalendarDays className="h-6 w-6" />
+                          </span>
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Uploaded</p>
+                            <p className="mt-1.5 text-sm font-semibold text-slate-950 dark:text-slate-100 sm:text-base">
+                              {project.contractUploadedAt ? format(new Date(project.contractUploadedAt), 'MMM d, yyyy h:mm a') : 'Recorded'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-[color:var(--color-border)]/55 pt-5 dark:border-slate-700">
+                          <div className="flex gap-3">
+                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-200/75 text-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                              <FileText className="h-6 w-6" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">File</p>
+                              <p className="mt-1.5 break-words text-sm font-semibold leading-relaxed text-slate-950 dark:text-slate-100 sm:text-base">
+                                {contractFileName}
+                              </p>
+                              <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{contractFileSizeText}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-[color:var(--color-border)]/55 pt-5 dark:border-slate-700">
+                          <div className="flex gap-3">
+                            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-300">
+                              <ShieldCheck className="h-6 w-6" />
+                            </span>
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Status</p>
+                              <p className="mt-1.5 text-sm font-semibold text-emerald-600 dark:text-emerald-300 sm:text-base">Ready for engineering</p>
+                              <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                                The contract is ready and will be used for engineering work.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
 
-              <div className="rounded-2xl border border-[color:var(--color-border)]/55 bg-slate-50 p-4 dark:bg-white/[0.04]">
-                {project.contractStatus === ContractStatus.UPLOADED ? (
-                  <p className="text-sm text-slate-700 dark:text-slate-300">
-                    Contract tab is view-only. Use this tab to check status and download the uploaded signed contract.
-                  </p>
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm text-slate-700 dark:text-slate-300">
-                      Contract tab is view-only. The signed contract has not been uploaded yet.
+                  <div className="flex items-center gap-3 rounded-2xl border border-[color:var(--color-border)]/55 bg-slate-50/80 px-4 py-3 dark:border-slate-700 dark:bg-white/[0.035]">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600/12 text-blue-600 dark:bg-blue-400/15 dark:text-blue-300">
+                      <Info className="h-5 w-5" />
+                    </span>
+                    <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+                      Contract tab is view-only. Use this tab to check status and download the uploaded signed contract.
                     </p>
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-2xl border border-amber-500/35 bg-amber-500/10 p-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex items-start gap-3">
+                      <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-300">
+                        <AlertTriangle className="h-5 w-5" />
+                      </span>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-950 dark:text-slate-100">Signed contract missing</p>
+                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                          Contract tab is view-only. The signed contract has not been uploaded yet.
+                        </p>
+                      </div>
+                    </div>
                     {(isAssignedSales || isAdmin) && (
                       <Button
                         type="button"
@@ -2533,10 +2409,10 @@ export function ProjectDetailPage() {
                       </Button>
                     )}
                   </div>
-                )}
-              </div>
-            </div>
-          </DetailSectionCard>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -2613,37 +2489,7 @@ export function ProjectDetailPage() {
           id="project-panel-payments"
           aria-labelledby="project-tab-payments"
         >
-          {projectServiceItems.length > 1 && (
-            <Card className="rounded-2xl border border-[color:var(--color-border)]/60 bg-white shadow-sm dark:bg-slate-950/45">
-              <CardHeader className="px-4 sm:px-6">
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <CardTitle className={`text-base sm:text-lg ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>Payment Overview</CardTitle>
-                    <p className={`mt-1 text-xs ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>
-                      This project has multiple items. Each item keeps its own plan, receipts, and payment status.
-                    </p>
-                  </div>
-                  <span className="w-fit rounded-full border border-[color:var(--color-border)]/60 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-900 dark:text-slate-200">
-                    {projectServiceItems.length} items
-                  </span>
-                </div>
-              </CardHeader>
-              <CardContent className="grid gap-3 px-4 sm:grid-cols-2 sm:px-6 xl:grid-cols-3">
-                {projectServiceItems.map((item) => (
-                  <PaymentItemSummaryCard
-                    key={item.id}
-                    projectId={id!}
-                    itemId={item.id}
-                    label={item.label}
-                    isActive={item.id === activeProjectItemId}
-                    isDark={isDark}
-                    shouldHideAmount={Boolean(shouldHideAmount)}
-                    onSelect={() => setActiveProjectItem(item.id)}
-                  />
-                ))}
-              </CardContent>
-            </Card>
-          )}
+
 
           {paymentPlan && (
             <Card className="rounded-2xl border border-[color:var(--color-border)]/60 bg-white shadow-sm dark:bg-slate-950/45">
@@ -2752,22 +2598,6 @@ export function ProjectDetailPage() {
           id="project-panel-fabrication"
           aria-labelledby="project-tab-fabrication"
         >
-          {showLockedFabricationAssignmentCallout && (
-            <Card className="rounded-none border-x-0 border-amber-200 bg-amber-50/60 dark:border-amber-900/60 dark:bg-amber-950/30 sm:rounded-xl sm:border-x">
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-300" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-100">Fabrication assignment locked</p>
-                    <p className="mt-1 text-xs leading-relaxed text-amber-800 dark:text-amber-200">
-                      Team assignment will be available once design/billing approval and payment verification are complete.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {canStartFabricationSetup && isAssignedEngineer && !hasFabLead && !showFabForm && (
             <Card className={cn(
               'rounded-none sm:rounded-xl border-x-0 sm:border-x',
@@ -2882,24 +2712,127 @@ export function ProjectDetailPage() {
             </Card>
           )}
 
-          {isEngineer && isAssignedEngineer && hasFabLead && !showFabForm && (
-            <Card className="rounded-none border-x-0 sm:rounded-xl sm:border-x">
-              <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-[var(--color-card-foreground)]">Fabrication team assigned</p>
-                  <p className="text-xs text-[var(--text-metal-color)]">Use this section if the lead fabricator or assistants need to be updated.</p>
-                </div>
+          {/* Team (moved from Details tab) */}
+          {isStaff && (
+            <DetailSectionCard
+              title="Team & Ownership"
+              icon={Users}
+              className="lg:col-span-2"
+              action={(
                 <Button
-                  size="sm"
+                  type="button"
                   variant="ghost"
-                  className="w-full text-violet-600 hover:text-violet-700 sm:w-auto"
-                  onClick={() => setShowFabForm(true)}
+                  size="sm"
+                  onClick={() => setIsTeamOwnershipCollapsed((prev) => !prev)}
+                  className="h-9 rounded-xl px-3 text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-slate-100"
                 >
-                  <Users className="mr-1.5 h-4 w-4" />
-                  Reassign Fabrication Team
+                  {isTeamOwnershipCollapsed ? 'Show' : 'Hide'}
+                  {isTeamOwnershipCollapsed ? <ChevronDown className="ml-1.5 h-4 w-4" /> : <ChevronUp className="ml-1.5 h-4 w-4" />}
                 </Button>
-              </CardContent>
-            </Card>
+              )}
+            >
+              {isTeamOwnershipCollapsed ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">Collapsed. Expand to view team assignments.</p>
+              ) : (
+                <>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <DetailField label="Sales Staff">
+                    <p>{currentSalesStaffName}</p>
+                  </DetailField>
+
+                  <DetailField label="Engineers">
+                    {project.engineerIds.length > 0 ? (
+                      <div className="mt-1 space-y-2">
+                        {project.engineerIds.map((eng: any) => (
+                          <div key={String(eng._id || eng)} className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm">{eng.firstName ? `${eng.firstName} ${eng.lastName}` : String(eng)}</p>
+                            {eng.phone && (
+                              <a
+                                href={`tel:${eng.phone}`}
+                                className="inline-flex items-center gap-1 text-xs text-sky-700 hover:text-sky-900 dark:text-sky-200 dark:hover:text-sky-100"
+                              >
+                                <Phone className="h-3 w-3" />
+                                {eng.phone}
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-2">
+                        <p className="text-sm italic text-slate-500 dark:text-slate-400">Not assigned yet</p>
+                      </div>
+                    )}
+                  </DetailField>
+
+                  <DetailField label="Fabrication Lead">
+                    {hasFabLead ? (
+                      <p>{(project.fabricationLeadId as any).firstName} {(project.fabricationLeadId as any).lastName}</p>
+                    ) : (
+                      <p className="text-sm italic text-slate-500 dark:text-slate-400">Not assigned yet</p>
+                    )}
+                  </DetailField>
+
+                  <DetailField label="Fabrication Assistants">
+                    {project.fabricationAssistantIds.length > 0 ? (
+                      <div className="mt-1 space-y-1">
+                        {project.fabricationAssistantIds.map((a: any) => (
+                          <p key={String(a._id || a)} className="text-sm">
+                            {a.firstName ? `${a.firstName} ${a.lastName}` : String(a)}
+                          </p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm italic text-slate-500 dark:text-slate-400">Not assigned yet</p>
+                    )}
+                  </DetailField>
+                </div>
+
+                {canReassignProjectSales && (
+                  <div className="rounded-xl border border-cyan-200 dark:border-cyan-900/60 bg-cyan-50/40 dark:bg-cyan-950/30 p-4 space-y-4">
+                    <p className="text-sm font-semibold text-cyan-800 dark:text-cyan-200 flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      Reassign Sales Staff
+                    </p>
+
+                    <div>
+                      <label className="text-xs font-medium text-[#6e6e73] dark:text-slate-400 block mb-1">Sales Staff</label>
+                      <Select value={selectedSalesStaffId} onValueChange={setSelectedSalesStaffId}>
+                        <SelectTrigger className="bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-slate-100">
+                          <SelectValue placeholder="Select replacement sales staff" />
+                        </SelectTrigger>
+                        <SelectContent className="dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100">
+                          {salesStaffList.map((staff) => (
+                            <SelectItem
+                              key={staff._id}
+                              value={staff._id}
+                              disabled={isAvailabilityBlocked(staff.availabilityStatus)}
+                            >
+                              {staff.firstName} {staff.lastName} ({availabilityLabel(staff.availabilityStatus)})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <Button
+                      size="sm"
+                      className="bg-cyan-700 text-white hover:bg-cyan-800 dark:bg-cyan-600 dark:hover:bg-cyan-500"
+                      onClick={handleReassignProjectSales}
+                      disabled={
+                        reassignProjectSales.isPending
+                        || !selectedSalesStaffId
+                        || selectedSalesStaffId === currentSalesStaffId
+                      }
+                    >
+                      {reassignProjectSales.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+                      Reassign Sales Staff
+                    </Button>
+                  </div>
+                )}
+                </>
+              )}
+            </DetailSectionCard>
           )}
 
           <Suspense fallback={<TabPanelFallback message="Loading fabrication updates, assignments, and delivery milestones." />}>

@@ -1,11 +1,10 @@
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ArrowLeft, MapPin, Clock, User, Phone, CreditCard, CheckCircle2, Users, FileText, Camera, Image, Loader2, Banknote, Info, AlertCircle } from 'lucide-react';
+import { ArrowLeft, MapPin, Clock, User, Phone, CreditCard, CheckCircle2, Users, FileText, Camera, Image, Loader2, Banknote, Info, AlertCircle, CalendarIcon, CalendarX } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 import { extractErrorMessage, cn } from '@/lib/utils';
-import { parsePinnedSiteAddress } from '@/lib/address';
-import { reverseGeocodeLocation, fetchOcularFeePreview, type MapPoint, type OcularFeePreview } from '@/lib/maps';
+import { fetchOcularFeePreview, type MapPoint, type OcularFeePreview } from '@/lib/maps';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -14,7 +13,6 @@ import {
   DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { PageLoader } from '@/components/shared/PageLoader';
@@ -37,10 +35,6 @@ import { Suspense, lazy, useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import type { ApiResponse } from '@/lib/types';
 
-const LazyLocationPicker = lazy(() =>
-  import('@/components/maps/LocationPicker').then((module) => ({ default: module.LocationPicker })),
-);
-
 const LazyLocationView = lazy(() =>
   import('@/components/maps/LocationView').then((module) => ({ default: module.LocationView })),
 );
@@ -48,6 +42,7 @@ const LazyLocationView = lazy(() =>
 export function AppointmentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuthStore();
   const { data: appt, isLoading, isError, refetch } = useAppointment(id!);
 
@@ -71,13 +66,6 @@ export function AppointmentDetailPage() {
   const [feePreview, setFeePreview] = useState<OcularFeePreview | null>(null);
   const [feeLoading, setFeeLoading] = useState(false);
   const [feeError, setFeeError] = useState<string | null>(null);
-
-  // Official address state — pre-filled from user profile
-  const [addrStreet, setAddrStreet] = useState(user?.addressData?.street ?? '');
-  const [addrBarangay, setAddrBarangay] = useState(user?.addressData?.barangay ?? '');
-  const [addrCity, setAddrCity] = useState(user?.addressData?.city ?? '');
-  const [addrProvince, setAddrProvince] = useState(user?.addressData?.province ?? '');
-  const [addrZip, setAddrZip] = useState(user?.addressData?.zip ?? '');
 
   const isCustomer = user?.roles.includes(Role.CUSTOMER);
   const isAgent = user?.roles.includes(Role.APPOINTMENT_AGENT);
@@ -203,18 +191,6 @@ export function AppointmentDetailPage() {
   );
   const canStartOcularProgress = !isOcularAppointment || hasCustomerSiteLocation;
   const customerSiteLocationRequiredMessage = 'Customer site location is required before starting the ocular visit.';
-  const usePinnedAddressForOfficialAddress = () => {
-    const parsed = parsePinnedSiteAddress(customerAddress);
-    if (!parsed.street && !parsed.barangay && !parsed.city && !parsed.province && !parsed.zip) return;
-
-    setAddrStreet(parsed.street);
-    setAddrBarangay(parsed.barangay);
-    setAddrCity(parsed.city);
-    setAddrProvince(parsed.province);
-    setAddrZip(parsed.zip);
-    toast.success('Pinned map address copied. You can still edit the official address.');
-  };
-
   const customerCanManageAppointment =
     isCustomer &&
     [AppointmentStatus.REQUESTED, AppointmentStatus.CONFIRMED, AppointmentStatus.PREPARING].includes(
@@ -280,6 +256,14 @@ export function AppointmentDetailPage() {
   const formatDateTime = (value?: string) =>
     value ? format(new Date(value), 'MMM d, yyyy h:mm a') : 'Not recorded';
 
+  const recommendedOcularDateValue = appt.recommendedOcularDate
+    ? appt.recommendedOcularDate.slice(0, 10)
+    : undefined;
+  const ocularVisitDateLabel = recommendedOcularDateValue || appt.date;
+  const ocularVisitSlotLabel = appt.recommendedOcularSlot || appt.slotCode;
+  const formattedOcularVisitDate = format(new Date(`${ocularVisitDateLabel}T00:00:00`), 'MMMM d, yyyy');
+  const formattedOcularVisitTime = formatSlotTime(ocularVisitSlotLabel);
+
   const isOutsideConsultationWindow = (arrivalAt?: string) => {
     if (!arrivalAt) return false;
     const [hourRaw, minuteRaw] = appt.slotCode.split(':').map(Number);
@@ -291,17 +275,10 @@ export function AppointmentDetailPage() {
 
   const attendanceStatus = appt.attendanceStatus || AppointmentAttendanceStatus.SCHEDULED;
   const isOfficeConsultation = appt.type === 'office';
+  const canSeeConsultationAttendance = Boolean(isOfficeConsultation && isSalesStaff);
   const assignedSalesStaffId = typeof appt.salesStaffId === 'string'
     ? appt.salesStaffId
     : appt.salesStaffId?._id;
-  const attendancePrimaryButtonClassName =
-    'h-10 rounded-xl border border-slate-900/10 bg-slate-900 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-slate-400/60 disabled:opacity-60 dark:border-blue-400/25 dark:bg-blue-500/18 dark:text-blue-100 dark:shadow-none dark:hover:border-blue-300/40 dark:hover:bg-blue-500/28 dark:focus-visible:ring-blue-300/30';
-  const attendanceSecondaryButtonClassName =
-    'h-10 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-300/70 disabled:opacity-60 dark:border-slate-600/70 dark:bg-slate-900/40 dark:text-slate-200 dark:shadow-none dark:hover:border-slate-500 dark:hover:bg-slate-800/70 dark:focus-visible:ring-slate-400/30';
-  const attendanceDangerButtonClassName =
-    'h-10 rounded-xl border border-red-300 bg-red-50 px-4 text-sm font-semibold text-red-700 shadow-sm transition-colors hover:border-red-400 hover:bg-red-100 focus-visible:ring-2 focus-visible:ring-red-300/70 disabled:opacity-60 dark:border-red-500/35 dark:bg-red-950/35 dark:text-red-200 dark:shadow-none dark:hover:border-red-400/50 dark:hover:bg-red-900/45 dark:focus-visible:ring-red-400/25';
-  const attendanceCompleteButtonClassName =
-    'inline-flex h-11 items-center gap-2 rounded-xl border border-emerald-400/60 bg-emerald-600 px-4 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(5,150,105,0.3)] transition-colors hover:border-emerald-300 hover:bg-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-300/60 disabled:opacity-60 dark:border-emerald-300/45 dark:bg-emerald-500 dark:text-white dark:shadow-[0_16px_36px_rgba(16,185,129,0.22)] dark:hover:border-emerald-200 dark:hover:bg-emerald-400 dark:focus-visible:ring-emerald-300/40';
   const canUpdateAttendance = Boolean(
     isOfficeConsultation &&
     (isAdmin || (isSalesStaff && assignedSalesStaffId === user?._id)),
@@ -338,7 +315,7 @@ export function AppointmentDetailPage() {
   const formatCurrency = (v: number) =>
     new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(v);
 
-  const formatServiceTypeList = (
+  const getServiceTypeNames = (
     serviceTypes?: string[],
     fallbackServiceType?: string,
     serviceTypeCustom?: string,
@@ -356,7 +333,25 @@ export function AppointmentDetailPage() {
       ))
       .filter(Boolean);
 
+    return normalized;
+  };
+
+  const formatServiceTypeList = (
+    serviceTypes?: string[],
+    fallbackServiceType?: string,
+    serviceTypeCustom?: string,
+  ) => {
+    const normalized = getServiceTypeNames(serviceTypes, fallbackServiceType, serviceTypeCustom);
     return normalized.length > 0 ? normalized.join(', ') : '';
+  };
+
+  const getServiceItemLabel = (
+    serviceTypes?: string[],
+    fallbackServiceType?: string,
+    serviceTypeCustom?: string,
+  ) => {
+    const normalized = getServiceTypeNames(serviceTypes, fallbackServiceType, serviceTypeCustom);
+    return normalized.length > 1 ? 'Items' : 'Item';
   };
 
   const InfoRow = ({
@@ -379,25 +374,6 @@ export function AppointmentDetailPage() {
     </div>
   );
 
-  const SummaryCard = ({
-    label,
-    value,
-    tone = 'default',
-  }: {
-    label: string;
-    value: string;
-    tone?: 'default' | 'accent';
-  }) => (
-    <div
-      className={tone === 'accent'
-        ? 'rounded-2xl border border-blue-200 dark:border-blue-800 bg-blue-50/70 dark:bg-blue-950/40 p-4 shadow-sm'
-        : 'rounded-2xl border border-[#d2d2d7] dark:border-slate-700 bg-white/80 dark:bg-slate-800/90 p-4 shadow-sm'}
-    >
-      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#86868b] dark:text-slate-400">{label}</p>
-      <p className="mt-2 text-sm font-semibold text-[#1d1d1f] dark:text-slate-100 sm:text-base">{value}</p>
-    </div>
-  );
-
   const MapPanelFallback = ({ message }: { message: string }) => (
     <div className="flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-[#d2d2d7] dark:border-slate-700 bg-[#f5f5f7]/80 dark:bg-slate-800/80 px-5 py-8 text-center">
       <Loader2 className="h-5 w-5 animate-spin text-[#6e6e73] dark:text-slate-400" />
@@ -405,6 +381,7 @@ export function AppointmentDetailPage() {
       <p className="mt-1 max-w-sm text-xs text-[#6e6e73] dark:text-slate-400">{message}</p>
     </div>
   );
+  const sourcePath = `${location.pathname}${location.search}${location.hash}`;
 
   return (
     <div className="space-y-6">
@@ -558,109 +535,147 @@ export function AppointmentDetailPage() {
         </Card>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          label="Visit Schedule"
-          value={`${format(new Date(appt.date), 'MMM d, yyyy')} • ${isOfficeConsultation ? formatConsultationWindow(appt.slotCode) : formatSlotTime(appt.slotCode)}`}
-          tone="accent"
-        />
-        <SummaryCard
-          label="Appointment Type"
-          value={`${appt.type.charAt(0).toUpperCase() + appt.type.slice(1)} Visit`}
-        />
-        <SummaryCard
-          label={isCustomer ? 'Assigned Staff' : 'Customer'}
-          value={isCustomer ? appt.salesStaffName || 'Pending assignment' : appt.customerName || 'Not yet attached'}
-        />
-        {isOcularAppointment && !isCustomer && (
-          <SummaryCard
-            label="Contact Person"
-            value={[appt.customerName || 'Not yet attached', appt.customerPhone].filter(Boolean).join(' • ')}
-          />
-        )}
-        <SummaryCard
-          label="Location & Fee"
-          value={appt.type === 'ocular'
-            ? appt.ocularFeePaid
-              ? `Fee paid • ${appt.customerLocation ? 'Pin saved' : 'No pin yet'}`
-              : appt.ocularFee
-                ? `${formatCurrency(appt.ocularFee)} pending`
-                : appt.customerLocation
-                  ? 'Pin submitted • awaiting fee'
-                  : 'Awaiting site pin'
-            : appt.address || 'Office visit'}
-        />
-      </div>
-
-      {isOfficeConsultation && (
-        <Card className="rounded-xl border-blue-200 bg-blue-50/50 dark:border-blue-900/60 dark:bg-blue-950/30">
-          <CardHeader>
-            <CardTitle className="text-lg text-blue-950 dark:text-blue-100">Consultation Attendance</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <InfoRow icon={Clock} label="Booked Window" value={formatConsultationWindow(appt.slotCode)} />
-              <div>
-                <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Attendance Status</p>
-                <StatusBadge status={attendanceStatus} className="mt-1" />
+      {canSeeConsultationAttendance && (
+        <Card className="overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-[0_18px_48px_rgba(15,23,42,0.08)] dark:border-[#1d2734] dark:bg-[#121723] dark:shadow-[0_18px_48px_rgba(0,0,0,0.28)]">
+          <CardHeader className="pb-0 pt-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:bg-[#232a36] dark:text-[#8a9ab3] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                <Clock className="h-5 w-5" />
               </div>
-              <InfoRow icon={User} label="Arrival" value={formatDateTime(appt.actualArrivalAt)} />
-              <InfoRow icon={CheckCircle2} label="Completed" value={formatDateTime(appt.consultationCompletedAt)} />
+              <div>
+                <CardTitle className="text-[22px] font-semibold tracking-tight text-slate-950 dark:text-slate-100">
+                  Consultation Attendance
+                </CardTitle>
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Track and manage your consultation schedule
+                </p>
+              </div>
             </div>
+          </CardHeader>
+
+          <CardContent className="space-y-5 p-4 pt-6 sm:p-5 sm:pt-6">
+            <div className="grid gap-0 overflow-hidden rounded-[1.25rem] border border-slate-200 bg-slate-50 sm:grid-cols-3 dark:border-white/5 dark:bg-[#161c28]">
+              <div className="flex items-start gap-3 p-4 sm:border-r sm:border-slate-200 dark:sm:border-white/5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-600 dark:bg-[#232a36] dark:text-[#8a9ab3]">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Attendance Status</p>
+                  <div className="mt-2">
+                    <StatusBadge status={attendanceStatus} />
+                  </div>
+                  <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Your appointment is confirmed</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4 sm:border-r sm:border-slate-200 dark:sm:border-white/5">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-600 dark:bg-[#232a36] dark:text-[#8a9ab3]">
+                  <User className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Arrival</p>
+                  <p className="mt-1 text-[17px] font-semibold text-slate-950 dark:text-slate-100">{formatDateTime(appt.actualArrivalAt)}</p>
+                  <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Check-in when you arrive</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 p-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-600 dark:bg-[#232a36] dark:text-[#8a9ab3]">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[12px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Completed</p>
+                  <p className="mt-1 text-[17px] font-semibold text-slate-950 dark:text-slate-100">{formatDateTime(appt.consultationCompletedAt)}</p>
+                  <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Will be updated after completion</p>
+                </div>
+              </div>
+            </div>
+
             {appt.consultationStartedAt && (
               <InfoRow icon={Clock} label="Started" value={formatDateTime(appt.consultationStartedAt)} />
             )}
             {appt.attendanceNotes && (
               <div>
-                <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Attendance Notes</p>
-                <p className="mt-1 text-sm text-[#6e6e73] dark:text-slate-300">{appt.attendanceNotes}</p>
+                <p className="text-[13px] font-medium text-slate-400">Attendance Notes</p>
+                <p className="mt-1 text-sm text-slate-300">{appt.attendanceNotes}</p>
               </div>
             )}
             {attendanceStatus === AppointmentAttendanceStatus.LATE_ARRIVAL && (
-              <div className="rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm text-orange-800 dark:border-orange-800/50 dark:bg-orange-950/30 dark:text-orange-200">
+              <div className="rounded-xl border border-orange-200/20 bg-orange-500/10 p-3 text-sm text-orange-200">
                 Customer arrived after the grace period.
               </div>
             )}
             {isOutsideConsultationWindow(appt.actualArrivalAt) && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800/50 dark:bg-red-950/30 dark:text-red-200">
+              <div className="rounded-xl border border-red-200/20 bg-red-500/10 p-3 text-sm text-red-200">
                 Customer is outside the booked consultation window. Continue only if the staff schedule allows it.
               </div>
             )}
             {canUpdateAttendance && (
-              <div className="flex flex-wrap gap-2">
+              <div className="pt-1">
                 {attendanceStatus === AppointmentAttendanceStatus.SCHEDULED && (
-                  <>
-                    <Button onClick={() => updateAttendance('check_in')} disabled={attendanceMutation.isPending} className={attendancePrimaryButtonClassName}>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => updateAttendance('check_in')}
+                      disabled={attendanceMutation.isPending}
+                      className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md border border-[#4f77f2] bg-[#315bd8] px-6 text-sm font-semibold text-white transition-colors hover:border-[#5f86ff] hover:bg-[#3d68e8] disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      <Clock className="mr-2 h-4 w-4" />
                       Check In
-                    </Button>
-                    <Button variant="outline" onClick={() => updateAttendance('no_show')} disabled={attendanceMutation.isPending} className={attendanceDangerButtonClassName}>
-                      Mark as No Show
-                    </Button>
-                    <Button variant="outline" onClick={() => updateAttendance('reschedule')} disabled={attendanceMutation.isPending} className={attendanceSecondaryButtonClassName}>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateAttendance('reschedule')}
+                      disabled={attendanceMutation.isPending}
+                      className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-6 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-950 disabled:pointer-events-none disabled:opacity-50 dark:border-white/12 dark:bg-transparent dark:text-slate-100 dark:hover:bg-white/8 dark:hover:text-white"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
                       Request Reschedule
-                    </Button>
-                  </>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateAttendance('no_show')}
+                      disabled={attendanceMutation.isPending}
+                      className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-6 text-sm font-semibold text-[#dc2626] transition-colors hover:bg-red-50 hover:text-[#b91c1c] disabled:pointer-events-none disabled:opacity-50 dark:border-white/12 dark:bg-transparent dark:text-[#ff6b63] dark:hover:bg-white/8 dark:hover:text-[#ff8a84]"
+                    >
+                      <CalendarX className="mr-2 h-4 w-4" />
+                      Mark as No Show
+                    </button>
+                  </div>
                 )}
                 {[AppointmentAttendanceStatus.ON_TIME, AppointmentAttendanceStatus.LATE_ARRIVAL].includes(attendanceStatus as AppointmentAttendanceStatus) && (
-                  <>
-                    <Button onClick={() => updateAttendance('start')} disabled={attendanceMutation.isPending} className={attendancePrimaryButtonClassName}>
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      onClick={() => updateAttendance('start')}
+                      disabled={attendanceMutation.isPending}
+                      className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md border border-[#4f77f2] bg-[#315bd8] px-6 text-sm font-semibold text-white transition-colors hover:border-[#5f86ff] hover:bg-[#3d68e8] disabled:pointer-events-none disabled:opacity-50"
+                    >
+                      <Clock className="mr-2 h-4 w-4" />
                       Start Consultation
-                    </Button>
-                    <Button variant="outline" onClick={() => updateAttendance('reschedule')} disabled={attendanceMutation.isPending} className={attendanceSecondaryButtonClassName}>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateAttendance('reschedule')}
+                      disabled={attendanceMutation.isPending}
+                      className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-6 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-950 disabled:pointer-events-none disabled:opacity-50 dark:border-white/12 dark:bg-transparent dark:text-slate-100 dark:hover:bg-white/8 dark:hover:text-white"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
                       Request Reschedule
-                    </Button>
-                  </>
+                    </button>
+                  </div>
                 )}
                 {attendanceStatus === AppointmentAttendanceStatus.IN_PROGRESS && (
-                  <div className="flex w-full justify-end pt-2">
-                    <Button
+                  <div className="flex w-full justify-start pt-1">
+                    <button
+                      type="button"
                       onClick={() => updateAttendance('complete')}
                       disabled={attendanceMutation.isPending}
-                      className={attendanceCompleteButtonClassName}
+                      className="inline-flex h-12 items-center justify-center gap-2 rounded-md border border-emerald-500 bg-emerald-600 px-6 text-sm font-semibold text-white transition-colors hover:border-emerald-400 hover:bg-emerald-500 disabled:pointer-events-none disabled:opacity-50"
                     >
                       <CheckCircle2 className="h-4 w-4" />
                       Complete Consultation
-                    </Button>
+                    </button>
                   </div>
                 )}
               </div>
@@ -737,7 +752,7 @@ export function AppointmentDetailPage() {
             {formatServiceTypeList(appt.serviceTypes, appt.serviceType, appt.serviceTypeCustom) && (
               <InfoRow
                 icon={FileText}
-                label="Service Type"
+                label={getServiceItemLabel(appt.serviceTypes, appt.serviceType, appt.serviceTypeCustom)}
                 value={formatServiceTypeList(appt.serviceTypes, appt.serviceType, appt.serviceTypeCustom)}
               />
             )}
@@ -808,6 +823,20 @@ export function AppointmentDetailPage() {
                         <p className="text-lg font-bold text-[#1d1d1f] dark:text-slate-100">{formatCurrency(appt.ocularFee)}</p>
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400">Pay before your appointment can be confirmed.</p>
+                      <div className="grid grid-cols-1 gap-2 rounded-lg border border-blue-200/70 bg-blue-50/70 p-3 sm:grid-cols-2 dark:border-blue-400/20 dark:bg-blue-500/10">
+                        <div>
+                          <p className="text-xs font-semibold text-blue-700 dark:text-[#8dbcf2]">Ocular Visit Date</p>
+                          <p className="mt-0.5 text-sm font-semibold text-[#1d1d1f] dark:text-slate-100">
+                            {formattedOcularVisitDate}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-blue-700 dark:text-[#8dbcf2]">Ocular Visit Time</p>
+                          <p className="mt-0.5 text-sm font-semibold text-[#1d1d1f] dark:text-slate-100">
+                            {formattedOcularVisitTime}
+                          </p>
+                        </div>
+                      </div>
                       <Button
                         asChild
                         variant="prominent"
@@ -835,14 +864,18 @@ export function AppointmentDetailPage() {
                 </div>
               )}
 
-              <div className="mt-4">
-                <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Reschedules</p>
-                <p className="text-sm text-[#6e6e73] dark:text-slate-300">
-                  {appt.rescheduleCount} / {appt.maxReschedules} used
-                </p>
-              </div>
+              {appt.status === AppointmentStatus.CANCELLED && (appt.cancelReason || appt.internalNotes) && (
+                <div className="mt-4">
+                  <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">
+                    Customer reason for cancellation
+                  </p>
+                  <p className="text-sm text-[#6e6e73] dark:text-slate-300">
+                    {appt.cancelReason || appt.internalNotes}
+                  </p>
+                </div>
+              )}
 
-              {appt.internalNotes && isStaff && (
+              {appt.internalNotes && isStaff && appt.status !== AppointmentStatus.CANCELLED && (
                 <div className="mt-4">
                   <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Internal Notes</p>
                   <p className="text-sm text-[#6e6e73] dark:text-slate-300">{appt.internalNotes}</p>
@@ -871,111 +904,41 @@ export function AppointmentDetailPage() {
           <CardContent className="space-y-4">
             <p className="text-sm text-blue-800 dark:text-blue-200/90">
               {isReadyForOcularConsultation ? (
-                'Your consultation is ready for an ocular visit. Please pin your site location on the map so we can calculate the visit fee and continue scheduling.'
+                'Your consultation is ready for an ocular visit. We will use your saved profile address to calculate the visit fee and continue scheduling.'
               ) : (
                 <>
                   An ocular visit has been scheduled for{' '}
-                  <strong>{format(new Date(appt.date), 'MMMM d, yyyy')}</strong>.
-                  Please pin your site location on the map so we can calculate the visit fee and finalize your appointment.
+                  <strong>{formattedOcularVisitDate}</strong>.
+                  We will use your saved profile address to calculate the visit fee and finalize your appointment.
                 </>
               )}
             </p>
-            <Suspense fallback={<MapPanelFallback message="Loading the site-pin picker so you can submit your visit location." />}>
-              <LazyLocationPicker
-                address={customerAddress}
-                value={customerLocationPin}
-                onChange={(loc, addrHint) => {
-                  setCustomerLocationPin(loc);
-                  if (addrHint) setCustomerAddress(addrHint);
-                  else {
-                    reverseGeocodeLocation(loc)
-                      .then(addr => setCustomerAddress(addr || ''))
-                      .catch(() => {});
-                  }
-                }}
-              />
-            </Suspense>
-            {customerAddress && (
-              <div className="rounded-lg border border-blue-200 bg-white p-3 dark:border-[#35557d] dark:bg-[#0d1724]">
-                <p className="text-xs font-medium text-blue-700 dark:text-[#8dbcf2]">Resolved Address</p>
-                <p className="mt-0.5 break-words text-sm text-[#3a3a3e] dark:text-slate-200">{customerAddress}</p>
+            <div className="grid grid-cols-1 gap-2 rounded-lg border border-blue-200 bg-white p-3 sm:grid-cols-2 dark:border-[#35557d] dark:bg-[#0d1724]">
+              <div>
+                <p className="text-xs font-medium text-blue-700 dark:text-[#8dbcf2]">Ocular Visit Date</p>
+                <p className="mt-0.5 text-sm font-semibold text-[#1d1d1f] dark:text-slate-100">
+                  {formattedOcularVisitDate}
+                </p>
               </div>
-            )}
-
-            {/* Official address */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-[#1d1d1f] dark:text-slate-100">Official Site Address</p>
-                {customerAddress ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={usePinnedAddressForOfficialAddress}
-                    className="h-8 rounded-full px-3 text-xs"
-                  >
-                    Use pinned map address
-                  </Button>
-                ) : !user?.addressData?.street && !user?.addressData?.city && (
-                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-                    Not set in profile — please fill in
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-[#6e6e73] dark:text-slate-400">This is the official address of the site to be visited. You can adjust it if needed.</p>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <Label htmlFor="addr-street" className="text-xs font-medium text-[#3a3a3e] dark:text-slate-300">Street / Unit / Building</Label>
-                  <Input
-                    id="addr-street"
-                    value={addrStreet}
-                    onChange={e => setAddrStreet(e.target.value)}
-                    placeholder="e.g. 123 Rizal St."
-                    className="mt-1 h-9 text-sm"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="addr-barangay" className="text-xs font-medium text-[#3a3a3e] dark:text-slate-300">Barangay</Label>
-                  <Input
-                    id="addr-barangay"
-                    value={addrBarangay}
-                    onChange={e => setAddrBarangay(e.target.value)}
-                    placeholder="e.g. Barangay 1"
-                    className="mt-1 h-9 text-sm"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="addr-city" className="text-xs font-medium text-[#3a3a3e] dark:text-slate-300">City / Municipality</Label>
-                  <Input
-                    id="addr-city"
-                    value={addrCity}
-                    onChange={e => setAddrCity(e.target.value)}
-                    placeholder="e.g. Quezon City"
-                    className="mt-1 h-9 text-sm"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="addr-province" className="text-xs font-medium text-[#3a3a3e] dark:text-slate-300">Province / Region</Label>
-                  <Input
-                    id="addr-province"
-                    value={addrProvince}
-                    onChange={e => setAddrProvince(e.target.value)}
-                    placeholder="e.g. Metro Manila"
-                    className="mt-1 h-9 text-sm"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="addr-zip" className="text-xs font-medium text-[#3a3a3e] dark:text-slate-300">ZIP Code</Label>
-                  <Input
-                    id="addr-zip"
-                    value={addrZip}
-                    onChange={e => setAddrZip(e.target.value)}
-                    placeholder="e.g. 1100"
-                    className="mt-1 h-9 text-sm"
-                  />
-                </div>
+              <div>
+                <p className="text-xs font-medium text-blue-700 dark:text-[#8dbcf2]">Ocular Visit Time</p>
+                <p className="mt-0.5 text-sm font-semibold text-[#1d1d1f] dark:text-slate-100">
+                  {formattedOcularVisitTime}
+                </p>
               </div>
             </div>
+            {customerAddress ? (
+              <div className="rounded-lg border border-blue-200 bg-white p-3 dark:border-[#35557d] dark:bg-[#0d1724]">
+                <p className="text-xs font-medium text-blue-700 dark:text-[#8dbcf2]">Using profile address</p>
+                <p className="mt-0.5 break-words text-sm text-[#3a3a3e] dark:text-slate-200">{customerAddress}</p>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/35 dark:bg-amber-500/10">
+                <p className="text-sm text-amber-900 dark:text-amber-100">
+                  No saved pinned address found in your profile. Please add one in Account Profile before submitting ocular location.
+                </p>
+              </div>
+            )}
 
             {/* Live fee preview */}
             {feeLoading && (
@@ -1026,16 +989,16 @@ export function AppointmentDetailPage() {
             {feePreview && !feeLoading && !feeError && (
               (() => {
                 const addressStructured = {
-                  street: addrStreet.trim(),
-                  barangay: addrBarangay.trim(),
-                  city: addrCity.trim(),
-                  province: addrProvince.trim(),
-                  zip: addrZip.trim(),
+                  street: user?.addressData?.street?.trim() || '',
+                  barangay: user?.addressData?.barangay?.trim() || '',
+                  city: user?.addressData?.city?.trim() || '',
+                  province: user?.addressData?.province?.trim() || '',
+                  zip: user?.addressData?.zip?.trim() || '',
                 };
                 const handleSubmit = async (redirect?: boolean) => {
                   if (!customerLocationPin) return;
-                  if (!addrCity.trim()) {
-                    toast.error('Please enter at least the city/municipality for the official address');
+                  if (!addressStructured.city) {
+                    toast.error('Please set your profile address first before submitting ocular location');
                     return;
                   }
                   try {
@@ -1110,60 +1073,6 @@ export function AppointmentDetailPage() {
         </Card>
       )}
 
-      {/* Customer: Waiting for sales staff finalization (within NCR — no payment needed) */}
-      {isCustomer && appt.type === 'ocular' && appt.status === AppointmentStatus.REQUESTED && appt.customerLocation && (appt.ocularFeeBreakdown?.isWithinNCR || appt.ocularFeePaid) && (
-        <Card className="rounded-xl border-emerald-200 bg-emerald-50/50 shadow-sm lg:col-span-2">
-          <CardContent className="py-5">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-emerald-100 p-2">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-emerald-900">Location Submitted</p>
-                <p className="text-xs text-emerald-700 mt-0.5">
-                  {appt.address || 'Your location has been submitted.'}
-                  {' '}Waiting for your assigned sales staff to finalize your appointment.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Customer: Location submitted but ocular fee not paid (outside NCR) */}
-      {isCustomer && appt.type === 'ocular' && appt.status === AppointmentStatus.REQUESTED && appt.customerLocation && !appt.ocularFeeBreakdown?.isWithinNCR && !appt.ocularFeePaid && appt.ocularFeeStatus === 'pending' && (
-        <Card className="rounded-xl border-amber-200 bg-amber-50/50 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 lg:col-span-2">
-          <CardContent className="py-5 space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="rounded-lg bg-amber-100 dark:bg-amber-400/20 p-2">
-                <CreditCard className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Ocular Fee Payment Required</p>
-                <p className="text-xs text-amber-700 dark:text-amber-300/90 mt-0.5 font-medium">
-                  Your location is outside Metro Manila. Please pay the ocular visit fee to proceed.
-                </p>
-              </div>
-              {appt.ocularFee != null && (
-                <p className="text-lg font-bold text-amber-800 dark:text-amber-300">
-                  {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(appt.ocularFee)}
-                </p>
-              )}
-            </div>
-            <Button
-              asChild
-              variant="prominent"
-              className="w-full sm:w-auto h-10 rounded-xl"
-            >
-              <Link to={`/appointments/${appt._id}/pay-ocular-fee`} className="text-inherit">
-                <CreditCard className="mr-2 h-4 w-4" />
-                Pay Ocular Fee
-              </Link>
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Customer / Staff: Read-only view of submitted site details */}
       {appt.siteDetailsStatus === 'submitted' && appt.customerSiteDetails && (
         <Card className="rounded-xl border-[#c8c8cd]/50 shadow-sm">
@@ -1183,7 +1092,13 @@ export function AppointmentDetailPage() {
               appt.customerSiteDetails.serviceTypeCustom,
             ) && (
               <div>
-                <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">Service Type</p>
+                <p className="text-[13px] font-medium text-[#3a3a3e] dark:text-slate-400">
+                  {getServiceItemLabel(
+                    appt.customerSiteDetails.serviceTypes,
+                    appt.customerSiteDetails.serviceType,
+                    appt.customerSiteDetails.serviceTypeCustom,
+                  )}
+                </p>
                 <p className="text-sm text-[#6e6e73] dark:text-slate-300">
                   {formatServiceTypeList(
                     appt.customerSiteDetails.serviceTypes,
@@ -1469,7 +1384,7 @@ export function AppointmentDetailPage() {
                 variant="outline"
                 className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
               >
-                <Link to={`/visit-reports/${visitReports[0]!._id}`}>
+                <Link to={`/visit-reports/${visitReports[0]!._id}`} state={{ from: sourcePath }}>
                   <FileText className="mr-2 h-4 w-4" />
                   Go to Visit Report
                 </Link>
@@ -1480,7 +1395,7 @@ export function AppointmentDetailPage() {
                 variant="outline"
                 className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
               >
-                <Link to="/visit-reports">
+                <Link to="/visit-reports" state={{ from: sourcePath }}>
                   <FileText className="mr-2 h-4 w-4" />
                   Visit Reports
                 </Link>
@@ -1514,7 +1429,7 @@ export function AppointmentDetailPage() {
                 variant="outline"
                 className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
               >
-                <Link to={`/visit-reports/${visitReports[0]!._id}`}>
+                <Link to={`/visit-reports/${visitReports[0]!._id}`} state={{ from: sourcePath }}>
                   <FileText className="mr-2 h-4 w-4" />
                   Go to Visit Report
                 </Link>
@@ -1525,7 +1440,7 @@ export function AppointmentDetailPage() {
                 variant="outline"
                 className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
               >
-                <Link to="/visit-reports">
+                <Link to="/visit-reports" state={{ from: sourcePath }}>
                   <FileText className="mr-2 h-4 w-4" />
                   Visit Reports
                 </Link>
@@ -1558,7 +1473,7 @@ export function AppointmentDetailPage() {
                 variant="outline"
                 className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
               >
-                <Link to={`/visit-reports/${visitReports[0]!._id}`}>
+                <Link to={`/visit-reports/${visitReports[0]!._id}`} state={{ from: sourcePath }}>
                   <FileText className="mr-2 h-4 w-4" />
                   Go to Visit Report
                 </Link>
@@ -1569,7 +1484,7 @@ export function AppointmentDetailPage() {
                 variant="outline"
                 className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
               >
-                <Link to="/visit-reports">
+                <Link to="/visit-reports" state={{ from: sourcePath }}>
                   <FileText className="mr-2 h-4 w-4" />
                   Visit Reports
                 </Link>
@@ -1602,7 +1517,7 @@ export function AppointmentDetailPage() {
                 variant="outline"
                 className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
               >
-                <Link to={`/visit-reports/${visitReports[0]!._id}`}>
+                <Link to={`/visit-reports/${visitReports[0]!._id}`} state={{ from: sourcePath }}>
                   <FileText className="mr-2 h-4 w-4" />
                   Go to Visit Report
                 </Link>
@@ -1613,7 +1528,7 @@ export function AppointmentDetailPage() {
                 variant="outline"
                 className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
               >
-                <Link to="/visit-reports">
+                <Link to="/visit-reports" state={{ from: sourcePath }}>
                   <FileText className="mr-2 h-4 w-4" />
                   Visit Reports
                 </Link>
@@ -1631,7 +1546,7 @@ export function AppointmentDetailPage() {
                 variant="outline"
                 className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
               >
-                <Link to={`/visit-reports/${visitReports[0]!._id}`}>
+                <Link to={`/visit-reports/${visitReports[0]!._id}`} state={{ from: sourcePath }}>
                   <FileText className="mr-2 h-4 w-4" />
                   Go to Visit Report
                 </Link>
@@ -1642,7 +1557,7 @@ export function AppointmentDetailPage() {
                 variant="outline"
                 className="rounded-xl border-[#d2d2d7] text-[#3a3a3e] dark:border-[#39577a] dark:bg-[#16253a] dark:text-[#c8dfff] dark:hover:border-[#4d7099] dark:hover:bg-[#1d314d] dark:hover:text-[#e2efff]"
               >
-                <Link to="/visit-reports">
+                <Link to="/visit-reports" state={{ from: sourcePath }}>
                   <FileText className="mr-2 h-4 w-4" />
                   Visit Reports
                 </Link>

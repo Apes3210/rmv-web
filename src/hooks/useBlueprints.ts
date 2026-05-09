@@ -13,6 +13,7 @@ const KEYS = {
   latest: (projectId: string, projectItemId?: string) => [...KEYS.all, 'latest', projectId, projectItemId || 'legacy'] as const,
   detail: (id: string) => [...KEYS.all, id] as const,
   draft: (projectId: string, projectItemId?: string) => [...KEYS.all, 'draft', projectId, projectItemId || 'legacy'] as const,
+  quotationHistory: (id: string) => [...KEYS.all, id, 'quotation-history'] as const,
 };
 
 export function useBlueprintsByProject(projectId: string, projectItemId?: string) {
@@ -26,6 +27,10 @@ export function useBlueprintsByProject(projectId: string, projectItemId?: string
       return data.data;
     },
     enabled: !!projectId,
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 30,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 }
 
@@ -40,6 +45,10 @@ export function useLatestBlueprint(projectId: string, projectItemId?: string) {
       return data.data;
     },
     enabled: !!projectId,
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 30,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 }
 
@@ -65,6 +74,10 @@ export function useBlueprintDraft(projectId: string, options?: { enabled?: boole
       return data.data;
     },
     enabled: !!projectId && (options?.enabled ?? true),
+    staleTime: 1000 * 60 * 10,
+    gcTime: 1000 * 60 * 60,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 }
 
@@ -76,25 +89,8 @@ export function useUploadBlueprint() {
       projectItemId?: string;
       blueprintKey: string;
       designKey: string;
-      costingKey: string;
-      quotation?: {
-        materials: number;
-        labor: number;
-        fees: number;
-        total: number;
-        lineItems?: {
-          label: string;
-          quantity: number;
-          materials: number;
-          labor: number;
-          amount: number;
-        }[];
-        validityDays?: number;
-        breakdown?: string;
-        estimatedDuration?: string;
-        engineerNotes?: string;
-        paymentMilestones?: { label: string; description: string }[];
-      };
+      costingKey?: string;
+      quotation?: Blueprint['quotation'];
     }) => {
       const { data } = await api.post<ApiResponse<Blueprint>>('/blueprints', body);
       return data.data;
@@ -187,25 +183,8 @@ export function useUploadRevision() {
       id: string;
       blueprintKey: string;
       designKey: string;
-      costingKey: string;
-      quotation?: {
-        materials: number;
-        labor: number;
-        fees: number;
-        total: number;
-        lineItems?: {
-          label: string;
-          quantity: number;
-          materials: number;
-          labor: number;
-          amount: number;
-        }[];
-        validityDays?: number;
-        breakdown?: string;
-        estimatedDuration?: string;
-        engineerNotes?: string;
-        paymentMilestones?: { label: string; description: string }[];
-      };
+      costingKey?: string;
+      quotation?: Blueprint['quotation'];
     }) => {
       const { data } = await api.post<ApiResponse<Blueprint>>(
         `/blueprints/${id}/revision`,
@@ -231,6 +210,36 @@ export function useApproveComponent() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: KEYS.all });
     },
+  });
+}
+
+export function useApproveAndSendQuotation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data } = await api.post<ApiResponse<Blueprint>>(`/blueprints/${id}/quotation/approve-send`);
+      return data.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: KEYS.all });
+    },
+  });
+}
+
+export function useQuotationHistory(blueprintId?: string) {
+  return useQuery({
+    queryKey: KEYS.quotationHistory(blueprintId || ''),
+    queryFn: async () => {
+      const { data } = await api.get<ApiResponse<Array<{
+        _id: string;
+        action: string;
+        details?: Record<string, unknown>;
+        createdAt: string;
+        actorId?: { firstName?: string; lastName?: string; role?: string };
+      }>>>(`/blueprints/${blueprintId}/quotation/history`);
+      return data.data;
+    },
+    enabled: !!blueprintId,
   });
 }
 

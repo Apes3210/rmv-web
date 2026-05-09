@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, Suspense, lazy } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useNavigate, useLocation, Navigate, Link } from 'react-router-dom';
-import { Loader2, ArrowLeft, UserPlus } from 'lucide-react';
+import { Loader2, ArrowLeft, UserPlus, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 import { Button } from '@/components/ui/button';
@@ -13,11 +13,21 @@ import { BrandLogo } from '@/components/shared/BrandLogo';
 import { api, fetchCsrfToken } from '@/lib/api';
 import { useAuthStore } from '@/stores/auth.store';
 import { useAuthPageScrollbar } from '@/pages/auth/useAuthPageScrollbar';
+import type { MapPoint } from '@/lib/maps';
+
+const LocationPicker = lazy(() =>
+  import('@/components/maps/LocationPicker').then((module) => ({ default: module.LocationPicker })),
+);
 
 const completeProfileSchema = z.object({
   firstName: z.string().min(1, 'First name is required').max(50),
   lastName: z.string().min(1, 'Last name is required').max(50),
   phone: z.string().regex(/^(09|\+639)\d{9}$/, 'Must be a valid PH mobile (09XXXXXXXXX)'),
+  street: z.string().max(200).optional().or(z.literal('')),
+  barangay: z.string().max(100).optional().or(z.literal('')),
+  city: z.string().min(1, 'City / municipality is required').max(100),
+  province: z.string().max(100).optional().or(z.literal('')),
+  zip: z.string().max(10).optional().or(z.literal('')),
   agreeToTerms: z.literal(true, {
     message: 'You must agree to the Terms of Service and Privacy Policy',
   }),
@@ -31,6 +41,8 @@ export function CompleteProfilePage() {
   useAuthPageScrollbar();
   const { setCsrfToken } = useAuthStore();
   const [submitting, setSubmitting] = useState(false);
+  const [pinnedLocation, setPinnedLocation] = useState<MapPoint | null>(null);
+  const [formattedAddress, setFormattedAddress] = useState('');
 
   const state = location.state as {
     email?: string;
@@ -62,6 +74,10 @@ export function CompleteProfilePage() {
   });
 
   const onSubmit = async (data: CompleteProfileForm) => {
+    if (!pinnedLocation || !formattedAddress.trim()) {
+      toast.error('Pin your default project address before completing registration.');
+      return;
+    }
     setSubmitting(true);
     try {
       const csrfToken = await fetchCsrfToken();
@@ -72,6 +88,20 @@ export function CompleteProfilePage() {
         firstName: data.firstName,
         lastName: data.lastName,
         phone: data.phone.startsWith('09') ? '+63' + data.phone.slice(1) : data.phone,
+        addressData: {
+          label: 'Primary address',
+          street: data.street || '',
+          barangay: data.barangay || '',
+          city: data.city,
+          province: data.province || '',
+          zip: data.zip || '',
+          country: 'Philippines',
+          addressType: 'business',
+          lat: pinnedLocation.lat,
+          lng: pinnedLocation.lng,
+          formattedAddress,
+          isDefault: true,
+        },
       });
 
       const responseData = response.data.data;
@@ -189,6 +219,39 @@ export function CompleteProfilePage() {
               {errors.phone && (
                 <p className="text-xs text-red-500">{errors.phone.message}</p>
               )}
+            </div>
+
+            <div className="space-y-3 border border-white/5 bg-white/[0.02] p-4">
+              <div className="flex items-start gap-2">
+                <MapPin className="mt-0.5 h-4 w-4 text-[#FFD700]" />
+                <div>
+                  <p className="label-font text-[10px] font-black uppercase tracking-[0.3em] text-[#FFD700] gold-glow">
+                    Default Project Address
+                  </p>
+                  <p className="mt-1 text-xs text-[#98a3b2]">Pin the address Sales can use when an ocular visit is needed.</p>
+                </div>
+              </div>
+              <Suspense fallback={<div className="flex h-[260px] items-center justify-center border border-white/10 text-sm text-[#98a3b2]">Loading map...</div>}>
+                <LocationPicker
+                  value={pinnedLocation}
+                  address={formattedAddress}
+                  onChange={(location, address) => {
+                    setPinnedLocation(location);
+                    setFormattedAddress(address || '');
+                  }}
+                />
+              </Suspense>
+              {formattedAddress && (
+                <p className="break-words text-xs text-[#c9d2df]">{formattedAddress}</p>
+              )}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Input placeholder="Street / building" className={inputClasses} {...register('street')} />
+                <Input placeholder="Barangay" className={inputClasses} {...register('barangay')} />
+                <Input placeholder="City / municipality" className={inputClasses} {...register('city')} />
+                <Input placeholder="Province / region" className={inputClasses} {...register('province')} />
+                <Input placeholder="ZIP code" className={inputClasses} {...register('zip')} />
+              </div>
+              {errors.city && <p className="text-xs text-red-500">{errors.city.message}</p>}
             </div>
 
             {/* Terms Agreement */}

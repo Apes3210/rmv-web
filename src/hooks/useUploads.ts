@@ -12,6 +12,44 @@ interface DownloadUrlResponse {
   downloadUrl: string;
 }
 
+const SIGNED_URL_TTL_MS = 1000 * 60 * 4;
+const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+const pendingSignedUrlRequests = new Map<string, Promise<string>>();
+
+function getCachedSignedUrl(fileKey: string): string | null {
+  const cached = signedUrlCache.get(fileKey);
+  if (!cached) return null;
+  if (Date.now() >= cached.expiresAt) {
+    signedUrlCache.delete(fileKey);
+    return null;
+  }
+  return cached.url;
+}
+
+async function fetchSignedUrl(fileKey: string): Promise<string> {
+  const cached = getCachedSignedUrl(fileKey);
+  if (cached) return cached;
+
+  const pending = pendingSignedUrlRequests.get(fileKey);
+  if (pending) return pending;
+
+  const request = api
+    .post<ApiResponse<DownloadUrlResponse>>('/uploads/signed-download-url', { key: fileKey })
+    .then((res) => {
+      const url = res.data.data.downloadUrl;
+      signedUrlCache.set(fileKey, { url, expiresAt: Date.now() + SIGNED_URL_TTL_MS });
+      pendingSignedUrlRequests.delete(fileKey);
+      return url;
+    })
+    .catch((error) => {
+      pendingSignedUrlRequests.delete(fileKey);
+      throw error;
+    });
+
+  pendingSignedUrlRequests.set(fileKey, request);
+  return request;
+}
+
 export function useGetUploadUrl() {
   return useMutation({
     mutationFn: async (body: {
@@ -73,7 +111,7 @@ export function useAuthenticatedUrl(fileKey: string | null | undefined): {
   isLoading: boolean;
   error: boolean;
 } {
-  const [url, setUrl] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(() => (fileKey ? getCachedSignedUrl(fileKey) : null));
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(false);
 
@@ -85,13 +123,20 @@ export function useAuthenticatedUrl(fileKey: string | null | undefined): {
     }
 
     let cancelled = false;
+    const cached = getCachedSignedUrl(fileKey);
+    if (cached) {
+      setUrl(cached);
+      setIsLoading(false);
+      setError(false);
+      return;
+    }
+
     setIsLoading(true);
     setError(false);
 
-    api
-      .post<ApiResponse<DownloadUrlResponse>>('/uploads/signed-download-url', { key: fileKey })
-      .then((res) => {
-        if (!cancelled) setUrl(res.data.data.downloadUrl);
+    fetchSignedUrl(fileKey)
+      .then((signedUrl) => {
+        if (!cancelled) setUrl(signedUrl);
       })
       .catch(() => {
         if (!cancelled) setError(true);
@@ -112,9 +157,6 @@ export function useAuthenticatedUrl(fileKey: string | null | undefined): {
  * Open a file in a new tab via authenticated signed URL.
  */
 export async function openAuthenticatedFile(fileKey: string): Promise<void> {
-  const { data } = await api.post<ApiResponse<DownloadUrlResponse>>(
-    '/uploads/signed-download-url',
-    { key: fileKey },
-  );
-  window.open(data.data.downloadUrl, '_blank');
+  const url = await fetchSignedUrl(fileKey);
+  window.open(url, '_blank');
 }

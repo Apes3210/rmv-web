@@ -429,6 +429,7 @@ export function ProjectNavigator({
                   {idx + 1}
                 </span>
               )}
+
             </div>
           );
         })}

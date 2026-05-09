@@ -184,6 +184,7 @@ export function LandingPage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeCollectionIndex, setActiveCollectionIndex] = useState<number | null>(null);
   const [activeProjectIndex, setActiveProjectIndex] = useState<number | null>(null);
+  const [activeFullscreenImage, setActiveFullscreenImage] = useState<string | null>(null);
   const activeCollection = activeCollectionIndex !== null ? SHOWCASE_COLLECTIONS[activeCollectionIndex] ?? null : null;
   const activeProject = activeCollection
     ? activeCollection.projects[activeProjectIndex ?? 0] ?? activeCollection.projects[0] ?? null
@@ -251,6 +252,22 @@ export function LandingPage() {
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [activeCollection]);
+
+  useEffect(() => {
+    if (!activeFullscreenImage) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setActiveFullscreenImage(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [activeFullscreenImage]);
 
   useEffect(() => {
     document.documentElement.classList.add('landing-page-scrollbar');
@@ -413,7 +430,7 @@ export function LandingPage() {
               transition={{ duration: 1, delay: 0.5, ease: SMOOTH_240 }}
               className="flex w-full flex-col gap-4 overflow-visible pb-10 gpu-reveal sm:w-auto sm:flex-row"
             >
-              <Button asChild style={{ background: 'linear-gradient(135deg, #c9a96f 0%, #e2cba1 50%, #b89552 100%)' }} className="label-font brass-gradient group relative h-14 w-full overflow-hidden rounded-none border-none px-12 text-[11px] font-black uppercase tracking-[0.3em] text-[#1A1600] transition-transform hover:translate-x-1 active:scale-95 sm:w-auto md:h-14">
+              <Button asChild style={{ background: 'linear-gradient(135deg, #c9a96f 0%, #e2cba1 50%, #b89552 100%)', color: '#1A1600' }} className="label-font brass-gradient group relative h-14 w-full overflow-hidden rounded-none border-none px-12 text-[11px] font-black uppercase tracking-[0.3em] transition-transform hover:translate-x-1 active:scale-95 sm:w-auto md:h-14">
                 <Link to="/register">
                   <span className="relative z-10 flex items-center">
                     Commission a Project
@@ -798,144 +815,155 @@ export function LandingPage() {
                 exit={{ opacity: 0, y: 20, scale: 0.95 }}
                 transition={{ duration: 0.3 }}
                 onClick={(event) => event.stopPropagation()}
-                className="relative z-10 flex max-h-[92vh] w-full max-w-[82rem] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[#0a0b0d] shadow-[0_0_100px_rgba(0,0,0,0.8)] lg:max-h-[88vh]"
+                className="relative z-10 flex max-h-[90vh] w-full max-w-[46rem] flex-col overflow-hidden rounded-[1.25rem] border border-[#c9a96f]/25 bg-[#08090a]/95 shadow-[0_0_100px_rgba(0,0,0,0.8)]"
               >
-                {/* Visual Header / Hero Area */}
-                <div className="relative h-[45vh] min-h-[320px] w-full shrink-0 overflow-hidden bg-[#050505] lg:h-[62vh]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveCollectionIndex(null);
+                    setActiveProjectIndex(null);
+                  }}
+                  className="group absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-black/55 text-white backdrop-blur-xl transition-all hover:bg-[#c9a96f] hover:text-black sm:right-5 sm:top-5"
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4 transition-transform group-hover:rotate-90" />
+                </button>
+
+                <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-6 sm:px-6 lg:px-7">
+                  <div className="flex items-center gap-3">
+                    <div className="h-px w-8 bg-[#c9a96f]" />
+                    <span className="label-font text-[9px] font-black uppercase tracking-[0.36em] text-[#c9a96f]">
+                      {activeCollection.label}
+                    </span>
+                  </div>
+
+                  <div className="relative mt-3 aspect-[16/5.25] w-full overflow-hidden rounded-lg border border-white/10 bg-[#050505]">
                   <AnimatePresence mode="wait">
-                    <motion.div
+                    <motion.button
                       key={activeProject.image}
+                      type="button"
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
                       transition={{ duration: 0.5 }}
-                      className="absolute inset-0 flex items-center justify-center p-4 lg:p-8"
+                      onClick={() => setActiveFullscreenImage(activeProject.image)}
+                      className="group absolute inset-0 cursor-zoom-in overflow-hidden"
                     >
                       <img
                         src={activeProject.image}
                         alt={activeProject.title}
-                        className="h-full w-full object-contain object-center brightness-[1.02] contrast-[1.02]"
+                        className="h-full w-full object-cover object-center brightness-[1.02] contrast-[1.02] transition-transform duration-500 group-hover:scale-[1.03]"
                       />
-                    </motion.div>
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+                      <div className="absolute right-3 top-3 flex items-center gap-2 rounded-full border border-white/10 bg-black/55 px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.28em] text-white/85 opacity-0 backdrop-blur-sm transition-all duration-300 group-hover:opacity-100">
+                        <Maximize className="h-3.5 w-3.5" />
+                        Click to expand
+                      </div>
+                    </motion.button>
                   </AnimatePresence>
+                  </div>
 
-                  {/* Gentle Ambient Overlays */}
-                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-[#0a0b0d]" />
-
-                  {/* Top Bar Actions */}
-                  <div className="absolute left-0 right-0 top-0 flex items-center justify-between p-6 lg:p-10">
-                    <div className="flex items-center gap-3">
-                      <div className="h-px w-8 bg-[#c9a96f]" />
-                      <span className="label-font text-[10px] font-black uppercase tracking-[0.4em] text-[#c9a96f]">
-                        {activeCollection.label}
+                  <div className="mt-4 space-y-4">
+                    <motion.h3
+                      initial={{ opacity: 0, y: 14 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="headline-font text-2xl font-bold leading-[1.05] tracking-tight text-white sm:text-3xl"
+                    >
+                      {activeProject.title}
+                    </motion.h3>
+                    <div className="flex items-center gap-2.5 text-[#c9a96f]">
+                      <MapPin className="h-3.5 w-3.5" />
+                      <span className="label-font text-[9px] font-bold uppercase tracking-[0.22em]">
+                        {activeProject.location}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setActiveCollectionIndex(null);
-                        setActiveProjectIndex(null);
-                      }}
-                      className="group flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white backdrop-blur-xl transition-all hover:bg-[#c9a96f] hover:text-black"
-                      aria-label="Close"
-                    >
-                      <X className="h-5 w-5 transition-transform group-hover:rotate-90" />
-                    </button>
+                    <div className="h-px w-16 bg-white/10" />
+                    <p className="max-w-[58ch] text-sm leading-relaxed text-white/58 sm:text-base">
+                      {activeProject.description}
+                    </p>
                   </div>
-                </div>
 
-                {/* Content Area */}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden bg-[#0a0b0d] px-6 py-10 lg:px-14 lg:py-16">
-                  <div className="mx-auto max-w-5xl space-y-16">
-                    {/* Primary Details Row */}
-                    <div className="grid gap-12 lg:grid-cols-[1fr_auto] lg:items-start lg:gap-20">
-                      <div className="space-y-10">
-                        <div>
-                          <motion.h3 
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className="headline-font text-2xl font-bold leading-[1.1] tracking-tight text-white sm:text-3xl md:text-5xl lg:text-6xl"
+                  <div className="mt-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="label-font text-[9px] font-black uppercase tracking-[0.45em] text-[#c9a96f]">
+                        Gallery Selection
+                      </p>
+                      <span className="text-[10px] font-medium text-white/35">
+                        {activeProjectIndex! + 1} / {activeCollection.projects.length}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      {activeCollection.projects.map((project, index) => {
+                        const isSelected = activeProjectIndex === index;
+
+                        return (
+                          <button
+                            key={`${activeCollection.id}-${project.title}`}
+                            type="button"
+                            onClick={() => setActiveProjectIndex(index)}
+                            className={`group relative aspect-video w-full overflow-hidden rounded-md border transition-all duration-500 ${
+                              isSelected
+                                ? 'border-[#c9a96f] ring-1 ring-[#c9a96f]/45'
+                                : 'border-white/10 hover:border-white/30'
+                            }`}
                           >
-                            {activeProject.title}
-                          </motion.h3>
-                          <div className="mt-6 flex items-center gap-3 text-[#c9a96f]">
-                            <MapPin className="h-4 w-4" />
-                            <span className="label-font text-[11px] font-bold uppercase tracking-[0.2em]">
-                              {activeProject.location}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="space-y-6">
-                          <div className="h-px w-20 bg-white/10" />
-                          <p className="text-lg leading-relaxed text-white/50 md:text-xl lg:leading-[1.7]">
-                            {activeProject.description}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Technical Specs Tags in sidebar row */}
-                      <div className="flex flex-wrap gap-3 lg:max-w-[240px] lg:flex-row">
-                        {activeCollection.tags.map((tag) => (
-                          <span key={tag} className="border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.2em] text-white/40">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Bottom Landscape Gallery */}
-                    <div className="space-y-8 pt-8">
-                      <div className="flex items-center justify-between border-b border-white/5 pb-6">
-                        <p className="label-font text-[10px] font-black uppercase tracking-[0.5em] text-[#c9a96f]">
-                          Gallery Selection
-                        </p>
-                        <span className="text-[10px] font-medium text-white/20">
-                          {activeProjectIndex! + 1} / {activeCollection.projects.length}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 md:grid-cols-4 lg:gap-6">
-                        {activeCollection.projects.map((project, index) => {
-                          const isSelected = activeProjectIndex === index;
-
-                          return (
-                            <button
-                              key={`${activeCollection.id}-${project.title}`}
-                              type="button"
-                              onClick={() => setActiveProjectIndex(index)}
-                              className={`group relative aspect-video w-full overflow-hidden border transition-all duration-500 rounded-lg ${
-                                isSelected 
-                                  ? 'border-[#c9a96f] ring-1 ring-[#c9a96f]/40' 
-                                  : 'border-white/10 hover:border-white/30'
+                            <img
+                              src={project.image}
+                              alt={project.title}
+                              className={`h-full w-full object-cover transition-all duration-700 ${
+                                isSelected ? 'scale-105' : 'scale-100 opacity-60 group-hover:opacity-100'
                               }`}
-                            >
-                              <img 
-                                src={project.image} 
-                                alt={project.title} 
-                                className={`h-full w-full object-cover transition-all duration-700 ${
-                                  isSelected ? 'scale-105' : 'scale-100 opacity-60 group-hover:opacity-100'
-                                }`} 
-                              />
-                              <div className={`absolute inset-0 transition-opacity duration-500 ${isSelected ? 'bg-transparent' : 'bg-black/40 group-hover:bg-transparent'}`} />
-                              
-                              {/* Selection Indicator */}
-                              {isSelected && (
-                                <div className="absolute inset-x-0 bottom-0 h-1 w-full bg-[#c9a96f]" />
-                              )}
-                              
-                              <div className="absolute inset-0 flex items-center justify-center p-4 opacity-0 transition-opacity group-hover:opacity-100">
-                                <p className="label-font text-[9px] font-bold uppercase tracking-widest text-white text-center drop-shadow-md">
-                                  View
-                                </p>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
+                            />
+                            <div className={`absolute inset-0 transition-opacity duration-500 ${isSelected ? 'bg-transparent' : 'bg-black/40 group-hover:bg-transparent'}`} />
+                            {isSelected && (
+                              <div className="absolute inset-x-0 bottom-0 h-1 w-full bg-[#c9a96f]" />
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {activeFullscreenImage && activeProject && (
+            <motion.div
+              className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 lg:p-8"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setActiveFullscreenImage(null)}
+            >
+              <motion.div className="absolute inset-0 bg-black/92 backdrop-blur-md" />
+
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 12 }}
+                transition={{ duration: 0.25 }}
+                onClick={(event) => event.stopPropagation()}
+                className="relative z-10 flex max-h-[92vh] w-full max-w-[96vw] items-center justify-center"
+              >
+                <button
+                  type="button"
+                  onClick={() => setActiveFullscreenImage(null)}
+                  className="absolute right-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-black/60 text-white backdrop-blur-xl transition-all hover:bg-[#c9a96f] hover:text-black"
+                  aria-label="Close full-screen image"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+
+                <img
+                  src={activeFullscreenImage}
+                  alt={`${activeProject.title} full screen view`}
+                  className="max-h-[90vh] max-w-[94vw] rounded-xl border border-white/10 object-contain shadow-[0_28px_90px_rgba(0,0,0,0.65)]"
+                />
               </motion.div>
             </motion.div>
           )}
@@ -1068,7 +1096,7 @@ export function LandingPage() {
               </h2>
               
               <div className="flex justify-center">
-                <Button asChild className="label-font brass-gradient h-16 rounded-none border-none px-12 text-[11px] font-black uppercase tracking-[0.3em] text-zinc-950 shadow-[0_10px_40px_rgba(255,215,0,0.2)] transition-all hover:scale-105 hover:shadow-[0_15px_60px_rgba(255,215,0,0.35)] active:scale-95">
+                <Button asChild style={{ color: '#09090b' }} className="label-font brass-gradient h-16 rounded-none border-none px-12 text-[11px] font-black uppercase tracking-[0.3em] shadow-[0_10px_40px_rgba(255,215,0,0.2)] transition-all hover:scale-105 hover:shadow-[0_15px_60px_rgba(255,215,0,0.35)] active:scale-95">
                   <Link to="/register">Create Account</Link>
                 </Button>
               </div>

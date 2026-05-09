@@ -152,6 +152,9 @@ function PaymentProjectRow({
   onSelect: (projectId: string) => void;
 }) {
   const paymentBadge = PAYMENT_STATUS_BADGES[paymentStatus];
+  const projectStageBadge = projectStage === 'paid'
+    ? { status: 'verified', label: 'Paid' }
+    : { status: projectStage, label: formatStatusLabel(projectStage) };
 
   return (
     <button
@@ -167,7 +170,7 @@ function PaymentProjectRow({
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <StatusBadge status={projectStage} label={formatStatusLabel(projectStage)} />
+          <StatusBadge status={projectStageBadge.status} label={projectStageBadge.label} />
           <StatusBadge status={paymentBadge.status} label={paymentBadge.label} />
         </div>
         <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-metal-muted-color)] transition-colors group-hover:text-[var(--text-metal-color)]" />
@@ -186,7 +189,7 @@ function PaymentProjectRow({
           {String(project.serviceType || '').replace(/_/g, ' ')}
         </p>
         <div className="flex justify-center">
-          <StatusBadge status={projectStage} label={formatStatusLabel(projectStage)} />
+          <StatusBadge status={projectStageBadge.status} label={projectStageBadge.label} />
         </div>
         <div className="flex justify-center">
           <StatusBadge status={paymentBadge.status} label={paymentBadge.label} />
@@ -293,6 +296,12 @@ export function PaymentsPage() {
       verifiedCount,
       allVerified: verifiedCount === plan.stages.length,
     };
+  }, [plan]);
+  const selectedPlanTypeLabel = useMemo(() => {
+    if (!plan?.stages?.length) return null;
+    const inferredFull = plan.stages.length === 1 && Number(plan.stages[0]?.percentage || 0) === 100;
+    const isFull = typeof plan.isPayInFull === 'boolean' ? plan.isPayInFull : inferredFull;
+    return isFull ? 'Full Payment' : 'Installment';
   }, [plan]);
 
   const filteredHistory = useMemo(() => {
@@ -407,12 +416,16 @@ export function PaymentsPage() {
       }),
     );
   }, [basePaymentProjects, paymentPlanQueries, paymentPlanTargets]);
+  const getEffectiveProjectStageStatus = (project: PaymentListProject) => {
+    const paymentStatus = paymentStatusByProject.get(String(project._id));
+    return paymentStatus === 'paid' ? 'paid' : getProjectStageStatus(project);
+  };
 
   // Filtered project list for table view
   const filteredProjects = useMemo(() => {
     let items = basePaymentProjects;
     if (projectStageFilter !== 'all') {
-      items = items.filter((p) => getProjectStageStatus(p) === projectStageFilter);
+      items = items.filter((p) => getEffectiveProjectStageStatus(p) === projectStageFilter);
     }
     if (paymentStatusFilter !== 'all') {
       items = items.filter((p) => paymentStatusByProject.get(String(p._id)) === paymentStatusFilter);
@@ -430,8 +443,8 @@ export function PaymentsPage() {
 
   // Unique project stages for the stage filter dropdown
   const projectStages = useMemo(
-    () => [...new Set(basePaymentProjects.map((p) => getProjectStageStatus(p)))],
-    [basePaymentProjects],
+    () => [...new Set(basePaymentProjects.map((p) => getEffectiveProjectStageStatus(p)))],
+    [basePaymentProjects, paymentStatusByProject],
   );
 
 
@@ -512,20 +525,6 @@ export function PaymentsPage() {
           ═══════════════════════════════════════════════════════ */}
       {!selectedProjectId ? (
         <>
-          <div className="metal-panel-strong rounded-[1.75rem] p-5">
-            <div className="flex items-start gap-4">
-              <div className="silver-sheen flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-[#2b3138] shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_10px_24px_rgba(0,0,0,0.18)]">
-                <CreditCard className="h-5 w-5" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight text-[var(--color-card-foreground)] dark:text-slate-50">Payments</h1>
-                <p className="mt-1 text-sm text-[var(--text-metal-color)] dark:text-slate-300">
-              {isCustomer ? 'Select a project to manage payments' : 'Manage queues and project payments'}
-                </p>
-              </div>
-            </div>
-          </div>
-
           {/* ── Tab Bar ── */}
           <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-muted)]/40 p-1">
             {[
@@ -553,53 +552,6 @@ export function PaymentsPage() {
           {/* ── TAB: Payments ── */}
           {activeTab === 'payments' && (
             <>
-          {/* Unpaid Ocular Fees */}
-          {isCustomer && actionableOcularFees.length > 0 && (
-            <Card className="rounded-none border-x-0 border-[#c7aa7a]/60 bg-[linear-gradient(180deg,rgba(248,240,229,0.82)_0%,rgba(235,220,198,0.58)_100%)] sm:rounded-xl sm:border-x">
-              <CardHeader className="pb-2 px-4 sm:px-6">
-                <CardTitle className="flex items-center gap-2 text-base text-[#7e6239]">
-                  <AlertTriangle className="h-4 w-4 text-[#a97d49]" />
-                  Unpaid Ocular Fees
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 px-4 sm:px-6">
-                <p className="text-xs text-[#7e6239]">
-                  Pay before your appointment can be confirmed.
-                </p>
-                {actionableOcularFees.map((appt) => (
-                  <div
-                    key={String(appt._id)}
-                    className="metal-panel flex items-center justify-between gap-3 rounded-xl p-3"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-[#171b21] dark:text-slate-100">
-                        {format(new Date(appt.date), 'MMM d, yyyy')}
-                      </p>
-                      {appt.address && (
-                        <p className="flex items-center gap-1 truncate text-xs text-[#616a74] dark:text-slate-400">
-                          <MapPin className="h-3 w-3 shrink-0" />
-                          {appt.address}
-                        </p>
-                      )}
-                      <p className="mt-0.5 text-base font-bold text-[#171b21] dark:text-slate-100">
-                        {formatCurrency(appt.ocularFee ?? 0)}
-                      </p>
-                    </div>
-                    <Button
-                      asChild
-                      size="sm"
-                      className="shrink-0"
-                    >
-                      <Link to={`/appointments/${appt._id}/pay-ocular-fee`}>
-                        Pay Now
-                      </Link>
-                    </Button>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
           {/* ── Projects Table ── */}
           <Card className="rounded-none overflow-hidden border-x-0 sm:rounded-xl sm:border-x">
             {/* Search + Filter bar */}
@@ -653,6 +605,52 @@ export function PaymentsPage() {
               </div>
             </div>
 
+            {/* Customer ocular fee action list */}
+            {isCustomer && actionableOcularFees.length > 0 && (
+              <div className="mx-4 mb-3 rounded-xl border border-amber-300/45 bg-amber-500/8 p-3 sm:mx-6">
+                <div className="mb-2 flex items-center gap-2 text-amber-200">
+                  <AlertTriangle className="h-4 w-4" />
+                  <p className="text-sm font-semibold">Unpaid Ocular Fees</p>
+                </div>
+                <p className="mb-3 text-xs text-amber-200/80">
+                  Pay these first so the appointment can be confirmed.
+                </p>
+                <div className="space-y-2">
+                  {actionableOcularFees.map((appt) => (
+                    <div
+                      key={String(appt._id)}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-[color:var(--color-border)]/70 bg-[color:var(--color-muted)]/45 p-3"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-[var(--color-card-foreground)]">
+                          {format(new Date(appt.date), 'MMM d, yyyy')}
+                        </p>
+                        {appt.address && (
+                          <p className="flex items-center gap-1 truncate text-xs text-[var(--text-metal-color)]">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            {appt.address}
+                          </p>
+                        )}
+                        <p className="mt-0.5 text-sm font-bold text-[var(--color-card-foreground)]">
+                          {formatCurrency(appt.ocularFee ?? 0)}
+                        </p>
+                      </div>
+                      <Button
+                        asChild
+                        size="sm"
+                        className="h-10 shrink-0 rounded-lg border border-emerald-300/60 bg-emerald-500 px-4 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(16,185,129,0.22)] transition-colors hover:border-emerald-200 hover:bg-emerald-400 dark:border-emerald-300/45 dark:bg-emerald-500 dark:text-white dark:hover:bg-emerald-400"
+                      >
+                        <Link to={`/appointments/${appt._id}/pay-ocular-fee`}>
+                          <CreditCard className="mr-2 h-4 w-4" />
+                          Pay Ocular Fee
+                        </Link>
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Desktop table header */}
             <div className="hidden gap-3 border-b border-[color:var(--color-border)] px-6 pb-2 text-xs font-medium uppercase tracking-wider text-[var(--text-metal-color)] sm:grid sm:grid-cols-[1fr_140px_140px_150px_32px]">
               <span>Project</span>
@@ -669,7 +667,7 @@ export function PaymentsPage() {
                   <PaymentProjectRow
                     key={String(p._id)}
                     project={p as PaymentListProject}
-                    projectStage={getProjectStageStatus(p)}
+                    projectStage={getEffectiveProjectStageStatus(p as PaymentListProject)}
                     paymentStatus={paymentStatusByProject.get(String(p._id)) || 'payment_pending'}
                     onSelect={setSelectedProjectId}
                   />
@@ -937,7 +935,14 @@ export function PaymentsPage() {
           {/* ── Payment Plan (Table-style) ── */}
           <Card className="rounded-none overflow-hidden border-x-0 sm:rounded-xl sm:border-x">
             <CardHeader className="px-4 sm:px-6">
-              <CardTitle className="text-base text-[#1d1d1f] dark:text-slate-100">Payment Plan</CardTitle>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-base text-[#1d1d1f] dark:text-slate-100">Payment Plan</CardTitle>
+                {selectedPlanTypeLabel && (
+                  <span className="inline-flex items-center rounded-full border border-[color:var(--color-border)] bg-[color:var(--color-muted)]/70 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-[var(--text-metal-color)] dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200">
+                    {selectedPlanTypeLabel}
+                  </span>
+                )}
+              </div>
             </CardHeader>
 
             {/* Desktop table header */}

@@ -19,6 +19,14 @@ const KEYS = {
   slots: (date: string, type: string) => [...KEYS.all, 'slots', date, type] as const,
 };
 
+function todayLocalDate() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function syncAppointmentCaches(qc: ReturnType<typeof useQueryClient>, appointment: Appointment) {
   qc.setQueryData(KEYS.detail(appointment._id), appointment);
   qc.invalidateQueries({ queryKey: KEYS.all });
@@ -101,6 +109,7 @@ export function useRequestAppointment() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: KEYS.all });
+      qc.invalidateQueries({ queryKey: ['visit-reports'] });
     },
   });
 }
@@ -122,6 +131,7 @@ export function useAgentCreateAppointment() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: KEYS.all });
+      qc.invalidateQueries({ queryKey: ['visit-reports'] });
     },
   });
 }
@@ -270,6 +280,7 @@ export function useRequestReschedule() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: KEYS.all });
+      qc.invalidateQueries({ queryKey: ['visit-reports'] });
     },
   });
 }
@@ -337,10 +348,12 @@ export function useVerifyOcularFeeCheckout() {
     onSuccess: (result) => {
       if (result.verified) {
         qc.invalidateQueries({ queryKey: ['appointments'] });
+        qc.invalidateQueries({ queryKey: ['visit-reports'] });
       }
     },
     onError: () => {
       qc.invalidateQueries({ queryKey: ['appointments'] });
+      qc.invalidateQueries({ queryKey: ['visit-reports'] });
     },
   });
 }
@@ -358,6 +371,7 @@ export function useSimulateOcularPayment() {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ['appointments'] });
+      qc.invalidateQueries({ queryKey: ['visit-reports'] });
     },
   });
 }
@@ -399,6 +413,7 @@ export function useVerifyOcularFee() {
     onSuccess: (appointment) => {
       syncAppointmentCaches(qc, appointment);
       qc.invalidateQueries({ queryKey: ['ocular-fee-queue'] });
+      qc.invalidateQueries({ queryKey: ['visit-reports'] });
     },
   });
 }
@@ -416,6 +431,7 @@ export function useDeclineOcularFee() {
     onSuccess: (appointment) => {
       syncAppointmentCaches(qc, appointment);
       qc.invalidateQueries({ queryKey: ['ocular-fee-queue'] });
+      qc.invalidateQueries({ queryKey: ['visit-reports'] });
     },
   });
 }
@@ -433,12 +449,13 @@ export function usePendingOcularFees() {
 }
 
 export function useUnpaidOcularFees() {
+  const dateFrom = todayLocalDate();
   return useQuery({
-    queryKey: [...KEYS.all, 'unpaid-ocular-fees'],
+    queryKey: [...KEYS.all, 'unpaid-ocular-fees', dateFrom],
     queryFn: async () => {
       const { data } = await api.get<ApiResponse<PaginatedResponse<Appointment>>>(
         '/appointments',
-        { params: { type: 'ocular', ocularFeeStatus: 'pending', limit: '50' } },
+        { params: { type: 'ocular', ocularFeeStatus: 'pending', dateFrom, limit: '50' } },
       );
       return extractItems<Appointment>(data.data);
     },

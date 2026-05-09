@@ -1,5 +1,5 @@
 import { useState, Fragment } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { FolderOpen, ChevronRight, Calendar, User, Wrench } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 
@@ -21,7 +21,6 @@ import { useProjects } from '@/hooks/useProjects';
 import { useAuthStore } from '@/stores/auth.store';
 import { ProjectStatus, BlueprintStatus, Role, SERVICE_TYPE_LABELS } from '@/lib/constants';
 import { formatPersonName } from '@/lib/address';
-import { VisitReportsListPage } from '@/pages/visit-reports/VisitReportsListPage';
 
 const STATUS_FILTERS = [
   { label: 'All Projects', value: '' },
@@ -147,16 +146,6 @@ export function ProjectsPage() {
     user?.roles?.includes(Role.SALES_STAFF)
     && !user.roles.some((role) => [Role.ADMIN, Role.APPOINTMENT_AGENT].includes(role as Role)),
   );
-  const canSeeVisitReports = user?.roles?.some((r: string) =>
-    [Role.SALES_STAFF, Role.ENGINEER, Role.ADMIN].includes(r as Role),
-  );
-  const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get('tab') || 'projects';
-  
-  const setActiveTab = (tab: string) => {
-    setSearchParams({ tab }, { replace: true });
-  };
-
   const params: Record<string, string> = {};
   if (statusFilter) params.status = statusFilter;
   if (search) params.search = search;
@@ -189,45 +178,13 @@ export function ProjectsPage() {
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-[var(--color-card-foreground)]">
-          {activeTab === 'projects' ? 'Projects' : 'Visit Reports'}
+          Projects
         </h1>
         <p className="mt-1 text-sm text-[var(--text-metal-color)]">
-          {activeTab === 'projects'
-            ? 'Track fabrication progress and project milestones.'
-            : 'Review and manage site visit findings and recommendations.'}
+          Track fabrication progress and project milestones.
         </p>
       </div>
 
-      {/* Tab Bar */}
-      {canSeeVisitReports && (
-        <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-muted)]/40 p-1">
-          {[
-            { key: 'projects', label: 'Projects' },
-            { key: 'visit-reports', label: 'Visit Reports' },
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                activeTab === tab.key
-                  ? 'bg-[color:var(--color-card)] text-[var(--color-card-foreground)] shadow-sm'
-                  : 'text-[var(--text-metal-color)] hover:text-[var(--color-card-foreground)] hover:bg-[color:var(--color-card)]/50'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* ── TAB: Visit Reports ── */}
-      {activeTab === 'visit-reports' && canSeeVisitReports && (
-        <VisitReportsListPage isEmbedded />
-      )}
-
-      {/* ── TAB: Projects ── */}
-      {activeTab === 'projects' && (
       <>
 
       {/* Controls */}
@@ -506,7 +463,6 @@ export function ProjectsPage() {
         </>
       )}
       </>
-      )}
     </div>
   );
 }

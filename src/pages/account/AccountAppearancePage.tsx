@@ -52,25 +52,6 @@ export function AccountAppearancePage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-2xl border border-[color:var(--color-border)]/55 bg-[color:var(--color-card)]/70 p-4 sm:col-span-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-muted-foreground)]">Theme preference</p>
-              <p className="mt-1 text-base font-semibold text-[var(--color-card-foreground)]">
-                {themePreference === 'system' ? 'Following your device theme' : `Using ${themePreference} mode`}
-              </p>
-              <p className="mt-2 text-sm text-[var(--text-metal-muted-color)]">
-                Pick a mode here instead of changing it from the Profile page. The active selection updates the app immediately and remains attached to your account.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-[color:var(--color-border)]/55 bg-[color:var(--color-card)]/70 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-muted-foreground)]">Current output</p>
-              <p className="mt-1 text-base font-semibold capitalize text-[var(--color-card-foreground)]">{resolvedTheme} palette</p>
-              <p className="mt-2 text-sm text-[var(--text-metal-muted-color)]">
-                The interface resolves to {resolvedTheme} right now based on your stored preference.
-              </p>
-            </div>
-          </div>
-
           <div className="grid gap-3 lg:grid-cols-3">
             {themeOptions.map((option) => {
               const Icon = option.icon;

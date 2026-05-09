@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { ApiResponse, SalesStaffLookupUser, User } from '@/lib/types';
+import type { ApiResponse, SalesStaffLookupUser, User, UserAddress } from '@/lib/types';
 import type { StaffAvailabilityStatus } from '@/lib/constants';
 import { useAuthStore } from '@/stores/auth.store';
 import toast from 'react-hot-toast';
@@ -104,6 +104,8 @@ export interface CustomerSearchResult {
   lastName: string;
   email: string;
   phone?: string;
+  addressData?: UserAddress;
+  savedAddresses?: UserAddress[];
 }
 
 export function useCustomerSearch(search: string) {
@@ -127,18 +129,8 @@ interface UpdateProfilePayload {
   lastName?: string;
   phone?: string;
   address?: string;
-  addressData?: {
-    street?: string;
-    barangay?: string;
-    city?: string;
-    province?: string;
-    zip?: string;
-    country?: string;
-    addressType?: 'personal' | 'business';
-    lat?: number;
-    lng?: number;
-    formattedAddress?: string;
-  };
+  addressData?: UserAddress;
+  savedAddresses?: UserAddress[];
   notificationPreferences?: {
     appointment?: boolean;
     payment?: boolean;

@@ -511,7 +511,7 @@ export function BookAppointmentPage() {
                 </div>
                 {serviceTypes && serviceTypes.length > 0 && (
                   <div className="rounded-xl border border-[#c8c8cd]/50 bg-[#f5f5f7]/30 p-4 dark:border-white/10 dark:bg-white/[0.03]">
-                    <p className="text-xs font-medium uppercase tracking-wider text-[#86868b] dark:text-slate-500">Service Types</p>
+                    <p className="text-xs font-medium uppercase tracking-wider text-[#86868b] dark:text-slate-500">Items</p>
                     <p className="mt-1 text-sm font-semibold capitalize text-[#1d1d1f] dark:text-slate-100">
                       {serviceTypes.map(st => st === ServiceType.CUSTOM && serviceTypeCustom ? serviceTypeCustom : st.replace(/_/g, ' ')).join(', ')}
                     </p>

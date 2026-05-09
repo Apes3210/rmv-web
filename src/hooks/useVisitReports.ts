@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import type { ApiResponse, PaginatedResponse, VisitReport, LineItem, SiteConditions } from '@/lib/types';
+import type { ApiResponse, PaginatedResponse, VisitReport, LineItem, SiteConditions, ServiceSpecifications, UserAddress } from '@/lib/types';
 
 const KEYS = {
   all: ['visit-reports'] as const,
@@ -125,6 +125,7 @@ export function useUpdateVisitReport() {
       materials?: string;
       finishes?: string;
       preferredDesign?: string;
+      specifications?: ServiceSpecifications;
       customerRequirements?: string;
       notes?: string;
       discussionNotes?: string;
@@ -140,8 +141,13 @@ export function useUpdateVisitReport() {
       projectScope?: string;
       initialDesignKeys?: string[];
       initialDesignNotes?: string;
+      selectedDesignTemplateId?: string;
+      selectedDesignTemplateName?: string;
+      selectedDesignTemplateImageUrl?: string;
       recommendedOcularDate?: string;
       recommendedOcularSlot?: string;
+      recommendedOcularAddressId?: string;
+      recommendedOcularAddress?: UserAddress;
     }) => {
       const { data } = await api.put<ApiResponse<VisitReport>>(
         `/visit-reports/${id}`,

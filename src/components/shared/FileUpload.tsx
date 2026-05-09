@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { AxiosError } from 'axios';
-import { Upload, X, FileIcon, Loader2, ImageIcon, Play, ExternalLink } from 'lucide-react';
+import { Upload, X, FileIcon, Loader2, ImageIcon, Play, ExternalLink, CheckCircle2 } from 'lucide-react';
 import imageCompression from 'browser-image-compression';
 import toast from 'react-hot-toast';
 
 import { Button } from '@/components/ui/button';
 import { useGetUploadUrl, uploadFileToR2 } from '@/hooks/useUploads';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import type { ApiResponse } from '@/lib/types';
 
 interface FileUploadProps {
@@ -19,12 +20,14 @@ interface FileUploadProps {
   existingKeys?: string[];
   label?: string;
   readOnly?: boolean;
+  presentation?: 'default' | 'review';
 }
 
 interface UploadedFile {
   fileKey: string;
   fileName: string;
   isUploading: boolean;
+  fileSize?: number;
 }
 
 const COMPRESSIBLE_IMAGE_TYPES = new Set([
@@ -81,7 +84,9 @@ export function FileUpload({
   existingKeys = [],
   label = 'Upload files',
   readOnly = false,
+  presentation = 'default',
 }: FileUploadProps) {
+  const isReviewPresentation = presentation === 'review';
   const [files, setFiles] = useState<UploadedFile[]>(
     existingKeys.map((key) => ({
       fileKey: key,
@@ -159,7 +164,7 @@ export function FileUpload({
         const tempId = `temp-${Date.now()}-${rawFile.name}`;
         setFiles((prev) => [
           ...prev,
-          { fileKey: tempId, fileName: rawFile.name, isUploading: true },
+          { fileKey: tempId, fileName: rawFile.name, isUploading: true, fileSize: rawFile.size },
         ]);
 
         try {
@@ -176,12 +181,12 @@ export function FileUpload({
           setFiles((prev) =>
             prev.map((f) =>
               f.fileKey === tempId
-                ? { fileKey, fileName: rawFile.name, isUploading: false }
+                ? { fileKey, fileName: rawFile.name, isUploading: false, fileSize: processed.size }
                 : f,
             ),
           );
 
-          newUploadedFiles.push({ fileKey, fileName: rawFile.name, isUploading: false });
+          newUploadedFiles.push({ fileKey, fileName: rawFile.name, isUploading: false, fileSize: processed.size });
         } catch (err) {
           setFiles((prev) => prev.filter((f) => f.fileKey !== tempId));
           if (err instanceof AxiosError) {
@@ -351,9 +356,12 @@ export function FileUpload({
   }
 
   return (
-    <div className="space-y-3">
+    <div className={cn('space-y-3', isReviewPresentation && 'space-y-4')}>
       <div
-        className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-6 transition-colors hover:border-primary/50 hover:bg-muted/50"
+        className={cn(
+          'flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-border p-6 text-center transition-colors hover:border-primary/50 hover:bg-muted/50',
+          isReviewPresentation && 'min-h-[180px] rounded-2xl border-sky-400/35 bg-sky-950/[0.03] px-5 py-8 hover:border-sky-400/60 hover:bg-sky-500/[0.06] dark:border-sky-400/30 dark:bg-slate-950/35 dark:hover:border-sky-300/60 dark:hover:bg-sky-400/10',
+        )}
         role="button"
         tabIndex={0}
         aria-label={label}
@@ -374,11 +382,22 @@ export function FileUpload({
           handleFiles(e.dataTransfer.files);
         }}
       >
-        <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
-        <p className="text-sm font-medium text-foreground">{label}</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Drag & drop or click to browse (max {maxSizeMB}MB each, {maxFiles} files)
+        {isReviewPresentation ? (
+          <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-blue-600/15 text-blue-600 dark:bg-blue-400/15 dark:text-blue-300">
+            <Upload className="h-7 w-7" />
+          </span>
+        ) : (
+          <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
+        )}
+        <p className={cn('text-sm font-medium text-foreground', isReviewPresentation && 'text-base font-semibold text-slate-950 dark:text-slate-50')}>{label}</p>
+        <p className={cn('mt-1 text-xs text-muted-foreground', isReviewPresentation && 'text-sm text-slate-600 dark:text-slate-300')}>
+          {isReviewPresentation ? 'Drag & drop files here or click to browse' : `Drag & drop or click to browse (max ${maxSizeMB}MB each, ${maxFiles} files)`}
         </p>
+        {isReviewPresentation && (
+          <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+            Max {maxSizeMB}MB each | Up to {maxFiles} files
+          </p>
+        )}
         <input
           id={inputId}
           ref={inputRef}
@@ -393,7 +412,7 @@ export function FileUpload({
 
       {/* File list with previews */}
       {files.length > 0 && (
-        <div className="grid gap-2">
+        <div className={cn('grid gap-2', isReviewPresentation && 'gap-3')}>
           {files.map((file) => {
             const url = previewUrls[file.fileKey];
             const imageFile = isImage(file.fileName);
@@ -402,18 +421,24 @@ export function FileUpload({
             return (
               <div
                 key={file.fileKey}
-                className="flex items-center gap-2 rounded-lg border border-border bg-card p-2"
+                className={cn(
+                  'flex items-center gap-2 rounded-lg border border-border bg-card p-2',
+                  isReviewPresentation && 'gap-4 rounded-2xl border-[color:var(--color-border)]/60 bg-white/80 p-3 shadow-sm dark:bg-slate-950/45 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]',
+                )}
               >
                 {/* Thumbnail / icon */}
                 {file.isUploading ? (
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted', isReviewPresentation && 'h-12 w-12 rounded-xl bg-blue-600/12 text-blue-600 dark:bg-blue-400/15 dark:text-blue-300')}>
                     <Loader2 className="h-4 w-4 animate-spin text-primary" />
                   </div>
                 ) : imageFile && url ? (
                   <button
                     type="button"
                     onClick={() => setLightbox(url)}
-                    className="relative h-10 w-10 shrink-0 overflow-hidden rounded-md border border-gray-200 hover:ring-2 hover:ring-primary/40 transition-all cursor-pointer"
+                    className={cn(
+                      'relative h-10 w-10 shrink-0 cursor-pointer overflow-hidden rounded-md border border-gray-200 transition-all hover:ring-2 hover:ring-primary/40',
+                      isReviewPresentation && 'h-12 w-12 rounded-xl border-sky-200/70 dark:border-sky-700/70',
+                    )}
                     title="Click to view full size"
                   >
                     <img
@@ -428,28 +453,33 @@ export function FileUpload({
                     href={url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-900 hover:bg-gray-800 transition-colors"
+                    className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-900 transition-colors hover:bg-gray-800', isReviewPresentation && 'h-12 w-12 rounded-xl')}
                     title="Click to play video"
                   >
                     <Play className="h-4 w-4 text-white" fill="white" />
                   </a>
                 ) : imageFile ? (
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted">
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted', isReviewPresentation && 'h-12 w-12 rounded-xl bg-blue-600/12 text-blue-600 dark:bg-blue-400/15 dark:text-blue-300')}>
                     <ImageIcon className="h-4 w-4 text-blue-500" />
                   </div>
                 ) : (
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted">
-                    <FileIcon className="h-4 w-4 text-muted-foreground" />
+                  <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted', isReviewPresentation && 'h-12 w-12 rounded-xl bg-blue-600/12 text-blue-600 dark:bg-blue-400/15 dark:text-blue-300')}>
+                    <FileIcon className={cn('h-4 w-4 text-muted-foreground', isReviewPresentation && 'h-5 w-5 text-current')} />
                   </div>
                 )}
 
                 <div className="min-w-0 flex-1 max-w-[calc(100%-4.5rem)] overflow-hidden">
                   <span 
-                    className="block truncate text-xs font-medium text-foreground" 
+                    className={cn('block truncate text-xs font-medium text-foreground', isReviewPresentation && 'text-sm font-semibold text-slate-950 dark:text-slate-100')} 
                     title={file.fileName}
                   >
                     {formatFileLabel(file.fileName)}
                   </span>
+                  {isReviewPresentation && (
+                    <span className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                      {file.isUploading ? 'Uploading...' : file.fileSize ? formatFileSize(file.fileSize) : 'Uploaded'}
+                    </span>
+                  )}
                   {!file.isUploading && url && (
                     <a
                       href={url}
@@ -463,13 +493,19 @@ export function FileUpload({
                   )}
                 </div>
 
+                {isReviewPresentation && !file.isUploading && (
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/12 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-300" aria-label="Uploaded">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </span>
+                )}
+
                 {/* Remove button — only when not read-only */}
                 {!file.isUploading && !readOnly && (
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="h-7 w-7 shrink-0"
+                    className={cn('h-7 w-7 shrink-0', isReviewPresentation && 'h-10 w-10 rounded-xl border border-[color:var(--color-border)]/60 bg-white/70 text-slate-500 hover:bg-red-50 hover:text-red-600 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:bg-red-950/30 dark:hover:text-red-200')}
                     onClick={() => removeFile(file.fileKey)}
                     aria-label={`Remove ${file.fileName}`}
                   >

@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import {
   FileText, CheckCircle, AlertCircle, Eye, Info,
-  Clock, MessageSquare, Download, Upload, Loader2, Image, X,
-  Plus, Trash2, Calendar, ArrowRight, CreditCard, ChevronDown, ChevronUp,
+  Download, Upload, Loader2, Image, X,
+  ArrowRight, CreditCard, Send, ShieldCheck,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -34,6 +34,7 @@ import {
   useBlueprintDraft,
   useUpsertBlueprintDraft,
   useFinalizeBlueprintDraft,
+  useQuotationHistory,
 } from '@/hooks/useBlueprints';
 import { useConfigs } from '@/hooks/useConfig';
 import { usePaymentPlan } from '@/hooks/usePayments';
@@ -43,7 +44,7 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useThemeStore } from '@/stores/theme.store';
 import { api } from '@/lib/api';
 import { Role } from '@/lib/constants';
-import type { Blueprint, BlueprintDraft, VisitReport } from '@/lib/types';
+import type { Blueprint, BlueprintDraft, QuotationComplexity, QuotationInternalCosts } from '@/lib/types';
 
 interface BlueprintTabProps {
   projectId: string;
@@ -52,36 +53,161 @@ interface BlueprintTabProps {
 }
 
 type DraftFileMeta = { name: string; type: string; size: number; key: string; uploadedAt: string };
-type QuotationLineItemState = { label: string; quantity: number; materials: string; labor: string };
+type InternalCostKey = keyof QuotationInternalCosts<string>;
 type QuotationDraftState = {
-  lineItems: QuotationLineItemState[];
-  fees: string;
+  internalCosts: QuotationInternalCosts<string>;
+  costPreset: {
+    serviceType: string;
+    complexity: QuotationComplexity;
+    suggestedAt?: string;
+    suggestedValues?: Partial<QuotationInternalCosts<string>>;
+  };
+  discount: string;
+  subtotal: string;
+  total: string;
   validityDays: string;
-  breakdown: string;
+  systemEstimatedDuration: string;
+  adjustedEstimatedDuration: string;
   estimatedDuration: string;
+  inclusions: string;
+  exclusions: string;
   engineerNotes: string;
-  paymentMilestones: { label: string; description: string }[];
+  paymentMilestones: NonNullable<BlueprintDraft['quotation']>['paymentMilestones'];
+};
+type BlueprintTabDraftCache = {
+  blueprintFileMeta: DraftFileMeta | null;
+  designFileMeta: DraftFileMeta | null;
+  costingFileMeta: DraftFileMeta | null;
+  quotInternalCosts: QuotationInternalCosts<string>;
+  quotValidityDays: string;
+  quotSystemDuration: string;
 };
 
-function getEmptyQuotation(): QuotationDraftState {
+const INTERNAL_COST_FIELDS: Array<{ key: InternalCostKey; label: string }> = [
+  { key: 'estimatedMaterials', label: 'Estimated Materials' },
+  { key: 'fabricationWork', label: 'Fabrication Work' },
+  { key: 'finishingPolishing', label: 'Finishing / Polishing' },
+  { key: 'installation', label: 'Installation' },
+  { key: 'deliveryMobilization', label: 'Delivery / Mobilization' },
+  { key: 'overheadMisc', label: 'Overhead / Miscellaneous' },
+  { key: 'markupProfit', label: 'Markup / Profit' },
+];
+
+const EMPTY_INTERNAL_COSTS: QuotationInternalCosts<string> = {
+  estimatedMaterials: '',
+  fabricationWork: '',
+  finishingPolishing: '',
+  installation: '',
+  deliveryMobilization: '',
+  overheadMisc: '',
+  markupProfit: '',
+};
+
+const SERVICE_PRESETS: Record<string, { duration: string; costs: QuotationInternalCosts<number> }> = {
+  railings: { duration: '2-3 Weeks', costs: { estimatedMaterials: 18000, fabricationWork: 6500, finishingPolishing: 3500, installation: 4000, deliveryMobilization: 1500, overheadMisc: 2200, markupProfit: 4500 } },
+  grills: { duration: '1-2 Weeks', costs: { estimatedMaterials: 12000, fabricationWork: 4200, finishingPolishing: 2200, installation: 2600, deliveryMobilization: 1200, overheadMisc: 1600, markupProfit: 3000 } },
+  gates: { duration: '3-4 Weeks', costs: { estimatedMaterials: 30000, fabricationWork: 10000, finishingPolishing: 5000, installation: 6500, deliveryMobilization: 2500, overheadMisc: 3500, markupProfit: 8000 } },
+  door: { duration: '1-2 Weeks', costs: { estimatedMaterials: 15000, fabricationWork: 4800, finishingPolishing: 2500, installation: 3000, deliveryMobilization: 1200, overheadMisc: 1800, markupProfit: 3400 } },
+  staircase: { duration: '2-4 Weeks', costs: { estimatedMaterials: 26000, fabricationWork: 9000, finishingPolishing: 4500, installation: 6000, deliveryMobilization: 2200, overheadMisc: 3200, markupProfit: 7200 } },
+  balustrade: { duration: '2-4 Weeks', costs: { estimatedMaterials: 23000, fabricationWork: 8200, finishingPolishing: 4200, installation: 5500, deliveryMobilization: 2000, overheadMisc: 2900, markupProfit: 6500 } },
+  fences: { duration: '2-3 Weeks', costs: { estimatedMaterials: 22000, fabricationWork: 7000, finishingPolishing: 3400, installation: 5200, deliveryMobilization: 2200, overheadMisc: 2600, markupProfit: 5800 } },
+  canopy: { duration: '2-4 Weeks', costs: { estimatedMaterials: 28000, fabricationWork: 9000, finishingPolishing: 3500, installation: 6500, deliveryMobilization: 2500, overheadMisc: 3200, markupProfit: 7200 } },
+  signage: { duration: '1-3 Weeks', costs: { estimatedMaterials: 11000, fabricationWork: 3800, finishingPolishing: 2500, installation: 2200, deliveryMobilization: 1000, overheadMisc: 1300, markupProfit: 2800 } },
+  custom: { duration: '2-4 Weeks', costs: { estimatedMaterials: 18000, fabricationWork: 6500, finishingPolishing: 3200, installation: 4000, deliveryMobilization: 1600, overheadMisc: 2200, markupProfit: 4800 } },
+};
+
+function normalizeServiceType(serviceType?: string) {
+  const normalized = (serviceType || 'custom').toLowerCase().replace(/\s+/g, '_');
+  if (normalized.includes('rail')) return 'railings';
+  if (normalized.includes('grill')) return 'grills';
+  if (normalized.includes('gate')) return 'gates';
+  if (normalized.includes('door')) return 'door';
+  if (normalized.includes('stair')) return 'staircase';
+  if (normalized.includes('balustrade')) return 'balustrade';
+  if (normalized.includes('fence')) return 'fences';
+  if (normalized.includes('canopy')) return 'canopy';
+  if (normalized.includes('sign')) return 'signage';
+  if (normalized.includes('kitchen') || normalized.includes('shelv') || normalized.includes('window') || normalized.includes('table') || normalized.includes('chair')) return 'custom';
+  return SERVICE_PRESETS[normalized] ? normalized : 'custom';
+}
+
+function adjustDuration(duration: string, complexity: QuotationComplexity) {
+  const match = duration.match(/(\d+)(?:-(\d+))?\s*Weeks?/i);
+  if (!match) return duration;
+  const low = Number(match[1]);
+  const high = Number(match[2] || match[1]);
+  if (complexity === 'simple') return `${low} Week${low === 1 ? '' : 's'}`;
+  if (complexity === 'complex') return `${low}-${high + 1} Weeks`;
+  return `${low}-${high} Weeks`;
+}
+
+function getSystemDuration(serviceType: string, complexity: QuotationComplexity = 'standard') {
+  const preset = SERVICE_PRESETS[normalizeServiceType(serviceType)] ?? SERVICE_PRESETS.custom!;
+  return adjustDuration(preset.duration, complexity);
+}
+
+function asMoney(value: string | number | undefined | null) {
+  const parsed = typeof value === 'number' ? value : Number(String(value || '').replace(/,/g, ''));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function getEmptyQuotation(serviceType = 'custom', complexity: QuotationComplexity = 'standard'): QuotationDraftState {
+  const systemEstimatedDuration = getSystemDuration(serviceType, complexity);
   return {
-    lineItems: [],
-    fees: '',
+    internalCosts: { ...EMPTY_INTERNAL_COSTS },
+    costPreset: { serviceType, complexity },
+    discount: '',
+    subtotal: '',
+    total: '',
     validityDays: '30',
-    breakdown: '',
-    estimatedDuration: '',
+    systemEstimatedDuration,
+    adjustedEstimatedDuration: '',
+    estimatedDuration: systemEstimatedDuration,
+    inclusions: '',
+    exclusions: '',
     engineerNotes: '',
     paymentMilestones: [],
   };
 }
 
-function normalizeDraftQuotation(quotation?: BlueprintDraft['quotation']): QuotationDraftState {
+function normalizeDraftQuotation(
+  quotation?: BlueprintDraft['quotation'],
+  serviceType = 'custom',
+  complexity: QuotationComplexity = 'standard',
+): QuotationDraftState {
+  const empty = getEmptyQuotation(serviceType, quotation?.costPreset?.complexity || complexity);
+  const legacyMaterials = quotation?.lineItems?.reduce((sum, li) => sum + asMoney(li.materials) * (li.quantity || 1), 0) || 0;
+  const legacyFabrication = quotation?.lineItems?.reduce((sum, li) => sum + asMoney(li.labor) * (li.quantity || 1), 0) || 0;
+  const internalCosts = {
+    ...empty.internalCosts,
+    ...(legacyMaterials || legacyFabrication ? {
+      estimatedMaterials: String(legacyMaterials || ''),
+      fabricationWork: String(legacyFabrication || ''),
+    } : {}),
+    ...(quotation?.internalCosts || {}),
+  };
+  const subtotal = INTERNAL_COST_FIELDS.reduce((sum, field) => sum + asMoney(internalCosts[field.key]), 0);
+  const discount = quotation?.discount || '';
+  const total = Math.max(subtotal - asMoney(discount), 0);
+  const systemEstimatedDuration = quotation?.systemEstimatedDuration || empty.systemEstimatedDuration;
+  const adjustedEstimatedDuration = quotation?.adjustedEstimatedDuration || '';
   return {
-    lineItems: quotation?.lineItems || [],
-    fees: '',
+    internalCosts,
+    costPreset: {
+      serviceType: quotation?.costPreset?.serviceType || serviceType,
+      complexity: quotation?.costPreset?.complexity || complexity,
+      suggestedAt: quotation?.costPreset?.suggestedAt,
+      suggestedValues: quotation?.costPreset?.suggestedValues,
+    },
+    discount: String(discount || ''),
+    subtotal: String(quotation?.subtotal || subtotal || ''),
+    total: String(quotation?.total || total || ''),
     validityDays: quotation?.validityDays || '30',
-    breakdown: quotation?.breakdown || '',
-    estimatedDuration: quotation?.estimatedDuration || '',
+    systemEstimatedDuration,
+    adjustedEstimatedDuration,
+    estimatedDuration: adjustedEstimatedDuration || quotation?.estimatedDuration || systemEstimatedDuration,
+    inclusions: quotation?.inclusions || quotation?.breakdown || '',
+    exclusions: quotation?.exclusions || '',
     engineerNotes: quotation?.engineerNotes || '',
     paymentMilestones: quotation?.paymentMilestones || [],
   };
@@ -110,6 +236,7 @@ function FilePickerWithPreview({
   isUploading,
   onFileSelect,
   onRemove,
+  onPreview,
   accept,
   label,
 }: {
@@ -117,6 +244,7 @@ function FilePickerWithPreview({
   isUploading?: boolean;
   onFileSelect: (f: File | null) => void;
   onRemove: () => void;
+  onPreview: (file: { key: string; name: string; type?: string }) => void;
   accept: string;
   label: string;
 }) {
@@ -124,6 +252,8 @@ function FilePickerWithPreview({
   const { resolvedTheme } = useThemeStore();
   const isDark = resolvedTheme === 'dark';
   const isImage = fileMeta?.type.startsWith('image/');
+  const isDesign = /design/i.test(label);
+  const [isDragActive, setIsDragActive] = useState(false);
   const { url } = useAuthenticatedUrl(fileMeta?.key || null);
 
   const formatSize = (bytes: number) => {
@@ -134,17 +264,49 @@ function FilePickerWithPreview({
 
   const handlePreview = () => {
     if (fileMeta?.key) {
-      if (fileMeta.key.startsWith('http')) {
-        window.open(fileMeta.key, '_blank');
-      } else {
-        openAuthenticatedFile(fileMeta.key);
-      }
+      onPreview({ key: fileMeta.key, name: fileMeta.name, type: fileMeta.type });
     }
   };
 
+  const handleDragOver = (e: React.DragEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragActive) setIsDragActive(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragActive(false);
+    const dropped = e.dataTransfer.files?.[0] || null;
+    onFileSelect(dropped);
+  };
+
+  const FileKindIcon = isDesign ? Image : FileText;
+
   return (
-    <div>
-      <label className={`mb-1.5 block text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>{label}</label>
+    <div className={`rounded-2xl border p-4 ${isDark ? 'border-slate-700 bg-slate-900/45' : 'border-[#d2d2d7] bg-white/70'}`}>
+      <div className="mb-4 flex items-center gap-3">
+        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${
+          isDesign
+            ? (isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-100 text-emerald-700')
+            : (isDark ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-100 text-sky-700')
+        }`}>
+          <FileKindIcon className="h-6 w-6" />
+        </span>
+        <div>
+          <p className={`text-base font-semibold ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>
+            {label.replace('*', '')}<span className="text-red-400">*</span>
+          </p>
+          <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-[#6e6e73]'}`}>Required</p>
+        </div>
+      </div>
       <input
         ref={inputRef}
         type="file"
@@ -156,7 +318,7 @@ function FilePickerWithPreview({
         className="hidden"
       />
       {isUploading ? (
-        <div className={`w-full rounded-xl border-2 border-dashed p-6 text-center flex flex-col items-center justify-center ${isDark ? 'border-slate-700 bg-slate-950/45' : 'border-[#c8c8cd] bg-[#f5f5f7]/30'}`}>
+        <div className={`w-full min-h-[184px] rounded-xl border border-dashed p-6 text-center flex flex-col items-center justify-center ${isDark ? 'border-slate-700 bg-slate-950/45' : 'border-[#c8c8cd] bg-[#f5f5f7]/30'}`}>
           <Loader2 className={`h-6 w-6 animate-spin ${isDark ? 'text-sky-400' : 'text-[#0066cc]'}`} />
           <p className={`mt-2 text-xs font-medium ${isDark ? 'text-slate-100' : 'text-[#3a3a3e]'}`}>Uploading...</p>
         </div>
@@ -217,30 +379,122 @@ function FilePickerWithPreview({
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          className={`w-full cursor-pointer rounded-xl border-2 border-dashed p-6 text-center transition-colors ${isDark ? 'border-slate-700 bg-slate-950/45 hover:border-slate-500 hover:bg-slate-900/70' : 'border-[#c8c8cd] hover:border-[#86868b] hover:bg-[#f5f5f7]/30'}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`w-full min-h-[184px] cursor-pointer rounded-xl border border-dashed px-6 py-7 text-center transition-colors ${
+            isDesign
+              ? (isDark ? 'border-emerald-500/55 bg-slate-950/45 hover:border-emerald-400/80 hover:bg-slate-900/70' : 'border-emerald-400 hover:border-emerald-500 hover:bg-emerald-50/30')
+              : (isDark ? 'border-sky-500/55 bg-slate-950/45 hover:border-sky-400/80 hover:bg-slate-900/70' : 'border-sky-400 hover:border-sky-500 hover:bg-sky-50/30')
+          } ${
+            isDragActive
+              ? (isDesign
+                ? (isDark ? 'border-emerald-300 bg-emerald-500/10' : 'border-emerald-600 bg-emerald-50/60')
+                : (isDark ? 'border-sky-300 bg-sky-500/10' : 'border-sky-600 bg-sky-50/60'))
+              : ''
+          }`}
         >
-          <Upload className={`mx-auto mb-1.5 h-6 w-6 ${isDark ? 'text-slate-300' : 'text-[#86868b]'}`} />
-          <p className={`text-xs font-medium ${isDark ? 'text-slate-100' : 'text-[#3a3a3e]'}`}>Choose file</p>
-          <p className={`mt-0.5 text-[10px] ${isDark ? 'text-slate-400' : 'text-[#86868b]'}`}>
-            {accept.replace(/\./g, '').split(',').join(', ').toUpperCase()}
+          <div className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full border ${
+            isDesign
+              ? (isDark ? 'border-emerald-400/35 bg-emerald-500/10' : 'border-emerald-300 bg-emerald-50')
+              : (isDark ? 'border-sky-400/35 bg-sky-500/10' : 'border-sky-300 bg-sky-50')
+          }`}>
+            <Upload className={`h-8 w-8 ${
+              isDesign
+                ? (isDark ? 'text-emerald-300' : 'text-emerald-600')
+                : (isDark ? 'text-sky-300' : 'text-sky-600')
+            }`} />
+          </div>
+          <p className={`mt-5 text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>Drag and drop your file here</p>
+          <p className={`mt-2 text-sm ${isDark ? 'text-slate-300' : 'text-[#3a3a3e]'}`}>
+            or <span className={`font-semibold ${
+              isDesign
+                ? (isDark ? 'text-emerald-300' : 'text-emerald-600')
+                : (isDark ? 'text-sky-300' : 'text-sky-600')
+            }`}>Choose file</span>
           </p>
+          <div className={`mx-auto mt-4 h-px w-[86%] ${isDark ? 'bg-slate-800' : 'bg-[#d2d2d7]'}`} />
+          <p className={`mt-4 text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>
+            Supported formats: {accept.replace(/\./g, '').split(',').join(', ').toUpperCase()}
+          </p>
+          <p className={`mt-2 text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Max file size: 50MB</p>
         </button>
       )}
     </div>
   );
 }
 
+function AutoLinkedDesignFileCard({
+  fileKey,
+  onPreview,
+}: {
+  fileKey: string;
+  onPreview: (file: { key: string; name: string; type?: string }) => void;
+}) {
+  const { resolvedTheme } = useThemeStore();
+  const isDark = resolvedTheme === 'dark';
+
+  return (
+    <div className={`rounded-2xl border p-4 ${isDark ? 'border-slate-700 bg-slate-900/45' : 'border-[#d2d2d7] bg-white/70'}`}>
+      <div className="mb-4 flex items-center gap-3">
+        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${isDark ? 'bg-emerald-500/15 text-emerald-300' : 'bg-emerald-100 text-emerald-700'}`}>
+          <Image className="h-6 w-6" />
+        </span>
+        <div>
+          <p className={`text-base font-semibold ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>Design File <span className="text-red-400">*</span></p>
+          <p className={`mt-1 text-sm ${isDark ? 'text-slate-400' : 'text-[#6e6e73]'}`}>Required</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => onPreview({ key: fileKey, name: fileKey.split('/').pop() || 'design-file', type: 'image/*' })}
+        className={`group w-full overflow-hidden rounded-xl border border-dashed p-4 text-center transition-colors ${
+          isDark
+            ? 'border-emerald-500/55 bg-slate-950/45 hover:border-emerald-400/80 hover:bg-slate-900/70'
+            : 'border-emerald-400 bg-emerald-50/20 hover:border-emerald-500 hover:bg-emerald-50/30'
+        }`}
+      >
+        <div className={`relative mx-auto aspect-[16/9] max-h-[190px] w-full overflow-hidden rounded-xl border ${isDark ? 'border-slate-700 bg-slate-950/75' : 'border-emerald-200 bg-white'}`}>
+          <AuthImage
+            fileKey={fileKey}
+            alt="Approved design from Design Review"
+            className="absolute inset-0 h-full w-full object-contain transition-transform group-hover:scale-[1.01]"
+          />
+        </div>
+        <p className={`mt-3 text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>Approved Design Review file</p>
+        <p className={`mt-2 text-sm ${isDark ? 'text-slate-300' : 'text-[#3a3a3e]'}`}>or <span className={`${isDark ? 'text-emerald-300' : 'text-emerald-600'} font-semibold`}>View file</span></p>
+        <div className={`mx-auto mt-3 h-px w-[86%] ${isDark ? 'bg-slate-800' : 'bg-[#d2d2d7]'}`} />
+        <p className={`mt-3 text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Automatically attached from Design Review</p>
+        <p className={`mt-2 text-xs ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}>Linked</p>
+      </button>
+    </div>
+  );
+}
+
 
 // -- Inline preview thumbnail (loads signed URL via hook) --
-function FilePreviewThumb({ fileKey, label }: { fileKey: string | undefined | null; label: string }) {
+function FilePreviewThumb({
+  fileKey,
+  label,
+  frameClassName,
+}: {
+  fileKey: string | undefined | null;
+  label: string;
+  frameClassName?: string;
+}) {
   const { url, isLoading } = useAuthenticatedUrl(fileKey ?? null);
   const { resolvedTheme } = useThemeStore();
   const isDark = resolvedTheme === 'dark';
   const isImage = fileKey ? /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(fileKey) : false;
+  const baseFrameClassName = cn(
+    `${isDark ? 'bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.14),rgba(2,6,23,0.94)_62%)] dark:bg-slate-900/70' : 'bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.7),rgba(241,245,249,0.95)_62%)]'} w-full rounded-xl border border-[color:var(--color-border)]/55 flex items-center justify-center dark:border-slate-700`,
+    'mx-auto aspect-[16/9] max-h-[420px] max-w-[820px] overflow-hidden',
+    frameClassName,
+  );
 
   if (isLoading) {
     return (
-      <div className={`${isDark ? 'bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.14),rgba(2,6,23,0.94)_62%)] dark:bg-slate-900/70' : 'bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.7),rgba(241,245,249,0.95)_62%)]'} aspect-[4/3] rounded-xl border border-[color:var(--color-border)]/55 flex items-center justify-center dark:border-slate-700`}>
+      <div className={baseFrameClassName}>
         <Loader2 className={`h-8 w-8 animate-spin ${isDark ? 'text-gray-300 dark:text-slate-500' : 'text-[var(--text-metal-muted-color)]'}`} />
       </div>
     );
@@ -248,7 +502,7 @@ function FilePreviewThumb({ fileKey, label }: { fileKey: string | undefined | nu
 
   if (url && isImage) {
     return (
-      <div className={`${isDark ? 'bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.14),rgba(2,6,23,0.94)_62%)] dark:bg-slate-900/70' : 'bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.7),rgba(241,245,249,0.95)_62%)]'} aspect-[4/3] rounded-xl border border-[color:var(--color-border)]/55 flex items-center justify-center overflow-hidden dark:border-slate-700`}>
+      <div className={baseFrameClassName}>
         <img src={url} alt={label} className="max-h-full max-w-full object-contain" />
       </div>
     );
@@ -258,7 +512,7 @@ function FilePreviewThumb({ fileKey, label }: { fileKey: string | undefined | nu
   const isPdf = fileKey ? /\.pdf$/i.test(fileKey) : false;
   const isSpreadsheet = fileKey ? /\.(xlsx?|csv)$/i.test(fileKey) : false;
   return (
-    <div className={`${isDark ? 'bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.14),rgba(2,6,23,0.94)_62%)] dark:bg-slate-900/70' : 'bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.7),rgba(241,245,249,0.95)_62%)]'} aspect-[4/3] rounded-xl border border-[color:var(--color-border)]/55 flex items-center justify-center dark:border-slate-700`}>
+    <div className={baseFrameClassName}>
       <div className="text-center p-6">
         {isPdf ? (
           <FileText className={`mx-auto mb-3 h-12 w-12 ${isDark ? 'text-red-300' : 'text-red-500'}`} />
@@ -282,6 +536,8 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
   const isBlueprintMode = mode === 'blueprint';
   const isCostingMode = mode === 'costing';
   const isEngineer = user?.roles?.some((r: string) => r === 'engineer');
+  const isAdmin = user?.roles?.some((r: string) => r === Role.ADMIN);
+  const isCashier = user?.roles?.some((r: string) => r === Role.CASHIER);
   const isCustomer = user?.roles?.some((r: string) => r === Role.CUSTOMER);
   const isFabricationStaff = user?.roles?.some((r: string) => r === Role.FABRICATION_STAFF);
 
@@ -299,7 +555,6 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
   const revisionMutation = useRequestBlueprintRevision();
   const selectPaymentPlanMutation = useSelectProjectPaymentPlan();
   const [approvingComponent, setApprovingComponent] = useState<'blueprint' | 'costing' | null>(null);
-  const [showInstallmentSchedule, setShowInstallmentSchedule] = useState(false);
 
   const { data: configs } = useConfigs();
   const surchargePercent = (() => {
@@ -315,6 +570,31 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
     );
   })();
   const activeProjectItem = project?.items?.find((item) => item._id === projectItemId);
+  const approvedInitialDesignKey = useMemo(() => {
+    const itemStatus = activeProjectItem?.designReviewStatus;
+    const projectStatus = project?.designReviewStatus;
+    const isApproved = itemStatus === 'approved' || projectStatus === 'approved';
+    if (!isApproved) return '';
+    return activeProjectItem?.initialDesignKeys?.[0] || project?.initialDesignKeys?.[0] || '';
+  }, [
+    activeProjectItem?.designReviewStatus,
+    activeProjectItem?.initialDesignKeys,
+    project?.designReviewStatus,
+    project?.initialDesignKeys,
+  ]);
+  const costingServiceType = activeProjectItem?.serviceType || activeProjectItem?.title || project?.serviceType || 'custom';
+  const autoDesignFileMeta = useMemo<DraftFileMeta | null>(() => {
+    if (!approvedInitialDesignKey) return null;
+    const fallbackName = approvedInitialDesignKey.split('/').pop() || 'approved-design';
+    return {
+      key: approvedInitialDesignKey,
+      name: fallbackName,
+      type: 'image/*',
+      size: 0,
+      uploadedAt: new Date().toISOString(),
+    };
+  }, [approvedInitialDesignKey]);
+  const { data: quotationHistory } = useQuotationHistory(isCostingMode && (isEngineer || isAdmin) ? blueprint?._id : undefined);
   const canUploadInitialBlueprint = Boolean(
     isAssigned
     && project
@@ -329,6 +609,7 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
   );
 
   const canReviewBlueprint = isCustomer;
+  const canViewInternalCosting = Boolean(isEngineer || isAdmin);
   const hasActiveItemPaymentPlan = Boolean(paymentPlan);
 
   // ── Customer review state ──
@@ -354,56 +635,117 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
   const [blueprintFileMeta, setBlueprintFileMeta] = useState<DraftFileMeta | null>(null);
   const [designFileMeta, setDesignFileMeta] = useState<DraftFileMeta | null>(null);
   const [costingFileMeta, setCostingFileMeta] = useState<DraftFileMeta | null>(null);
+  const effectiveDesignFileMeta = designFileMeta || autoDesignFileMeta;
+  const [previewFile, setPreviewFile] = useState<{ key: string; name: string; type?: string } | null>(null);
+  const { url: previewFileUrl, isLoading: isPreviewFileLoading } = useAuthenticatedUrl(
+    previewFile?.key && !previewFile.key.startsWith('http') ? previewFile.key : null,
+  );
   const [uploadingFile, setUploadingFile] = useState<'blueprint'|'design'|'costing'|null>(null);
   const [uploading, setUploading] = useState(false);
-  const [quotLineItems, setQuotLineItems] = useState<{ label: string; quantity: number; materials: string; labor: string }[]>([]);
+  const [quotInternalCosts, setQuotInternalCosts] = useState<QuotationInternalCosts<string>>({ ...EMPTY_INTERNAL_COSTS });
   const [quotValidityDays, setQuotValidityDays] = useState('30');
-  const [quotBreakdown, setQuotBreakdown] = useState('');
-  const [quotDuration, setQuotDuration] = useState('');
-  const [quotNotes, setQuotNotes] = useState('');
-  const [quotMilestones, setQuotMilestones] = useState<{ label: string; description: string }[]>([]);
+  const [quotSystemDuration, setQuotSystemDuration] = useState('');
   const [quotInitialized, setQuotInitialized] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const draftCacheKey = useMemo(
+    () => `blueprint-tab-cache:${projectId}:${projectItemId || 'legacy'}:${mode}`,
+    [projectId, projectItemId, mode],
+  );
 
-  const currentQuotation = useMemo(() => ({
-    lineItems: quotLineItems,
-    fees: '',
+  const quotSubtotal = useMemo(
+    () => INTERNAL_COST_FIELDS.reduce((sum, field) => sum + asMoney(quotInternalCosts[field.key]), 0),
+    [quotInternalCosts],
+  );
+  const quotGrandTotal = quotSubtotal;
+  const quotEstimatedDuration = quotSystemDuration;
+  const resolvedPreviewUrl = previewFile?.key?.startsWith('http') ? previewFile.key : previewFileUrl;
+  const previewName = previewFile?.name || 'File';
+  const previewType = (previewFile?.type || '').toLowerCase();
+  const previewKey = (previewFile?.key || '').toLowerCase();
+  const isPreviewImage = previewType.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(previewKey);
+
+  const currentQuotation = useMemo<BlueprintDraft['quotation']>(() => ({
+    internalCosts: quotInternalCosts,
+    costPreset: {
+      serviceType: costingServiceType,
+      complexity: 'standard',
+    },
+    discount: '',
+    subtotal: String(quotSubtotal || ''),
+    total: String(quotGrandTotal || ''),
     validityDays: quotValidityDays,
-    breakdown: quotBreakdown,
-    estimatedDuration: quotDuration,
-    engineerNotes: quotNotes,
-    paymentMilestones: quotMilestones,
-  }), [quotLineItems, quotValidityDays, quotBreakdown, quotDuration, quotNotes, quotMilestones]);
+    systemEstimatedDuration: quotSystemDuration,
+    adjustedEstimatedDuration: '',
+    estimatedDuration: quotEstimatedDuration,
+    inclusions: '',
+    exclusions: '',
+    engineerNotes: '',
+    paymentMilestones: [],
+  }), [
+    costingServiceType,
+    quotEstimatedDuration,
+    quotGrandTotal,
+    quotInternalCosts,
+    quotSubtotal,
+    quotSystemDuration,
+    quotValidityDays,
+  ]);
 
   const lastSavedQuotation = useRef(currentQuotation);
 
   useEffect(() => {
-    const emptyQuotation = getEmptyQuotation();
+    try {
+      const raw = sessionStorage.getItem(draftCacheKey);
+      if (!raw) return;
+      const cached = JSON.parse(raw) as BlueprintTabDraftCache;
+      if (cached.blueprintFileMeta) setBlueprintFileMeta(cached.blueprintFileMeta);
+      if (cached.designFileMeta) setDesignFileMeta(cached.designFileMeta);
+      if (cached.costingFileMeta) setCostingFileMeta(cached.costingFileMeta);
+      if (cached.quotInternalCosts) setQuotInternalCosts(cached.quotInternalCosts);
+      if (typeof cached.quotValidityDays === 'string') setQuotValidityDays(cached.quotValidityDays);
+      if (typeof cached.quotSystemDuration === 'string') setQuotSystemDuration(cached.quotSystemDuration);
+    } catch {
+      // ignore corrupted cache payload
+    }
+  }, [draftCacheKey]);
+
+  useEffect(() => {
+    const payload: BlueprintTabDraftCache = {
+      blueprintFileMeta,
+      designFileMeta,
+      costingFileMeta,
+      quotInternalCosts,
+      quotValidityDays,
+      quotSystemDuration,
+    };
+    sessionStorage.setItem(draftCacheKey, JSON.stringify(payload));
+  }, [
+    blueprintFileMeta,
+    costingFileMeta,
+    designFileMeta,
+    draftCacheKey,
+    quotInternalCosts,
+    quotSystemDuration,
+    quotValidityDays,
+  ]);
+
+  useEffect(() => {
+    if (sessionStorage.getItem(draftCacheKey)) {
+      setQuotInitialized(false);
+      return;
+    }
+    const emptyQuotation = getEmptyQuotation(costingServiceType, 'standard');
     setBlueprintFileMeta(null);
     setDesignFileMeta(null);
     setCostingFileMeta(null);
-    setQuotLineItems(emptyQuotation.lineItems || []);
+    setQuotInternalCosts(emptyQuotation.internalCosts);
     setQuotValidityDays(emptyQuotation.validityDays || '30');
-    setQuotBreakdown(emptyQuotation.breakdown || '');
-    setQuotDuration(emptyQuotation.estimatedDuration || '');
-    setQuotNotes(emptyQuotation.engineerNotes || '');
-    setQuotMilestones(emptyQuotation.paymentMilestones || []);
+    setQuotSystemDuration(emptyQuotation.systemEstimatedDuration);
     lastSavedQuotation.current = emptyQuotation;
     setQuotInitialized(false);
-  }, [projectItemId]);
+  }, [costingServiceType, draftCacheKey, projectItemId]);
 
-  // ── Derive visit report line items ──
-  const visitReport: VisitReport | null = useMemo(() => {
-    const activeItem = project?.items?.find((item) => item._id === projectItemId);
-    const itemReport = activeItem?.ocularVisitReportId || activeItem?.consultationVisitReportId;
-    if (itemReport && typeof itemReport !== 'string') return itemReport as VisitReport;
-    if (!project?.visitReportId || typeof project.visitReportId === 'string') return null;
-    return project.visitReportId as VisitReport;
-  }, [project, projectItemId]);
-
-  const vrLineItems = visitReport?.lineItems;
-
-  // Pre-populate installment milestones from config defaults (once)
+  // Payment dialogs still use the live config to show surcharge details.
   const cfgSplit: number[] = (() => {
     const c = configs?.find(cfg => cfg.key === 'installment_split');
     return Array.isArray(c?.value) ? (c.value as number[]) : [30, 40, 30];
@@ -430,43 +772,23 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
       if (dbDraft.files?.design) setDesignFileMeta(dbDraft.files.design as DraftFileMeta);
       if (dbDraft.files?.costing) setCostingFileMeta(dbDraft.files.costing as DraftFileMeta);
 
-      const nextQuotation = normalizeDraftQuotation(dbDraft.quotation);
+      const nextQuotation = normalizeDraftQuotation(dbDraft.quotation, costingServiceType, 'standard');
       if (dbDraft.quotation) {
-        setQuotLineItems(nextQuotation.lineItems || []);
+        setQuotInternalCosts(nextQuotation.internalCosts);
         setQuotValidityDays(nextQuotation.validityDays || '30');
-        setQuotBreakdown(nextQuotation.breakdown || '');
-        setQuotDuration(nextQuotation.estimatedDuration || '');
-        setQuotNotes(nextQuotation.engineerNotes || '');
-        setQuotMilestones(nextQuotation.paymentMilestones || []);
+        setQuotSystemDuration(nextQuotation.systemEstimatedDuration);
       }
       lastSavedQuotation.current = nextQuotation;
       setQuotInitialized(true);
       return;
     } else if (dbDraft === null) {
       // null means successfully fetched but no draft exists
-      const nextQuotation = getEmptyQuotation();
-      if (vrLineItems && vrLineItems.length > 0) {
-        nextQuotation.lineItems = vrLineItems.map((li) => ({
-          label: li.label,
-          quantity: li.quantity || 1,
-          materials: '',
-          labor: '',
-        }));
-        setQuotLineItems(nextQuotation.lineItems);
-      }
-
-      if (cfgSplit.length > 0) {
-        nextQuotation.paymentMilestones = cfgSplit.map((_, idx) => ({
-          label: cfgLabels[idx] || `Stage ${idx + 1}`,
-          description: cfgDescriptions[idx] || '',
-        }));
-        setQuotMilestones(nextQuotation.paymentMilestones);
-      }
-
+      const nextQuotation = getEmptyQuotation(costingServiceType, 'standard');
+      setQuotSystemDuration(nextQuotation.systemEstimatedDuration);
       lastSavedQuotation.current = nextQuotation;
       setQuotInitialized(true);
     }
-  }, [dbDraft, cfgDescriptions, cfgLabels, cfgSplit, projectItemId, quotInitialized, vrLineItems]);
+  }, [costingServiceType, dbDraft, projectItemId, quotInitialized]);
 
   // DB Autosave Form Hook
   useEffect(() => {
@@ -566,26 +888,12 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
     });
   };
 
-  // Computed totals
-  const quotItemTotals = quotLineItems.map(li => {
-    const m = Number(li.materials) || 0;
-    const l = Number(li.labor) || 0;
-    return (m + l) * li.quantity;
-  });
-  const quotSubtotal = quotItemTotals.reduce((s, v) => s + v, 0);
-  const quotGrandTotal = quotSubtotal;
-  const quotTotalMaterials = quotLineItems.reduce((s, li) => s + (Number(li.materials) || 0) * li.quantity, 0);
-  const quotTotalLabor = quotLineItems.reduce((s, li) => s + (Number(li.labor) || 0) * li.quantity, 0);
+  const handleOpenPreviewModal = (file: { key: string; name: string; type?: string }) => {
+    setPreviewFile(file);
+  };
 
-  // Line item mutation helpers
-  const updateLineItem = (idx: number, field: string, value: string | number) => {
-    setQuotLineItems(prev => prev.map((li, i) => (i === idx ? { ...li, [field]: value } : li)));
-  };
-  const addLineItem = () => {
-    setQuotLineItems(prev => [...prev, { label: '', quantity: 1, materials: '', labor: '' }]);
-  };
-  const removeLineItem = (idx: number) => {
-    setQuotLineItems(prev => prev.filter((_, i) => i !== idx));
+  const updateInternalCost = (key: InternalCostKey, value: string) => {
+    setQuotInternalCosts((prev) => ({ ...prev, [key]: value }));
   };
 
   const inputCls = `w-full h-9 rounded-lg border px-3 text-sm transition-colors focus:outline-none focus:ring-2 ${isDark ? 'border-slate-700 bg-slate-950/70 text-slate-100 placeholder:text-slate-500 focus:border-sky-400/70 focus:ring-sky-400/25' : 'border-[#d2d2d7] bg-[#f5f5f7]/50 focus:border-[#b8b8bd] focus:ring-[#6e6e73]'}`;
@@ -603,191 +911,133 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
     return Number.isFinite(total) && total > 0 ? total : 1;
   };
   const hasPayableQuotation = (bp?: Blueprint | null) => Boolean(bp?.quotation);
+  const isQuotationSentToCustomer = (bp?: Blueprint | null) => Boolean(bp?.quotation && bp.quotationReviewStatus === 'sent_to_customer');
+  const quotationStatus = blueprint?.quotationReviewStatus || (blueprint?.quotation ? 'for_review' : 'draft');
+  const quotationStatusLabel = {
+    draft: 'Draft',
+    for_review: 'Pending Release',
+    approved: 'Approved',
+    sent_to_customer: 'Sent to Customer',
+  }[quotationStatus] || 'Draft';
+  const previewDialog = (
+    <Dialog
+      open={Boolean(previewFile)}
+      onOpenChange={(open) => {
+        if (!open) setPreviewFile(null);
+      }}
+    >
+      <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-4xl dark:border-slate-700 dark:bg-slate-900">
+        <DialogHeader>
+          <DialogTitle className="truncate text-gray-900 dark:text-slate-100">{previewName}</DialogTitle>
+        </DialogHeader>
+        <div className={`relative min-h-[420px] rounded-xl border p-2 ${isDark ? 'border-slate-700 bg-slate-950/80' : 'border-[#d2d2d7] bg-[#f5f5f7]/60'}`}>
+          {isPreviewFileLoading ? (
+            <div className="flex h-[420px] items-center justify-center">
+              <Loader2 className={`h-7 w-7 animate-spin ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`} />
+            </div>
+          ) : resolvedPreviewUrl ? (
+            isPreviewImage ? (
+              <img src={resolvedPreviewUrl} alt={previewName} className="mx-auto max-h-[72vh] w-auto max-w-full object-contain rounded-lg" />
+            ) : (
+              <iframe
+                title={previewName}
+                src={resolvedPreviewUrl}
+                className="h-[72vh] w-full rounded-lg border-0"
+              />
+            )
+          ) : (
+            <div className={`flex h-[420px] items-center justify-center text-sm ${isDark ? 'text-slate-400' : 'text-[#6e6e73]'}`}>
+              Preview unavailable for this file.
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              if (previewFile?.key?.startsWith('http')) {
+                window.open(previewFile.key, '_blank');
+              } else if (previewFile?.key) {
+                openAuthenticatedFile(previewFile.key);
+              }
+            }}
+            className="rounded-lg"
+            disabled={!previewFile?.key}
+          >
+            Open in new tab
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 
   // Shared quotation form used in both first-upload and revision-upload
   const quotationFormJSX = (
     <div className={`space-y-4 border-t pt-3 ${isDark ? 'border-slate-800/80' : 'border-[#c8c8cd]/50'}`}>
-      <p className={`text-sm font-medium ${isDark ? 'text-slate-100' : 'text-[#3a3a3e]'}`}>Quotation Details <span className="text-xs text-red-500">*</span></p>
-
-      {/* ── Itemized pricing table ── */}
-      {quotLineItems.length > 0 && (
-        <div className="space-y-2">
-          {/* Table header (hidden on small screens, visible on >=640) */}
-          <div className={`hidden gap-2 px-1 text-[10px] font-medium uppercase tracking-wider sm:grid sm:grid-cols-[1fr_60px_100px_100px_90px_32px] ${isDark ? 'text-slate-400' : 'text-[#86868b]'}`}>
-            <span>Item</span>
-            <span>Qty</span>
-            <span>Materials (₱)</span>
-            <span>Labor (₱)</span>
-            <span className="text-right">Total</span>
-            <span />
-          </div>
-
-          {quotLineItems.map((li, idx) => {
-            const rowTotal = quotItemTotals[idx] || 0;
-            return (
-              <div key={idx} className={`space-y-2 rounded-lg p-3 sm:grid sm:grid-cols-[1fr_60px_100px_100px_90px_32px] sm:items-center sm:gap-2 sm:space-y-0 sm:border-0 sm:bg-transparent sm:p-0 ${isDark ? 'border border-slate-800/80 bg-slate-950/45' : 'border border-[#d2d2d7]/60 bg-white'}`}>
-                {/* Item name */}
-                <div>
-                  <span className={`mb-1 block text-[10px] font-medium uppercase tracking-wider sm:hidden ${isDark ? 'text-slate-400' : 'text-[#86868b]'}`}>Item</span>
-                  <input value={li.label} onChange={e => updateLineItem(idx, 'label', e.target.value)} placeholder="Item name" className={inputCls} />
-                </div>
-                {/* Quantity */}
-                <div>
-                  <span className={`mb-1 block text-[10px] font-medium uppercase tracking-wider sm:hidden ${isDark ? 'text-slate-400' : 'text-[#86868b]'}`}>Qty</span>
-                  <input type="number" value={li.quantity} onChange={e => updateLineItem(idx, 'quantity', Math.max(1, Number(e.target.value) || 1))} min={1} className={inputCls} />
-                </div>
-                <div className="grid grid-cols-2 gap-2 sm:contents">
-                  <div>
-                    <span className={`mb-1 block text-[10px] font-medium uppercase tracking-wider sm:hidden ${isDark ? 'text-slate-400' : 'text-[#86868b]'}`}>Materials (₱)</span>
-                    <input type="number" value={li.materials} onChange={e => updateLineItem(idx, 'materials', e.target.value)} min={0} step={0.01} placeholder="0.00" className={inputCls} />
-                  </div>
-                  <div>
-                    <span className={`mb-1 block text-[10px] font-medium uppercase tracking-wider sm:hidden ${isDark ? 'text-slate-400' : 'text-[#86868b]'}`}>Labor (₱)</span>
-                    <input type="number" value={li.labor} onChange={e => updateLineItem(idx, 'labor', e.target.value)} min={0} step={0.01} placeholder="0.00" className={inputCls} />
-                  </div>
-                </div>
-                <div className="flex items-center justify-between sm:justify-end">
-                  <span className={`text-[10px] font-medium uppercase tracking-wider sm:hidden ${isDark ? 'text-slate-400' : 'text-[#86868b]'}`}>Total</span>
-                  <p className={`flex h-9 items-center text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>{formatCurrency(rowTotal)}</p>
-                </div>
-                <div className="flex justify-end">
-                  <button type="button" onClick={() => removeLineItem(idx)} className={`rounded p-1 transition-colors ${isDark ? 'text-red-300 hover:text-red-200' : 'text-red-400 hover:text-red-600'}`} title="Remove item">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <Button
-        type="button"
-        size="sm"
-        variant="secondary"
-        onClick={addLineItem}
-        className={isDark ? 'w-fit border border-slate-600/80 text-slate-100' : 'w-fit border border-[#d2d2d7]/80 text-[#3a3a3e]'}
-      >
-        <Plus className="h-3.5 w-3.5" /> Add Item
-      </Button>
-
-      <div className="grid grid-cols-1 gap-3">
-        <div className="max-w-md">
-          <label className={`mb-1 block text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Quotation Validity</label>
-          <Select value={quotValidityDays} onValueChange={setQuotValidityDays}>
-            <SelectTrigger className={`h-9 w-full rounded-lg border px-3 text-sm transition-colors focus:outline-none focus:ring-2 ${isDark ? 'border-slate-700 bg-slate-950/70 text-slate-100 focus:border-sky-400/70 focus:ring-sky-400/25' : 'border-[#d2d2d7] bg-[#f5f5f7]/50 focus:border-[#b8b8bd] focus:ring-[#6e6e73]'}`}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className={`rounded-xl border shadow-lg ${isDark ? 'border-slate-700 bg-slate-950 text-slate-100' : 'border-[#d2d2d7] bg-white'}`}>
-              <SelectItem value="15" className="rounded-lg text-sm">15 days</SelectItem>
-              <SelectItem value="30" className="rounded-lg text-sm">30 days</SelectItem>
-              <SelectItem value="45" className="rounded-lg text-sm">45 days</SelectItem>
-              <SelectItem value="60" className="rounded-lg text-sm">60 days</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* Live totals */}
-      {quotGrandTotal > 0 && (
-        <div className={`space-y-1.5 rounded-lg border p-3 ${isDark ? 'border-slate-800 bg-slate-950/60' : 'border-[#e8e8ed] bg-[#f5f5f7]'}`}>
-          <div className={`flex justify-between text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>
-            <span>Materials</span>
-            <span>{formatCurrency(quotTotalMaterials)}</span>
-          </div>
-          <div className={`flex justify-between text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>
-            <span>Labor</span>
-            <span>{formatCurrency(quotTotalLabor)}</span>
-          </div>
-          <div className={`flex justify-between border-t pt-1.5 text-sm font-bold ${isDark ? 'border-slate-800 text-emerald-300' : 'border-[#d2d2d7] text-emerald-700'}`}>
-            <span>Grand Total</span>
-            <span>{formatCurrency(quotGrandTotal)}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Duration + Scope + Notes */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className={`mb-1 block text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Estimated Duration</label>
-          <input value={quotDuration} onChange={e => setQuotDuration(e.target.value)} placeholder="e.g. 2-3 weeks" className={inputCls} />
-        </div>
-      </div>
-      <div>
-        <label className={`mb-1 block text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Scope of Work</label>
-        <textarea value={quotBreakdown} onChange={e => setQuotBreakdown(e.target.value)} placeholder="Describe what will be fabricated and installed..." rows={3} className={`w-full rounded-lg border px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 ${isDark ? 'border-slate-700 bg-slate-950/70 text-slate-100 placeholder:text-slate-500 focus:border-sky-400/70 focus:ring-sky-400/25' : 'border-[#d2d2d7] bg-[#f5f5f7]/50 focus:border-[#b8b8bd] focus:ring-[#6e6e73]'}`} />
-      </div>
-      <div>
-        <label className={`mb-1 block text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Engineer Notes</label>
-        <textarea value={quotNotes} onChange={e => setQuotNotes(e.target.value)} placeholder="Any additional notes for the customer..." rows={2} className={`w-full rounded-lg border px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 ${isDark ? 'border-slate-700 bg-slate-950/70 text-slate-100 placeholder:text-slate-500 focus:border-sky-400/70 focus:ring-sky-400/25' : 'border-[#d2d2d7] bg-[#f5f5f7]/50 focus:border-[#b8b8bd] focus:ring-[#6e6e73]'}`} />
-      </div>
-
-      {/* ── Installment Payment Milestones ── */}
-      {quotMilestones.length > 0 && (
-        <div className={`space-y-3 border-t pt-3 ${isDark ? 'border-slate-800/80' : 'border-[#c8c8cd]/50'}`}>
-          <button
-            type="button"
-            onClick={() => setShowInstallmentSchedule(!showInstallmentSchedule)}
-            className="flex w-full items-center justify-between group py-1.5"
-          >
-            <div className="text-left">
-              <p className={`text-base font-semibold transition-colors ${isDark ? 'text-slate-100 group-hover:text-sky-400' : 'text-[#3a3a3e] group-hover:text-[#0066cc]'}`}>
-                Installment Payment Schedule
-              </p>
-              <p className={`mt-1 text-xs leading-relaxed ${isDark ? 'text-slate-400' : 'text-[#86868b]'}`}>
-                Describe when each payment stage is due. Only applies if the customer chooses installment.
-              </p>
+      <section className={`rounded-xl border p-4 ${isDark ? 'border-sky-500/20 bg-slate-950/45' : 'border-blue-100 bg-blue-50/40'}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <ShieldCheck className={`h-4 w-4 ${isDark ? 'text-sky-300' : 'text-blue-700'}`} />
+              <p className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>Internal Cost Breakdown</p>
+              <Badge variant="outline" className={isDark ? 'border-amber-300/40 text-amber-200' : 'border-amber-300 text-amber-700'}>Internal Use Only</Badge>
             </div>
-            {showInstallmentSchedule ? (
-              <ChevronUp className="h-5 w-5 text-[#86868b] transition-transform" />
-            ) : (
-              <ChevronDown className="h-5 w-5 text-[#86868b] transition-transform" />
-            )}
-          </button>
-
-          {showInstallmentSchedule && (
-            <div className="space-y-3 pt-1 animate-in fade-in duration-200">
-          {quotMilestones.map((ms, idx) => (
-            <div key={idx} className={`space-y-2 rounded-lg border p-3 ${isDark ? 'border-slate-800 bg-slate-950/55' : 'border-[#d2d2d7]/60 bg-[#f5f5f7]/30'}`}>
-              <div className="flex items-center gap-2">
-                <span className={`shrink-0 text-[10px] font-medium uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[#86868b]'}`}>Stage {idx + 1}</span>
-                <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold ${isDark ? 'bg-slate-800 text-slate-200' : 'bg-[#e8e8ed] text-[#6e6e73]'}`}>{cfgSplit[idx]}%</span>
-              </div>
-              <input
-                value={ms.label}
-                onChange={e => setQuotMilestones(prev => prev.map((m, i) => i === idx ? { ...m, label: e.target.value } : m))}
-                placeholder="Stage label (e.g. Down Payment)"
-                className={inputCls}
-              />
-              <input
-                value={ms.description}
-                onChange={e => setQuotMilestones(prev => prev.map((m, i) => i === idx ? { ...m, description: e.target.value } : m))}
-                placeholder="When is this due? (e.g. Before fabrication starts)"
-                className={inputCls}
-              />
-            </div>
+            <p className={`mt-1 text-xs ${isDark ? 'text-slate-400' : 'text-[#6e6e73]'}`}>Used by engineering/admin for estimation. Customers will not see this breakdown.</p>
+          </div>
+          <div />
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {INTERNAL_COST_FIELDS.map((field) => (
+            <label key={field.key} className="block">
+              <span className={`mb-1 block text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>{field.label}</span>
+              <input type="number" min={0} step={0.01} value={quotInternalCosts[field.key]} onChange={(e) => updateInternalCost(field.key, e.target.value)} placeholder="0.00" className={inputCls} />
+            </label>
           ))}
         </div>
-      )}
+      </section>
+
+      <section className={`rounded-xl border p-4 ${isDark ? 'border-slate-800 bg-slate-950/45' : 'border-[#e8e8ed] bg-white'}`}>
+        <p className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>Commercial Terms</p>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="block">
+            <span className={`mb-1 block text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Quotation Validity</span>
+            <Select value={quotValidityDays} onValueChange={setQuotValidityDays}>
+              <SelectTrigger className={`h-9 rounded-lg border px-3 text-sm ${isDark ? 'border-slate-700 bg-slate-950/70 text-slate-100' : 'border-[#d2d2d7] bg-[#f5f5f7]/50'}`}><SelectValue /></SelectTrigger>
+              <SelectContent className={isDark ? 'border-slate-700 bg-slate-950 text-slate-100' : 'border-[#d2d2d7] bg-white'}>
+                <SelectItem value="15">15 days</SelectItem>
+                <SelectItem value="30">30 days</SelectItem>
+                <SelectItem value="45">45 days</SelectItem>
+                <SelectItem value="60">60 days</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+          <label className="block">
+            <span className={`mb-1 block text-xs ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>System Estimated Duration</span>
+            <input value={quotSystemDuration} readOnly className={`${inputCls} opacity-80`} />
+          </label>
+        </div>
+      </section>
     </div>
-  )}
-</div>
-);
+  );
 
   // ── Helpers ──
   const handleViewFile = (key: string) => {
     if (!key) return;
-    if (key.startsWith('http')) {
-      window.open(key, '_blank');
-    } else {
-      openAuthenticatedFile(key);
-    }
+    setPreviewFile({
+      key,
+      name: key.split('/').pop() || 'file',
+      type: /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(key) ? 'image/*' : undefined,
+    });
   };
 
   // ── Customer handlers ──
   const handleApprove = (blueprintId: string, component: 'blueprint' | 'costing') => {
     if (component === 'costing' && !hasPayableQuotation(blueprint)) {
       toast.error('Billing cannot be approved until engineering provides a valid quotation total.');
+      return;
+    }
+    if (component === 'costing' && !isQuotationSentToCustomer(blueprint)) {
+      toast.error('Billing cannot be approved until the quotation is sent to you.');
       return;
     }
 
@@ -876,8 +1126,12 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
   const uploadInProgressRef = useRef(false);
   const handleBlueprintUpload = async () => {
     if (uploadInProgressRef.current) return;
-    if (!blueprintFileMeta || !designFileMeta || !costingFileMeta) {
-      toast.error('Please select blueprint, design, and costing files');
+    if (!blueprintFileMeta || !effectiveDesignFileMeta) {
+      toast.error('Please select a blueprint file before finalizing');
+      return;
+    }
+    if (isCostingMode && quotGrandTotal <= 0) {
+      toast.error('Enter internal costing amounts before sending the quotation to the customer.');
       return;
     }
     uploadInProgressRef.current = true;
@@ -889,26 +1143,39 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
         await new Promise(resolve => setTimeout(resolve, 2000));
         toast.dismiss('draftSave');
       }
+      if (!designFileMeta && effectiveDesignFileMeta) {
+        await upsertDraftMutation.mutateAsync({
+          projectId,
+          projectItemId,
+          mode: blueprint ? 'revision' : 'initial',
+          sourceBlueprintId: blueprint?._id,
+          files: {
+            blueprint: blueprintFileMeta,
+            design: effectiveDesignFileMeta,
+            costing: costingFileMeta,
+          },
+          quotation: currentQuotation,
+        });
+      }
 
       await finalizeDraftMutation.mutateAsync({ projectId, projectItemId });
 
       toast.success(
-        blueprint
-          ? 'Revision submitted. Your part is complete for now; waiting for customer approval of design and billing.'
-          : 'Blueprint and costing submitted. Your part is complete for now; waiting for customer approval of design and billing.',
+        isCostingMode
+          ? 'Quotation sent to the customer and cashier record.'
+          : blueprint
+            ? 'Revision submitted. Your part is complete for now; waiting for customer approval of design and billing.'
+            : 'Blueprint and quotation sent to the customer.',
         { duration: 7000 },
       );
       
       setBlueprintFileMeta(null);
       setDesignFileMeta(null);
       setCostingFileMeta(null);
-      setQuotLineItems([]);
+      setQuotInternalCosts({ ...EMPTY_INTERNAL_COSTS });
       setQuotValidityDays('30');
-      setQuotBreakdown('');
-      setQuotDuration('');
-      setQuotNotes('');
-      setQuotMilestones([]);
       setQuotInitialized(false);
+      sessionStorage.removeItem(draftCacheKey);
       lastSavedQuotation.current = currentQuotation;
       refetchBlueprint();
       refetchProject();
@@ -926,73 +1193,173 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
   // ═══════════════════════════════════════════
   if (isEngineer) {
     return (
-      <Card className={`-mx-3 rounded-none border-x-0 sm:mx-0 sm:rounded-xl sm:border-x ${isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60 dark:border-slate-700 dark:bg-slate-950/85' : 'border-[#c8c8cd]/50'}`}>
-        <CardHeader className="px-4 sm:px-6">
-          <CardTitle className={`flex items-center gap-2 text-lg ${isDark ? 'text-slate-50' : 'text-[#1d1d1f]'}`}>
-            {isCostingMode ? <Info className="h-5 w-5" /> : <Image className="h-5 w-5" />}
-            {isCostingMode ? 'Costing & Quotation' : 'Blueprint & Design'}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 sm:px-6">
-          {blueprint ? (
-            <div className="space-y-4">
+      <>
+        <Card className={`-mx-3 rounded-none border-x-0 sm:mx-0 sm:rounded-xl sm:border-x ${isDark ? 'metal-panel-strong border-[color:var(--color-border)]/60 dark:border-slate-700 dark:bg-slate-950/85' : 'border-[#c8c8cd]/50'}`}>
+          <CardHeader className="px-4 sm:px-6">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-4">
+                {isBlueprintMode && (
+                  <span className={`flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl ${isDark ? 'bg-slate-800/80 text-sky-300' : 'bg-sky-50 text-sky-600'}`}>
+                    <Image className="h-8 w-8" />
+                  </span>
+                )}
+                <div>
+                  <CardTitle className={`flex items-center gap-2 text-2xl ${isDark ? 'text-slate-50' : 'text-[#1d1d1f]'}`}>
+                    {isCostingMode && <Info className="h-5 w-5" />}
+                    {isCostingMode ? 'Costing & Quotation' : 'Blueprint & Design'}
+                  </CardTitle>
+                  {isBlueprintMode && (
+                    <p className={`mt-3 text-base ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>
+                      Upload the project blueprint and design files to proceed with the review.
+                    </p>
+                  )}
+                </div>
+              </div>
+              {isCostingMode && (
+                <Badge className={isDark ? 'border border-sky-400/30 bg-sky-500/10 text-sky-200' : 'bg-blue-50 text-blue-700'}>
+                  {quotationStatusLabel}
+                </Badge>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="px-4 sm:px-6">
+            {blueprint ? (
+              <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <p className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>Version {blueprint.version}</p>
                 <StatusBadge status={blueprint.status} />
               </div>
-              <div className={cn('grid gap-3', isBlueprintMode ? 'sm:grid-cols-2' : 'sm:grid-cols-1')}>
+              <div className={cn('grid gap-4', isBlueprintMode ? 'md:grid-cols-2' : 'md:grid-cols-1')}>
                 {isBlueprintMode && (
                   <>
-                    <div className={`rounded-xl border p-4 ${isDark ? 'border-slate-700 bg-slate-900/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_34px_rgba(2,6,23,0.24)]' : 'border-[#c8c8cd]/50 bg-[#f5f5f7]/50'}`}>
-                  <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Blueprint</p>
-                  <p className={`mt-1 text-[10px] ${isDark ? 'text-slate-400' : 'text-[#86868b]'}`}>Technical (for fabrication)</p>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className={`mt-2 h-auto p-0 text-xs ${isDark ? 'text-slate-100 hover:bg-transparent hover:text-white' : 'text-[#1d1d1f] hover:text-[#3a3a3e]'}`}
-                    onClick={() => handleDownloadFile(blueprint.blueprintKey)}
-                  >
-                    <Download className="mr-1 h-3 w-3" />
-                    Download
-                  </Button>
-                    </div>
-                    <div className={`rounded-xl border p-4 ${isDark ? 'border-slate-700 bg-slate-900/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_34px_rgba(2,6,23,0.24)]' : 'border-[#c8c8cd]/50 bg-[#f5f5f7]/50'}`}>
-                  <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Design</p>
-                  <p className={`mt-1 text-sm font-medium ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>
-                    {blueprint.blueprintApproved ? 'Approved' : 'Pending Review'}
-                  </p>
-                  {blueprint.designKey ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className={`mt-2 h-auto p-0 text-xs ${isDark ? 'text-slate-100 hover:bg-transparent hover:text-white' : 'text-[#1d1d1f] hover:text-[#3a3a3e]'}`}
-                      onClick={() => handleDownloadFile(blueprint.designKey!)}
-                    >
-                      <Download className="mr-1 h-3 w-3" />
-                      Download
-                    </Button>
-                  ) : (
-                    <p className={`mt-1 text-[10px] italic ${isDark ? 'text-slate-400' : 'text-[#86868b]'}`}>Not uploaded</p>
-                  )}
-                    </div>
+                    <Card className={`${isDark ? 'metal-panel-strong dark:bg-slate-950/85' : 'metal-panel'} rounded-none border-x-0 border-[color:var(--color-border)]/60 sm:rounded-xl sm:border-x dark:border-slate-700`}>
+                      <CardHeader className={`${isDark ? 'bg-slate-900/70' : 'bg-[color:var(--color-muted)]/55'} flex flex-row items-center justify-between border-b border-[color:var(--color-border)]/55 px-4 pb-3 sm:rounded-t-xl sm:px-6 dark:border-slate-700`}>
+                        <div className="flex items-center gap-2">
+                          <FileText className={`h-5 w-5 ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-muted-color)]'}`} />
+                          <h3 className={`font-semibold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>Blueprint</h3>
+                        </div>
+                        <Badge variant="outline" className="border-white/12 bg-white/8 text-slate-200 shadow-none">Technical</Badge>
+                      </CardHeader>
+                      <CardContent className="space-y-4 px-4 pt-6 sm:px-6">
+                        <FilePreviewThumb fileKey={blueprint.blueprintKey} label="Blueprint Preview" />
+                        <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                          <Button
+                            variant="prominent"
+                            className="flex-1 rounded-xl"
+                            onClick={() => handleViewFile(blueprint.blueprintKey)}
+                          >
+                            <Eye className="mr-2 h-4 w-4" /> View Blueprint
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="flex-1 rounded-xl border-white/12 bg-slate-900/55 text-slate-100 hover:bg-slate-800/80"
+                            onClick={() => handleDownloadFile(blueprint.blueprintKey)}
+                          >
+                            <Download className="mr-2 h-4 w-4" /> Download
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card className={`${isDark ? 'metal-panel-strong dark:bg-slate-950/85' : 'metal-panel'} rounded-none border-x-0 border-[color:var(--color-border)]/60 sm:rounded-xl sm:border-x dark:border-slate-700`}>
+                      <CardHeader className={`${isDark ? 'bg-slate-900/70' : 'bg-[color:var(--color-muted)]/55'} flex flex-row items-center justify-between border-b border-[color:var(--color-border)]/55 px-4 pb-3 sm:rounded-t-xl sm:px-6 dark:border-slate-700`}>
+                        <div className="flex items-center gap-2">
+                          <Image className={`h-5 w-5 ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-muted-color)]'}`} />
+                          <h3 className={`font-semibold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>Design</h3>
+                        </div>
+                        {blueprint.blueprintApproved ? (
+                          <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 shadow-none hover:bg-emerald-100/80 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-300 dark:hover:bg-emerald-500/25">
+                            <CheckCircle className="mr-1 h-3 w-3" /> Approved
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300">
+                            Pending Review
+                          </Badge>
+                        )}
+                      </CardHeader>
+                      <CardContent className="space-y-4 px-4 pt-6 sm:px-6">
+                        <FilePreviewThumb fileKey={blueprint.designKey || blueprint.blueprintKey} label="Design Preview" />
+                        <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                          <Button
+                            variant="prominent"
+                            className="flex-1 rounded-xl"
+                            onClick={() => handleViewFile(blueprint.designKey || blueprint.blueprintKey)}
+                          >
+                            <Eye className="mr-2 h-4 w-4" /> View Design
+                          </Button>
+                          {blueprint.designKey ? (
+                            <Button
+                              variant="outline"
+                              className="flex-1 rounded-xl border-white/12 bg-slate-900/55 text-slate-100 hover:bg-slate-800/80"
+                              onClick={() => handleDownloadFile(blueprint.designKey!)}
+                            >
+                              <Download className="mr-2 h-4 w-4" /> Download
+                            </Button>
+                          ) : null}
+                        </div>
+                      </CardContent>
+                    </Card>
                   </>
                 )}
                 {isCostingMode && (
-                  <div className={`rounded-xl border p-4 ${isDark ? 'border-slate-700 bg-slate-900/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_18px_34px_rgba(2,6,23,0.24)]' : 'border-[#c8c8cd]/50 bg-[#f5f5f7]/50'}`}>
-                  <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Costing</p>
-                  <p className={`mt-1 text-sm font-medium ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>
-                    {blueprint.costingApproved ? 'Approved' : 'Pending Review'}
-                  </p>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className={`mt-2 h-auto p-0 text-xs ${isDark ? 'text-slate-100 hover:bg-transparent hover:text-white' : 'text-[#1d1d1f] hover:text-[#3a3a3e]'}`}
-                    onClick={() => handleDownloadFile(blueprint.costingKey)}
-                  >
-                    <Download className="mr-1 h-3 w-3" />
-                    Download
-                  </Button>
-                  </div>
+                  <Card className={`${isDark ? 'metal-panel-strong dark:bg-slate-950/85' : 'metal-panel'} rounded-none border-x-0 border-[color:var(--color-border)]/60 sm:rounded-xl sm:border-x dark:border-slate-700`}>
+                    <CardHeader className={`${isDark ? 'bg-slate-900/70' : 'bg-[color:var(--color-muted)]/55'} flex flex-row items-center justify-between border-b border-[color:var(--color-border)]/55 px-4 pb-3 sm:rounded-t-xl sm:px-6 dark:border-slate-700`}>
+                      <div className="flex items-center gap-2">
+                        <Info className={`h-5 w-5 ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-muted-color)]'}`} />
+                        <h3 className={`font-semibold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>Costing</h3>
+                      </div>
+                      {blueprint.costingApproved ? (
+                        <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 shadow-none hover:bg-emerald-100/80 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-300 dark:hover:bg-emerald-500/25">
+                          <CheckCircle className="mr-1 h-3 w-3" /> Approved
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300">
+                          Pending Review
+                        </Badge>
+                      )}
+                    </CardHeader>
+                    <CardContent className="space-y-4 px-4 pt-6 sm:px-6">
+                      {blueprint.costingKey ? (
+                        <>
+                          <FilePreviewThumb fileKey={blueprint.costingKey} label="Costing Sheet" />
+                          <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
+                            <Button
+                              variant="prominent"
+                              className="flex-1 rounded-xl"
+                              onClick={() => handleViewFile(blueprint.costingKey!)}
+                            >
+                              <Eye className="mr-2 h-4 w-4" /> View Costing
+                            </Button>
+                            <Button
+                              variant="outline"
+                              className="flex-1 rounded-xl border-white/12 bg-slate-900/55 text-slate-100 hover:bg-slate-800/80"
+                              onClick={() => handleDownloadFile(blueprint.costingKey!)}
+                            >
+                              <Download className="mr-2 h-4 w-4" /> Download
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className={`rounded-xl border border-[color:var(--color-border)]/50 p-4 ${isDark ? 'bg-slate-900/45 dark:border-slate-700' : 'bg-[color:var(--color-muted)]/55'}`}>
+                          <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
+                            This costing package uses the quotation details entered by engineering. No separate costing file was uploaded.
+                          </p>
+                          {blueprint.quotation?.total ? (
+                            <>
+                              <p className={`mt-3 text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>Quotation Total</p>
+                              <p className={`mt-1 text-2xl font-bold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>
+                                {formatCurrency(getPayableQuotationTotal(blueprint))}
+                              </p>
+                              {blueprint.quotation?.estimatedDuration && (
+                                <p className={`mt-1 text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
+                                  Estimated duration: {blueprint.quotation.estimatedDuration}
+                                </p>
+                              )}
+                            </>
+                          ) : null}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
                 )}
               </div>
               {(blueprint.revisionNotes || (blueprint.revisionRefKeys && blueprint.revisionRefKeys.length > 0)) && (
@@ -1028,9 +1395,14 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
 
               {/* Revision upload (when revision requested) */}
               {blueprint.status === 'revision_requested' && isAssigned && (
-                <div className={`space-y-3 rounded-xl border border-dashed p-4 ${isDark ? 'border-slate-700 bg-slate-950/35' : 'border-[#c8c8cd]'}`}>
-                  <p className={`text-sm font-medium ${isDark ? 'text-slate-100' : 'text-[#3a3a3e]'}`}>Upload Revision</p>
-                  <div className={cn('grid gap-3', isBlueprintMode ? 'sm:grid-cols-2' : 'sm:grid-cols-1')}>
+                <div className={`space-y-6 rounded-2xl border p-6 ${isDark ? 'border-slate-700 bg-slate-900/40' : 'border-[#d2d2d7] bg-[#f5f5f7]/45'}`}>
+                  {isBlueprintMode && (
+                    <div>
+                      <p className={`border-l-4 pl-4 text-xl font-semibold ${isDark ? 'border-sky-400 text-slate-100' : 'border-sky-500 text-[#1d1d1f]'}`}>Upload Files</p>
+                      <p className={`mt-3 pl-5 text-base ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Upload clear and legible files for accurate review and estimation.</p>
+                    </div>
+                  )}
+                  <div className={cn('grid gap-4', isBlueprintMode ? 'lg:grid-cols-2' : 'sm:grid-cols-1')}>
                     {isBlueprintMode && (
                       <>
                         <FilePickerWithPreview
@@ -1038,65 +1410,70 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
                           isUploading={uploadingFile === 'blueprint'}
                           onFileSelect={(f) => f && handleDraftFileUpload(f, 'blueprint')}
                           onRemove={() => handleDraftFileRemove('blueprint')}
+                          onPreview={handleOpenPreviewModal}
                           accept=".pdf,.png,.jpg,.jpeg,.dwg"
                           label="Blueprint File *"
                         />
-                        <FilePickerWithPreview
-                          fileMeta={designFileMeta}
-                          isUploading={uploadingFile === 'design'}
-                          onFileSelect={(f) => f && handleDraftFileUpload(f, 'design')}
-                          onRemove={() => handleDraftFileRemove('design')}
-                          accept=".pdf,.png,.jpg,.jpeg"
-                          label="Design File *"
-                        />
+                        {approvedInitialDesignKey ? (
+                          <AutoLinkedDesignFileCard fileKey={approvedInitialDesignKey} onPreview={handleOpenPreviewModal} />
+                        ) : (
+                          <FilePickerWithPreview
+                            fileMeta={designFileMeta}
+                            isUploading={uploadingFile === 'design'}
+                            onFileSelect={(f) => f && handleDraftFileUpload(f, 'design')}
+                            onRemove={() => handleDraftFileRemove('design')}
+                            onPreview={handleOpenPreviewModal}
+                            accept=".pdf,.png,.jpg,.jpeg"
+                            label="Design File *"
+                          />
+                        )}
                       </>
-                    )}
-                    {isCostingMode && (
-                      <FilePickerWithPreview
-                        fileMeta={costingFileMeta}
-                        isUploading={uploadingFile === 'costing'}
-                        onFileSelect={(f) => f && handleDraftFileUpload(f, 'costing')}
-                        onRemove={() => handleDraftFileRemove('costing')}
-                        accept=".pdf,.xlsx,.xls,.csv"
-                        label="Costing File *"
-                      />
                     )}
                   </div>
 
                   {isCostingMode && quotationFormJSX}
 
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-                    <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  <div className={`flex flex-col gap-3 border-t pt-6 ${isDark ? 'border-slate-800' : 'border-[#d2d2d7]'}`}>
+                    <div className={`flex items-center gap-4 rounded-2xl border p-4 ${isDark ? 'border-sky-500/25 bg-sky-500/10' : 'border-sky-200 bg-sky-50'}`}>
+                      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${isDark ? 'bg-sky-500/20 text-sky-200' : 'bg-sky-100 text-sky-700'}`}>
+                        {isSavingDraft ? <Loader2 className="h-5 w-5 animate-spin" /> : <Info className="h-5 w-5" />}
+                      </span>
+                      <div>
                       {isSavingDraft ? (
-                        <span className="flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Saving draft...</span>
+                          <p className={`text-base font-semibold ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>Saving draft...</p>
                       ) : (
-                        <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><CheckCircle className="h-3 w-3" /> Draft up to date</span>
+                          <p className={`text-base font-semibold ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>Draft up to date</p>
                       )}
+                        <p className={`mt-1 text-sm ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Your changes are saved automatically.</p>
+                      </div>
                     </div>
                     {isCostingMode && (
                       <button
                         type="button"
                         className={uploadActionButtonClass}
                         onClick={handleBlueprintUpload}
-                        disabled={uploading || !blueprintFileMeta || !designFileMeta || !costingFileMeta || isSavingDraft || !!uploadingFile}
+                        disabled={uploading || !blueprintFileMeta || !effectiveDesignFileMeta || quotGrandTotal <= 0 || isSavingDraft || !!uploadingFile}
                       >
-                        {uploading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Upload className="mr-1.5 h-4 w-4" />}
-                        Upload Revision
+                        {uploading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
+                        Send Quotation to Customer & Cashier
                       </button>
                     )}
                   </div>
                 </div>
               )}
-            </div>
-          ) : (
-            <div>
+              </div>
+            ) : (
+              <div>
               {/* First blueprint upload */}
               {canUploadInitialBlueprint ? (
-                <div className={`space-y-3 rounded-xl border border-dashed p-4 ${isDark ? 'border-slate-700 bg-slate-950/35' : 'border-[#c8c8cd]'}`}>
-                  <p className={`text-sm font-medium ${isDark ? 'text-slate-100' : 'text-[#3a3a3e]'}`}>
-                    {isCostingMode ? 'Upload Costing & Quotation' : 'Upload Blueprint & Design'}
-                  </p>
-                  <div className={cn('grid gap-3', isBlueprintMode ? 'sm:grid-cols-2' : 'sm:grid-cols-1')}>
+                <div className={`space-y-6 rounded-2xl border p-6 ${isDark ? 'border-slate-700 bg-slate-900/40' : 'border-[#d2d2d7] bg-[#f5f5f7]/45'}`}>
+                  {isBlueprintMode && (
+                    <div>
+                      <p className={`border-l-4 pl-4 text-xl font-semibold ${isDark ? 'border-sky-400 text-slate-100' : 'border-sky-500 text-[#1d1d1f]'}`}>Upload Files</p>
+                      <p className={`mt-3 pl-5 text-base ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Upload clear and legible files for accurate review and estimation.</p>
+                    </div>
+                  )}
+                  <div className={cn('grid gap-4', isBlueprintMode ? 'lg:grid-cols-2' : 'sm:grid-cols-1')}>
                     {isBlueprintMode && (
                       <>
                         <FilePickerWithPreview
@@ -1104,50 +1481,52 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
                           isUploading={uploadingFile === 'blueprint'}
                           onFileSelect={(f) => f && handleDraftFileUpload(f, 'blueprint')}
                           onRemove={() => handleDraftFileRemove('blueprint')}
+                          onPreview={handleOpenPreviewModal}
                           accept=".pdf,.png,.jpg,.jpeg,.dwg"
                           label="Blueprint File *"
                         />
-                        <FilePickerWithPreview
-                          fileMeta={designFileMeta}
-                          isUploading={uploadingFile === 'design'}
-                          onFileSelect={(f) => f && handleDraftFileUpload(f, 'design')}
-                          onRemove={() => handleDraftFileRemove('design')}
-                          accept=".pdf,.png,.jpg,.jpeg"
-                          label="Design File *"
-                        />
+                        {approvedInitialDesignKey ? (
+                          <AutoLinkedDesignFileCard fileKey={approvedInitialDesignKey} onPreview={handleOpenPreviewModal} />
+                        ) : (
+                          <FilePickerWithPreview
+                            fileMeta={designFileMeta}
+                            isUploading={uploadingFile === 'design'}
+                            onFileSelect={(f) => f && handleDraftFileUpload(f, 'design')}
+                            onRemove={() => handleDraftFileRemove('design')}
+                            onPreview={handleOpenPreviewModal}
+                            accept=".pdf,.png,.jpg,.jpeg"
+                            label="Design File *"
+                          />
+                        )}
                       </>
-                    )}
-                    {isCostingMode && (
-                      <FilePickerWithPreview
-                        fileMeta={costingFileMeta}
-                        isUploading={uploadingFile === 'costing'}
-                        onFileSelect={(f) => f && handleDraftFileUpload(f, 'costing')}
-                        onRemove={() => handleDraftFileRemove('costing')}
-                        accept=".pdf,.xlsx,.xls,.csv"
-                        label="Costing File *"
-                      />
                     )}
                   </div>
 
                   {isCostingMode && quotationFormJSX}
 
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-                    <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                  <div className={`flex flex-col gap-3 border-t pt-6 ${isDark ? 'border-slate-800' : 'border-[#d2d2d7]'}`}>
+                    <div className={`flex items-center gap-4 rounded-2xl border p-4 ${isDark ? 'border-sky-500/25 bg-sky-500/10' : 'border-sky-200 bg-sky-50'}`}>
+                      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${isDark ? 'bg-sky-500/20 text-sky-200' : 'bg-sky-100 text-sky-700'}`}>
+                        {isSavingDraft ? <Loader2 className="h-5 w-5 animate-spin" /> : <Info className="h-5 w-5" />}
+                      </span>
+                      <div>
                       {isSavingDraft ? (
-                        <span className="flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" /> Saving draft...</span>
+                          <p className={`text-base font-semibold ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>Saving draft...</p>
                       ) : (
-                        <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400"><CheckCircle className="h-3 w-3" /> Draft up to date</span>
+                          <p className={`text-base font-semibold ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>Draft up to date</p>
                       )}
+                        <p className={`mt-1 text-sm ${isDark ? 'text-slate-300' : 'text-[#6e6e73]'}`}>Your changes are saved automatically.</p>
+                      </div>
                     </div>
                     {isCostingMode && (
                       <button
                         type="button"
                         className={uploadActionButtonClass}
                         onClick={handleBlueprintUpload}
-                        disabled={uploading || !blueprintFileMeta || !designFileMeta || !costingFileMeta || isSavingDraft || !!uploadingFile}
+                        disabled={uploading || !blueprintFileMeta || !effectiveDesignFileMeta || quotGrandTotal <= 0 || isSavingDraft || !!uploadingFile}
                       >
-                        {uploading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Upload className="mr-1.5 h-4 w-4" />}
-                        Finalize Costing
+                        {uploading ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Send className="mr-1.5 h-4 w-4" />}
+                        Send Quotation to Customer & Cashier
                       </button>
                     )}
                   </div>
@@ -1157,10 +1536,12 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
                   {isCostingMode ? 'No costing package uploaded yet.' : 'No blueprint uploaded yet.'}
                 </p>
               )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        {previewDialog}
+      </>
     );
   }
 
@@ -1200,19 +1581,20 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
     }
 
     return (
-      <div className="space-y-4 -mx-3 sm:mx-0 px-3 sm:px-0">
-        {/* Version + status row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Badge variant="outline" className="border-white/12 bg-slate-900/65 text-slate-200 font-medium rounded-lg dark:border-white/12 dark:bg-slate-900/65 dark:text-slate-200">
-              v{blueprint.version}
-            </Badge>
-            <span className="text-xs text-slate-400">
-              {format(new Date(blueprint.createdAt), 'MMM d, yyyy h:mm a')}
-            </span>
+      <>
+        <div className="space-y-4 -mx-3 sm:mx-0 px-3 sm:px-0">
+          {/* Version + status row */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="border-white/12 bg-slate-900/65 text-slate-200 font-medium rounded-lg dark:border-white/12 dark:bg-slate-900/65 dark:text-slate-200">
+                v{blueprint.version}
+              </Badge>
+              <span className="text-xs text-slate-400">
+                {format(new Date(blueprint.createdAt), 'MMM d, yyyy h:mm a')}
+              </span>
+            </div>
+            <StatusBadge status={blueprint.status} />
           </div>
-          <StatusBadge status={blueprint.status} />
-        </div>
 
         {/* Two file cards: Blueprint + Design */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1290,34 +1672,36 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
         </div>
 
         {/* Revision notes if any */}
-        {(blueprint.revisionNotes || (blueprint.revisionRefKeys && blueprint.revisionRefKeys.length > 0)) && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-3">
-            <p className="text-xs font-medium text-amber-600 uppercase tracking-wider">Revision Notes from Customer</p>
-            {blueprint.revisionNotes && (
-              <p className="text-sm text-amber-800">{blueprint.revisionNotes}</p>
-            )}
-            {blueprint.revisionRefKeys && blueprint.revisionRefKeys.length > 0 && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2">
-                {blueprint.revisionRefKeys.map((key, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => openAuthenticatedFile(key)}
-                    className="group relative aspect-[4/3] bg-white rounded-lg overflow-hidden border border-amber-200 block"
-                  >
-                    <AuthImage
-                      fileKey={key}
-                      alt={`Reference ${idx + 1}`}
-                      className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
-                    />
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          {(blueprint.revisionNotes || (blueprint.revisionRefKeys && blueprint.revisionRefKeys.length > 0)) && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-3">
+              <p className="text-xs font-medium text-amber-600 uppercase tracking-wider">Revision Notes from Customer</p>
+              {blueprint.revisionNotes && (
+                <p className="text-sm text-amber-800">{blueprint.revisionNotes}</p>
+              )}
+              {blueprint.revisionRefKeys && blueprint.revisionRefKeys.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2">
+                  {blueprint.revisionRefKeys.map((key, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => openAuthenticatedFile(key)}
+                      className="group relative aspect-[4/3] bg-white rounded-lg overflow-hidden border border-amber-200 block"
+                    >
+                      <AuthImage
+                        fileKey={key}
+                        alt={`Reference ${idx + 1}`}
+                        className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
+                      />
+                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        {previewDialog}
+      </>
     );
   }
 
@@ -1372,104 +1756,10 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
 
   // Show the latest blueprint with full review experience
   return (
-    <div className="space-y-6 -mx-3 sm:mx-0">
-      {blueprints.map((bp: Blueprint) => (
-        <div key={bp._id} className="space-y-4 px-3 sm:px-0">
-          {/* Version header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Badge variant="outline" className={`${isDark ? 'border-white/12 bg-slate-900/65 text-slate-200' : 'border-[color:var(--color-border)] bg-white text-[var(--text-metal-color)]'} font-medium rounded-lg`}>
-                v{bp.version}
-              </Badge>
-              <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>
-                {format(new Date(bp.createdAt), 'MMM d, yyyy h:mm a')}
-              </span>
-            </div>
-            <StatusBadge status={bp.status} />
-          </div>
-
-          {/* ── Customer Step Guide ── */}
-          {isCostingMode && canReviewBlueprint && ['uploaded', 'revision_uploaded', 'approved'].includes(bp.status) && (
-            <div className={`${isDark ? 'metal-panel-strong dark:bg-slate-950/85' : 'metal-panel'} overflow-hidden rounded-none border border-[color:var(--color-border)]/60 sm:rounded-xl border-x-0 sm:border-x dark:border-slate-700`}>
-              <div className={`${isDark ? 'bg-slate-900/70' : 'bg-[color:var(--color-muted)]/55'} border-b border-[color:var(--color-border)]/55 px-4 py-3 sm:px-5 dark:border-slate-700`}>
-                <p className={`text-xs font-semibold uppercase tracking-wider ${isDark ? 'text-slate-100' : 'text-[var(--color-card-foreground)]'}`}>Your Review Progress</p>
-              </div>
-              <div className="px-4 sm:px-5 py-4">
-                <div className="flex items-center gap-0">
-                  {/* Step 1 */}
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold flex-shrink-0 ${
-                      bp.blueprintApproved
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
-                        : 'bg-[#1d1d1f] text-white dark:bg-slate-100 dark:text-slate-900'
-                    }`}>
-                      {bp.blueprintApproved ? <CheckCircle className="h-4 w-4" /> : '1'}
-                    </div>
-                    <span className={`text-xs font-medium truncate ${bp.blueprintApproved ? 'text-emerald-700 dark:text-emerald-300' : 'text-[#1d1d1f] dark:text-slate-100'}`}>Design</span>
-                  </div>
-                  <ArrowRight className="mx-1 h-3.5 w-3.5 flex-shrink-0 text-[#c8c8cd] dark:text-slate-500" />
-                  {/* Step 2 */}
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold flex-shrink-0 ${
-                      bp.costingApproved
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
-                        : bp.blueprintApproved
-                          ? 'bg-[#1d1d1f] text-white dark:bg-slate-100 dark:text-slate-900'
-                          : 'bg-[#e8e8ed] text-[#86868b] dark:bg-slate-800 dark:text-slate-400'
-                    }`}>
-                      {bp.costingApproved ? <CheckCircle className="h-4 w-4" /> : '2'}
-                    </div>
-                    <span className={`text-xs font-medium truncate ${bp.costingApproved ? 'text-emerald-700 dark:text-emerald-300' : bp.blueprintApproved ? 'text-[#1d1d1f] dark:text-slate-100' : 'text-[#86868b] dark:text-slate-400'}`}>Billing</span>
-                  </div>
-                  <ArrowRight className="mx-1 h-3.5 w-3.5 flex-shrink-0 text-[#c8c8cd] dark:text-slate-500" />
-                  {/* Step 3 */}
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold flex-shrink-0 ${
-                      bp.blueprintApproved && bp.costingApproved
-                        ? 'bg-[#1d1d1f] text-white animate-pulse dark:bg-slate-100 dark:text-slate-900'
-                        : 'bg-[#e8e8ed] text-[#86868b] dark:bg-slate-800 dark:text-slate-400'
-                    }`}>
-                      3
-                    </div>
-                    <span className={`text-xs font-medium truncate ${bp.blueprintApproved && bp.costingApproved ? 'font-semibold text-[#1d1d1f] dark:text-slate-100' : 'text-[#86868b] dark:text-slate-400'}`}>Payment</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {isCostingMode && bp.quotation && bp.quotation.total > 0 && (
-            <Card className={`${isDark ? 'metal-panel-strong dark:bg-slate-950/85' : 'metal-panel'} rounded-none border-x-0 border-[color:var(--color-border)]/60 sm:rounded-xl sm:border-x dark:border-slate-700`}>
-              <CardContent className="px-4 py-4 sm:px-6">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <p className={`text-xs font-semibold uppercase tracking-[0.14em] ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>
-                      {canReviewBlueprint ? 'Design And Billing Package' : 'Design And Costing Package'}
-                    </p>
-                    <p className={`mt-1 text-lg font-semibold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>
-                      {canReviewBlueprint ? 'Review both the design and billing before proceeding to payment.' : 'Blueprint, design render, and costing basis are ready for this item.'}
-                    </p>
-                    <p className={`mt-1 text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
-                      {canReviewBlueprint
-                        ? 'The design card shows the visual output. The billing summary shows the customer-facing quotation total for payment.'
-                        : 'Use the design card for customer-facing output, the costing sheet for the price basis, and the technical blueprint for fabrication execution.'}
-                    </p>
-                  </div>
-                  <div className={`grid gap-3 sm:grid-cols-2 lg:min-w-[320px] ${isDark ? 'text-slate-100' : 'text-[var(--color-card-foreground)]'}`}>
-                    <div className={`rounded-xl border p-3 ${isDark ? 'border-slate-700 bg-slate-900/65' : 'border-[color:var(--color-border)]/55 bg-[color:var(--color-muted)]/55'}`}>
-                      <p className={`text-[11px] font-semibold uppercase tracking-[0.12em] ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>Quoted Total</p>
-                      <p className="mt-1 text-xl font-bold">{formatCurrency(bp.quotation.total)}</p>
-                    </div>
-                    <div className={`rounded-xl border p-3 ${isDark ? 'border-slate-700 bg-slate-900/65' : 'border-[color:var(--color-border)]/55 bg-[color:var(--color-muted)]/55'}`}>
-                      <p className={`text-[11px] font-semibold uppercase tracking-[0.12em] ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>Estimated Duration</p>
-                      <p className="mt-1 text-base font-semibold">{bp.quotation.estimatedDuration || 'Not provided yet'}</p>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
+    <>
+      <div className="space-y-6 -mx-3 sm:mx-0">
+        {blueprints.map((bp: Blueprint) => (
+          <div key={bp._id} className="space-y-4 px-3 sm:px-0">
           {/* Design + billing cards for customers; full costing remains staff-only. */}
           <div className={cn('grid grid-cols-1 gap-4', isCostingMode ? 'md:grid-cols-1' : 'md:grid-cols-1')}>
             {/* Design Card — shown to everyone */}
@@ -1524,11 +1814,15 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
               <CardHeader className={`${isDark ? 'bg-slate-900/70' : 'bg-[color:var(--color-muted)]/55'} flex flex-row items-center justify-between border-b border-[color:var(--color-border)]/55 px-4 pb-3 sm:rounded-t-xl sm:px-6 dark:border-slate-700`}>
                 <div className="flex items-center gap-2">
                   <Info className={`h-5 w-5 ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-muted-color)]'}`} />
-                  <h3 className={`font-semibold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>{canReviewBlueprint ? 'Billing Summary' : 'Costing Sheet'}</h3>
+                  <h3 className={`font-semibold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>{canReviewBlueprint || isCashier ? 'Billing Summary' : 'Costing Sheet'}</h3>
                 </div>
                 {bp.costingApproved ? (
                   <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 shadow-none hover:bg-emerald-100/80 dark:border-emerald-500/40 dark:bg-emerald-500/20 dark:text-emerald-300 dark:hover:bg-emerald-500/25">
                     <CheckCircle className="mr-1 h-3 w-3" /> Approved
+                  </Badge>
+                ) : bp.quotationReviewStatus !== 'sent_to_customer' ? (
+                  <Badge variant="outline" className="h-5 rounded-full border-sky-400/45 bg-sky-500/10 px-1.5 text-[10px] font-medium tracking-[0.01em] text-sky-200 shadow-none">
+                    {bp.quotationReviewStatus === 'for_review' ? 'Pending Release' : 'Draft'}
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="h-5 rounded-full border-amber-400/45 bg-amber-500/8 px-1.5 text-[10px] font-medium tracking-[0.01em] text-amber-200 shadow-none dark:border-amber-400/40 dark:bg-amber-500/8 dark:text-amber-200">
@@ -1537,38 +1831,51 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
                 )}
               </CardHeader>
               <CardContent className="pt-6 space-y-4 px-4 sm:px-6">
-                {canReviewBlueprint ? (
+                  {canReviewBlueprint || isCashier ? (
                   <div className={`rounded-xl border border-[color:var(--color-border)]/50 p-4 ${isDark ? 'bg-slate-900/45 dark:border-slate-700' : 'bg-[color:var(--color-muted)]/55'}`}>
-                    <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
-                      This billing summary is the customer-facing quotation tied to the approved design.
-                    </p>
-                    <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>Total Billing</p>
-                    <p className={`mt-1 text-2xl font-bold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>
-                      {formatCurrency(getPayableQuotationTotal(bp))}
-                    </p>
-                    {bp.quotation?.estimatedDuration && (
-                      <p className={`mt-1 text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>Estimated duration: {bp.quotation.estimatedDuration}</p>
+                    {!isQuotationSentToCustomer(bp) ? (
+                      <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
+                        The quotation has not been released to the customer yet.
+                      </p>
+                    ) : (
+                      <>
+                        <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
+                          {isCashier ? 'This is the customer-facing quotation retained for finance records.' : 'This billing summary is the customer-facing quotation tied to the approved design.'}
+                        </p>
+                        <p className={`text-xs font-medium uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>Total Billing</p>
+                        <p className={`mt-1 text-2xl font-bold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>
+                          {formatCurrency(getPayableQuotationTotal(bp))}
+                        </p>
+                        {bp.quotation?.estimatedDuration && (
+                          <p className={`mt-1 text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>Estimated duration: {bp.quotation.estimatedDuration}</p>
+                        )}
+                      </>
                     )}
                   </div>
-                ) : (
-                  <div className="space-y-3">
+                ) : canViewInternalCosting ? (
+                  bp.costingKey ? (
+                    <div className="space-y-3">
+                      <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
+                        The costing sheet contains the detailed pricing basis that supports the quotation shown to the customer.
+                      </p>
+                      <FilePreviewThumb fileKey={bp.costingKey} label="Costing Sheet" />
+                    </div>
+                  ) : (
                     <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
-                      The costing sheet contains the detailed pricing basis that supports the quotation shown to the customer.
+                      This costing package uses the quotation details entered by engineering. No separate costing file was uploaded.
                     </p>
-                    <FilePreviewThumb fileKey={bp.costingKey} label="Costing Sheet" />
-                  </div>
+                  )
+                ) : (
+                  <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
+                    The customer-facing quotation summary is available for this item.
+                  </p>
                 )}
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                  {!canReviewBlueprint && (
-                    <Button variant="prominent" className="flex-1 rounded-xl" onClick={() => handleViewFile(bp.costingKey)}>
-                      <Eye className="mr-2 h-4 w-4" /> View Sheet
-                    </Button>
-                  )}
                   {canReviewBlueprint && !bp.costingApproved && (
                     <Button
                       className="flex-1 rounded-xl border border-emerald-500/70 bg-[linear-gradient(180deg,#22c55e_0%,#15803d_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_10px_24px_rgba(6,95,70,0.3)] hover:bg-[linear-gradient(180deg,#34d399_0%,#16a34a_100%)] hover:text-white dark:border-emerald-400/55 dark:bg-[linear-gradient(180deg,#34d399_0%,#15803d_100%)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_12px_28px_rgba(6,78,59,0.34)] dark:hover:bg-[linear-gradient(180deg,#6ee7b7_0%,#16a34a_100%)]"
                       onClick={() => setApproveConfirmDialog({ open: true, blueprintId: bp._id, component: 'costing' })}
-                      disabled={approveMutation.isPending || !hasPayableQuotation(bp)}
+                      disabled={approveMutation.isPending || !hasPayableQuotation(bp) || !isQuotationSentToCustomer(bp)}
                     >
                       {approvingComponent === 'costing' && approveMutation.isPending ? (
                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Approving...</>
@@ -1646,7 +1953,7 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
                         setBlockedAction(null);
                         setAcceptDialog({ open: true, blueprint: bp });
                       }}
-                      disabled={!hasPayableQuotation(bp)}
+                      disabled={!hasPayableQuotation(bp) || !isQuotationSentToCustomer(bp)}
                     >
                       <CheckCircle className="mr-2 h-4 w-4" />
                       Choose Payment Plan
@@ -1689,124 +1996,28 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
             </div>
           )}
 
-          {/* Quotation Summary */}
-          {isCostingMode && bp.quotation && bp.quotation.total > 0 && (
+          {isCostingMode && !canReviewBlueprint && quotationHistory && quotationHistory.length > 0 && (
             <Card className={`${isDark ? 'metal-panel-strong dark:bg-slate-950/85' : 'metal-panel'} rounded-none border-x-0 border-[color:var(--color-border)]/60 sm:rounded-xl sm:border-x dark:border-slate-700`}>
-              <CardHeader className={`${isDark ? 'bg-slate-900/70 dark:border-slate-700' : 'bg-[color:var(--color-muted)]/55'} border-b border-[color:var(--color-border)]/55 px-4 pb-3 sm:rounded-t-xl sm:px-6`}>
-                <div className="flex items-center justify-between">
-                    <h3 className={`font-semibold ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>Quotation Summary</h3>
-                  {bp.quotation.validityDays && (
-                    <div className={`flex items-center gap-1.5 text-xs ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-muted-color)]'}`}>
-                      <Calendar className="h-3.5 w-3.5" />
-                      <span>Valid {bp.quotation.validityDays} days</span>
-                    </div>
-                  )}
-                </div>
+              <CardHeader className="px-4 pb-2 sm:px-6">
+                <CardTitle className={`text-sm ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>Quotation History</CardTitle>
               </CardHeader>
-              <CardContent className="pt-4 px-4 sm:px-6">
-                {/* Itemized line items table */}
-                {bp.quotation.lineItems && bp.quotation.lineItems.length > 0 && (
-                  <div className="mb-4">
-                    {/* Table header */}
-                    <div className={`hidden sm:grid gap-2 border-b border-[color:var(--color-border)]/45 px-2 pb-2 text-[10px] font-medium uppercase tracking-wider ${isDark ? 'text-slate-400 dark:border-slate-700 dark:text-slate-500' : 'text-[var(--text-metal-muted-color)]'} ${!canReviewBlueprint ? 'sm:grid-cols-[1fr_50px_100px_100px_100px]' : 'sm:grid-cols-[1fr_60px_100px]'}`}>
-                      <span>Item</span>
-                      <span>Qty</span>
-                      {!canReviewBlueprint && <span>Materials</span>}
-                      {!canReviewBlueprint && <span>Labor</span>}
-                      <span className="text-right">{canReviewBlueprint ? 'Amount' : 'Total'}</span>
+              <CardContent className="space-y-2 px-4 pb-4 sm:px-6">
+                {quotationHistory.map((event) => {
+                  const actorName = event.actorId?.firstName
+                    ? `${event.actorId.firstName} ${event.actorId.lastName || ''}`.trim()
+                    : 'System';
+                  const label = String(event.action || '').replace(/_/g, ' ');
+                  const total = typeof event.details?.total === 'number' ? event.details.total : undefined;
+                  return (
+                    <div key={event._id} className={`flex flex-wrap items-center justify-between gap-2 rounded-lg border p-3 ${isDark ? 'border-slate-800 bg-slate-900/55' : 'border-[#e8e8ed] bg-[#f5f5f7]'}`}>
+                      <div>
+                        <p className={`text-sm font-semibold capitalize ${isDark ? 'text-slate-100' : 'text-[#1d1d1f]'}`}>{label}</p>
+                        <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-[#6e6e73]'}`}>{actorName} • {format(new Date(event.createdAt), 'MMM d, yyyy h:mm a')}</p>
+                      </div>
+                      {total !== undefined && <span className={`text-sm font-semibold ${isDark ? 'text-emerald-200' : 'text-emerald-700'}`}>{formatCurrency(total)}</span>}
                     </div>
-                    <div className={`divide-y divide-[color:var(--color-border)]/35 ${isDark ? 'dark:divide-slate-800' : ''}`}>
-                      {bp.quotation.lineItems.map((li: { label: string; quantity: number; materials: number; labor: number; amount: number }, liIdx: number) => (
-                        <div key={liIdx} className="py-2.5 px-2">
-                          {/* Mobile: stacked */}
-                          <div className="sm:hidden space-y-1">
-                            <div className="flex justify-between items-center">
-                              <p className={`text-sm font-medium ${isDark ? 'text-slate-100' : 'text-[var(--color-card-foreground)]'}`}>{li.label}</p>
-                              <p className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-[var(--color-card-foreground)]'}`}>{formatCurrency(li.amount)}</p>
-                            </div>
-                            <div className={`flex gap-3 text-xs ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>
-                              <span>Qty: {li.quantity}</span>
-                              {!canReviewBlueprint && <span>Mat: {formatCurrency(li.materials * li.quantity)}</span>}
-                              {!canReviewBlueprint && <span>Lab: {formatCurrency(li.labor * li.quantity)}</span>}
-                            </div>
-                          </div>
-                          {/* Desktop: grid */}
-                          <div className={`hidden sm:grid gap-2 items-center ${!canReviewBlueprint ? 'sm:grid-cols-[1fr_50px_100px_100px_100px]' : 'sm:grid-cols-[1fr_60px_100px]'}`}>
-                            <p className={`text-sm ${isDark ? 'text-slate-100' : 'text-[var(--color-card-foreground)]'}`}>{li.label}</p>
-                            <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>{li.quantity}</p>
-                            {!canReviewBlueprint && <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>{formatCurrency(li.materials * li.quantity)}</p>}
-                            {!canReviewBlueprint && <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>{formatCurrency(li.labor * li.quantity)}</p>}
-                            <p className={`text-right text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-[var(--color-card-foreground)]'}`}>{formatCurrency(li.amount)}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Fee + Totals */}
-                <div className={`space-y-1.5 rounded-xl border border-[color:var(--color-border)]/50 p-3 ${isDark ? 'bg-slate-900/45 dark:border-slate-700 dark:bg-slate-900/70' : 'bg-[color:var(--color-muted)]/55'}`}>
-                  {!canReviewBlueprint && (
-                    <>
-                      <div className={`flex justify-between text-xs ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>
-                        <span>Materials Subtotal</span>
-                        <span>{formatCurrency(bp.quotation.materials)}</span>
-                      </div>
-                      <div className={`flex justify-between text-xs ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`}>
-                        <span>Labor Subtotal</span>
-                        <span>{formatCurrency(bp.quotation.labor)}</span>
-                      </div>
-                    </>
-                  )}
-                  <div className={`flex justify-between border-t border-[color:var(--color-border)]/55 pt-1.5 text-sm font-bold ${isDark ? 'text-emerald-300 dark:border-slate-600' : 'text-emerald-600'}`}>
-                    <span>Grand Total</span>
-                    <span>{formatCurrency(bp.quotation.total)}</span>
-                  </div>
-                </div>
-
-                {/* Duration + Validity */}
-                <div className="flex flex-wrap gap-x-6 gap-y-2 mt-3">
-                  {bp.quotation.estimatedDuration && (
-                    <div className={`flex items-center gap-2 text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
-                      <Clock className={`h-4 w-4 ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`} />
-                      <span className="font-medium">Duration:</span>
-                      <span>{bp.quotation.estimatedDuration}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Scope + Notes — staff only */}
-                {!canReviewBlueprint && (bp.quotation.breakdown || bp.quotation.engineerNotes) && (
-                  <div className="mt-3 space-y-3 border-t border-gray-100 pt-4 dark:border-slate-700">
-                    {bp.quotation.breakdown && (
-                      <div className={`text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
-                        <p className={`mb-1 font-medium ${isDark ? 'text-slate-200' : 'text-[var(--color-card-foreground)]'}`}>Scope of Work:</p>
-                        <p className={`whitespace-pre-wrap rounded-lg border border-[color:var(--color-border)]/50 p-3 ${isDark ? 'bg-slate-900/45 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200' : 'bg-[color:var(--color-muted)]/45 text-[var(--text-metal-color)]'}`}>
-                          {bp.quotation.breakdown}
-                        </p>
-                      </div>
-                    )}
-                    {bp.quotation.engineerNotes && (
-                      <div className={`flex items-start gap-2 text-sm ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
-                        <MessageSquare className={`mt-0.5 h-4 w-4 ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-muted-color)]'}`} />
-                        <div>
-                          <span className="font-medium">Engineer Notes:</span>
-                          <p className="mt-0.5">{bp.quotation.engineerNotes}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Customer sees scope of work too (if provided) */}
-                {canReviewBlueprint && bp.quotation.breakdown && (
-                  <div className={`mt-3 border-t border-[color:var(--color-border)]/45 pt-3 text-sm ${isDark ? 'text-slate-300 dark:border-slate-700' : 'text-[var(--text-metal-color)]'}`}>
-                    <p className={`mb-1 font-medium ${isDark ? 'text-slate-200' : 'text-[var(--color-card-foreground)]'}`}>Scope of Work:</p>
-                    <p className={`whitespace-pre-wrap rounded-lg border border-[color:var(--color-border)]/50 p-3 ${isDark ? 'bg-slate-900/45 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200' : 'bg-[color:var(--color-muted)]/45 text-[var(--text-metal-color)]'}`}>
-                      {bp.quotation.breakdown}
-                    </p>
-                  </div>
-                )}
+                  );
+                })}
               </CardContent>
             </Card>
           )}
@@ -1815,8 +2026,8 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
           {canReviewBlueprint && ['uploaded', 'revision_uploaded'].includes(bp.status) && (
             <div className="flex flex-wrap gap-3">
               <Button
-                variant="outline"
-                className="border-red-200 text-red-700 hover:bg-red-50 rounded-xl"
+                variant="destructive"
+                className="rounded-xl"
                 onClick={() => setRevisionDialog({ open: true, blueprintId: bp._id })}
               >
                 <AlertCircle className="mr-2 h-4 w-4" />
@@ -1824,16 +2035,16 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
               </Button>
             </div>
           )}
-        </div>
-      ))}
+          </div>
+        ))}
 
-      {/* Approve Confirmation Dialog */}
-      <Dialog
+        {/* Approve Confirmation Dialog */}
+        <Dialog
         open={approveConfirmDialog.open}
         onOpenChange={(open) => {
           if (!open) setApproveConfirmDialog({ open: false, blueprintId: '', component: null });
         }}
-      >
+        >
           <DialogContent className="sm:max-w-[420px] rounded-2xl dark:border-slate-700 dark:bg-slate-900">
           <DialogHeader>
             <DialogTitle className="text-gray-900 dark:text-slate-100">
@@ -1880,10 +2091,10 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+        </Dialog>
 
-      {/* Revision Dialog */}
-      <Dialog
+        {/* Revision Dialog */}
+        <Dialog
         open={revisionDialog.open}
         onOpenChange={(open) => {
           if (!open) {
@@ -1891,7 +2102,7 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
             setRevisionRefKeys([]);
           }
         }}
-      >
+        >
         <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-[480px] dark:border-slate-700 dark:bg-slate-900">
           <DialogHeader>
             <DialogTitle className="text-gray-900 dark:text-slate-100">Request Revision</DialogTitle>
@@ -1949,11 +2160,11 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+        </Dialog>
 
-      {/* Accept Blueprint & Payment Selection Dialog */}
-      {/* Payment Selection Dialog */}
-      <Dialog
+        {/* Accept Blueprint & Payment Selection Dialog */}
+        {/* Payment Selection Dialog */}
+        <Dialog
         open={acceptDialog.open}
         onOpenChange={(open) => {
           if (!open) {
@@ -1961,7 +2172,7 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
             setPaymentType('full');
           }
         }}
-      >
+        >
         <DialogContent className="max-h-[90vh] overflow-y-auto rounded-2xl sm:max-w-md dark:border-slate-700 dark:bg-slate-900">
           <DialogHeader>
             <DialogTitle className="text-gray-900 dark:text-slate-100">Choose Payment Plan</DialogTitle>
@@ -2097,14 +2308,16 @@ export function BlueprintTab({ projectId, projectItemId, mode = 'blueprint' }: B
             </Button>
             <Button
               onClick={handleChoosePaymentPlan}
-              disabled={selectPaymentPlanMutation.isPending || !hasPayableQuotation(acceptDialog.blueprint)}
+              disabled={selectPaymentPlanMutation.isPending || !hasPayableQuotation(acceptDialog.blueprint) || !isQuotationSentToCustomer(acceptDialog.blueprint)}
               className="rounded-lg border border-emerald-500/70 bg-[linear-gradient(180deg,#22c55e_0%,#15803d_100%)] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_16px_32px_rgba(8,68,39,0.28)] hover:bg-[linear-gradient(180deg,#34d399_0%,#16a34a_100%)] hover:text-white dark:border-emerald-400/55 dark:bg-[linear-gradient(180deg,#34d399_0%,#15803d_100%)] dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_18px_34px_rgba(6,78,59,0.36)] dark:hover:bg-[linear-gradient(180deg,#6ee7b7_0%,#16a34a_100%)]"
             >
               {selectPaymentPlanMutation.isPending ? 'Creating Plan...' : 'Create Payment Plan'}
             </Button>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
-    </div>
+        </Dialog>
+      </div>
+      {previewDialog}
+    </>
   );
 }

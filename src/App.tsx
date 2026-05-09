@@ -349,7 +349,7 @@ export default function App() {
                   />
                 }
               >
-                <Route path="/visit-reports" element={<Navigate to="/projects?tab=visit-reports" replace />} />
+                <Route path="/visit-reports" element={<Navigate to="/appointments?tab=visit-reports" replace />} />
                 <Route path="/visit-reports/:id" element={<VisitReportPage />} />
               </Route>
 

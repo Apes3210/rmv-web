@@ -26,7 +26,6 @@ import {
   Bell,
   Eye,
   ShieldCheck,
-  PackageCheck,
 } from 'lucide-react';
 import { formatDistanceToNowStrict } from 'date-fns';
 
@@ -375,7 +374,6 @@ export function DashboardPage() {
 
   const primaryRole =
     user?.roles.find((r) => r !== Role.ADMIN) ?? user?.roles[0] ?? Role.CUSTOMER;
-  const isCustomerRole = user?.roles.includes(Role.CUSTOMER);
   const dashboardRole = primaryRole as Role;
   const kpis = getRoleKpis(
     primaryRole as Role,
@@ -422,48 +420,6 @@ export function DashboardPage() {
           </span>
         </div>
       </div>
-
-      {/* Payment Due Alert Banner (customers with pending payments) */}
-      {isCustomerRole && (data as any)?.pendingPayments > 0 && (
-        <Link to="/payments">
-          <div className="flex cursor-pointer items-center gap-3 rounded-[1.35rem] border border-[#c7aa7a]/70 bg-[linear-gradient(180deg,rgba(248,240,229,0.82)_0%,rgba(235,220,198,0.58)_100%)] p-4 transition-colors hover:bg-[linear-gradient(180deg,rgba(250,244,235,0.9)_0%,rgba(237,225,205,0.7)_100%)]">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[linear-gradient(180deg,#f8f0e5_0%,#ebdcc6_100%)]">
-              <AlertCircle className="h-5 w-5 text-[#a97d49]" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-[#7e6239]">
-                You have {(data as any).pendingPayments} payment{(data as any).pendingPayments > 1 ? 's' : ''} due
-              </p>
-              <p className="text-xs text-[#8f6e42]">
-                Tap here to view and pay your outstanding balances.
-              </p>
-            </div>
-            <ArrowRight className="h-4 w-4 text-[#a97d49]" />
-          </div>
-        </Link>
-      )}
-
-      {/* Installation Confirmation Banner (customers with projects ready for delivery) */}
-      {isCustomerRole && (data as any)?.pendingInstallationConfirmations?.length > 0 && (
-        (data as any).pendingInstallationConfirmations.map((proj: { _id: string; title: string }) => (
-          <Link key={proj._id} to={`/projects/${proj._id}/fabrication`}>
-            <div className="flex cursor-pointer items-center gap-3 rounded-[1.35rem] border border-[#8da4b8]/70 bg-[linear-gradient(180deg,rgba(238,244,249,0.9)_0%,rgba(216,228,238,0.7)_100%)] p-4 transition-colors hover:bg-[linear-gradient(180deg,rgba(244,248,251,0.94)_0%,rgba(221,232,241,0.82)_100%)]">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[linear-gradient(180deg,#eef4f9_0%,#d8e4ee_100%)]">
-                <PackageCheck className="h-5 w-5 text-[#4f6679]" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold text-[#4f6679]">
-                  Your product is ready for installation!
-                </p>
-                <p className="text-xs text-[#5d768a]">
-                  &quot;{proj.title}&quot; fabrication is complete. Tap here to confirm your installation schedule.
-                </p>
-              </div>
-              <ArrowRight className="h-4 w-4 text-[#708ca6]" />
-            </div>
-          </Link>
-        ))
-      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-2.5 sm:gap-4 lg:grid-cols-2">

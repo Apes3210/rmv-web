@@ -691,37 +691,47 @@ export function AppLayout() {
 
       <main className="metal-shell transition-all duration-300 md:pl-64">
         <header className="metal-panel sticky top-0 z-30 hidden border-b md:block">
-          <div className="flex h-14 items-center justify-between px-6 lg:px-8">
-            <div className="flex min-w-0 flex-col justify-center">
-              <div className="mb-0.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#78818c] dark:text-slate-300">
-                <span>Workspace</span>
-                {breadcrumbs.length > 0 && <span className="h-1 w-1 rounded-full bg-[#b3bcc6]" />}
-                <span className="truncate text-[#4d5560] dark:text-slate-400">{meta.title}</span>
+          <div className="flex h-16 items-center justify-between px-6 lg:px-8">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                type="button"
+                aria-label="Workspace switcher"
+                className="metal-pill flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-300"
+              >
+                <LayoutDashboard className="h-4 w-4" />
+              </button>
+              <div className="h-7 w-px bg-[color:var(--color-border)]/70" />
+              <div className="flex min-w-0 flex-col justify-center">
+                <div className="mb-0.5 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#78818c] dark:text-slate-300">
+                  <span>Workspace</span>
+                  {breadcrumbs.length > 0 && <span className="h-1 w-1 rounded-full bg-[#b3bcc6]" />}
+                  <span className="truncate text-[#4d5560] dark:text-slate-400">{meta.title}</span>
+                </div>
+                {breadcrumbs.length > 1 ? (
+                  <nav className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    {breadcrumbs.map((crumb, i) => (
+                      <span key={crumb.path} className="flex items-center gap-2">
+                        {i > 0 && <ChevronRight className="h-3.5 w-3.5" />}
+                        {crumb.isLast ? (
+                          <span className="font-semibold text-foreground">{crumb.label}</span>
+                        ) : (
+                          <Link to={crumb.path} className="hover:text-foreground transition-colors">
+                            {crumb.label}
+                          </Link>
+                        )}
+                      </span>
+                    ))}
+                  </nav>
+                ) : (
+                  <p className="text-xs text-[#8b8b94]">{meta.description}</p>
+                )}
               </div>
-              {breadcrumbs.length > 1 ? (
-                <nav className="flex items-center gap-1 text-xs text-muted-foreground">
-                  {breadcrumbs.map((crumb, i) => (
-                    <span key={crumb.path} className="flex items-center gap-1">
-                      {i > 0 && <ChevronRight className="h-3 w-3" />}
-                      {crumb.isLast ? (
-                        <span className="font-medium text-foreground">{crumb.label}</span>
-                      ) : (
-                        <Link to={crumb.path} className="hover:text-foreground transition-colors">
-                          {crumb.label}
-                        </Link>
-                      )}
-                    </span>
-                  ))}
-                </nav>
-              ) : (
-                <p className="text-xs text-[#8b8b94]">{meta.description}</p>
-              )}
             </div>
 
             <div className="flex items-center gap-3">
               <div ref={searchContainerRef} className="relative">
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <input
                     ref={searchInputRef}
                     type="text"
@@ -734,9 +744,9 @@ export function AppLayout() {
                     onKeyDown={onSearchKeyDown}
                     placeholder="Search anything..."
                     aria-label="Search"
-                    className="metal-input h-9 w-[200px] rounded-xl pl-9 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#c2cad3] lg:w-[250px]"
+                    className="metal-input h-10 w-[240px] rounded-xl pl-10 pr-16 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#c2cad3] xl:w-[300px]"
                   />
-                  <kbd className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded border border-[#c7cfd7] bg-white/55 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-300">
+                  <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md border border-[#c7cfd7] bg-white/55 px-2 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-300">
                     Ctrl+K
                   </kbd>
                 </div>
@@ -901,7 +911,7 @@ export function AppLayout() {
 
               <Link
                 to="/notifications"
-                className="metal-pill relative flex h-9 w-9 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:text-foreground"
+                className="metal-pill relative flex h-10 w-10 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:text-foreground"
                 aria-label="Open notifications"
               >
                 <Bell className="h-4 w-4" />
@@ -917,12 +927,12 @@ export function AppLayout() {
                   type="button"
                   onClick={handleTimeClock}
                   disabled={timeClockPending}
-                  className="metal-pill hidden items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 lg:flex"
+                  className="metal-pill hidden h-10 items-center gap-2 rounded-xl px-3 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 lg:flex"
                 >
                   {timeClockPending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <Clock className="h-3.5 w-3.5" />
+                    <Clock className="h-4 w-4" />
                   )}
                   <span className="font-medium">{isTimedIn ? 'Time Out' : 'Time In'}</span>
                 </button>
@@ -932,9 +942,9 @@ export function AppLayout() {
                 <button
                   type="button"
                   onClick={() => setIsProfileModalOpen(true)}
-                  className="metal-pill hidden items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground lg:flex"
+                  className="metal-pill hidden h-10 items-center gap-2 rounded-xl px-3 text-xs text-muted-foreground transition-colors hover:text-foreground lg:flex"
                 >
-                  <CircleCheckBig className="h-3.5 w-3.5" />
+                  <CircleCheckBig className="h-4 w-4" />
                   <span className="font-medium">
                     Profile {profileChecks.percent}%
                   </span>
@@ -947,14 +957,14 @@ export function AppLayout() {
               {user && (
                 <Link
                   to="/account/profile"
-                  className="metal-pill flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 transition-colors hover:text-[#11151a]"
+                  className="metal-pill flex h-10 items-center gap-2.5 rounded-xl px-3 transition-colors hover:text-[#11151a]"
                 >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[linear-gradient(180deg,#24282f_0%,#15191f_100%)] text-[11px] font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[linear-gradient(180deg,#24282f_0%,#15191f_100%)] text-[10px] font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
                     {user.firstName[0]}
                     {user.lastName[0]}
                   </div>
                   <div className="hidden lg:block text-left">
-                    <p className="text-sm font-medium text-foreground leading-none">{user.firstName}</p>
+                    <p className="text-sm font-semibold text-foreground leading-none">{user.firstName}</p>
                     <p className="text-[10px] text-muted-foreground capitalize mt-0.5">
                       {user.roles[0]?.replace(/_/g, ' ')}
                     </p>

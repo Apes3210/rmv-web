@@ -1,7 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { Hammer, Plus, Clock, User, Paperclip, Lock, CreditCard, Pencil, Trash2, PackageCheck, CalendarCheck, Info } from 'lucide-react';
+import {
+  Hammer,
+  Plus,
+  Clock,
+  User,
+  Paperclip,
+  Lock,
+  CreditCard,
+  Pencil,
+  Trash2,
+  PackageCheck,
+  CalendarCheck,
+  ChevronLeft,
+  ChevronRight,
+  Boxes,
+  Scissors,
+  Wrench,
+  ShieldCheck,
+  Truck,
+  CheckCircle2,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 
 import { extractErrorMessage } from '@/lib/utils';
@@ -58,6 +78,22 @@ const FABRICATION_STEP_MARKERS: Array<{ key: string; label: string }> = [
   { key: FabricationStatus.DONE, label: 'Done' },
 ];
 
+const WORKSTREAMS_BREAKPOINTS = {
+  desktop: 1280,
+  tablet: 768,
+};
+
+const lifecycleIconByStatus: Record<string, ComponentType<{ className?: string }>> = {
+  [FabricationStatus.MATERIAL_PREP]: Boxes,
+  [FabricationStatus.CUTTING]: Scissors,
+  [FabricationStatus.WELDING]: Wrench,
+  [FabricationStatus.ASSEMBLY]: Hammer,
+  [FabricationStatus.FINISHING]: Pencil,
+  [FabricationStatus.QUALITY_CHECK]: ShieldCheck,
+  [FabricationStatus.READY_FOR_DELIVERY]: Truck,
+  [FabricationStatus.DONE]: CheckCircle2,
+};
+
 const formatFabricationStatus = (value?: string) =>
   (value || FabricationStatus.QUEUED).replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 
@@ -97,7 +133,7 @@ function FabricationItemStatusCard({
     <button
       type="button"
       onClick={() => onSelect(item._id)}
-      className={`w-full rounded-xl border p-4 text-left transition-all ${
+      className={`h-full min-h-[162px] w-full rounded-2xl border p-4 text-left transition-all ${
         selected
           ? isDark
             ? 'border-sky-400/50 bg-sky-500/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_34px_rgba(2,132,199,0.14)]'
@@ -174,6 +210,8 @@ export function FabricationTab({
   const [uploading, setUploading] = useState(false);
   const [editUploading, setEditUploading] = useState(false);
   const [blockedAction, setBlockedAction] = useState<BlockedActionInfo | null>(null);
+  const [carouselPage, setCarouselPage] = useState(0);
+  const [baseCardsPerPage, setBaseCardsPerPage] = useState(4);
 
   const { data: project } = useProject(projectId);
   const projectItems = useMemo(() => project?.items || [], [project?.items]);
@@ -183,12 +221,47 @@ export function FabricationTab({
     if (projectItemId && projectItems.some((item) => item._id === projectItemId)) return projectItemId;
     return projectItems[0]?._id;
   }, [projectItems, projectItemId, selectedItemId]);
+  const { data: fabricationStatus } = useFabricationStatus(projectId, canViewUpdates, selectedFabricationItemId);
   const selectedItem = projectItems.find((item) => item._id === selectedFabricationItemId);
   const selectedItemLabel = selectedItem ? itemTitle(selectedItem) : 'Project';
+  const hasLifecyclePanel = Boolean(fabricationStatus?.currentStatus);
+  const cardsPerPage = useMemo(() => {
+    // In split mode (workstreams + lifecycle side-by-side), cap cards to keep each tile readable.
+    if (hasLifecyclePanel) return Math.min(baseCardsPerPage, 2);
+    return baseCardsPerPage;
+  }, [baseCardsPerPage, hasLifecyclePanel]);
+  const totalWorkstreamPages = Math.max(1, Math.ceil(projectItems.length / cardsPerPage));
+  const canSlideWorkstreams = projectItems.length > cardsPerPage;
+  const visibleWorkstreams = useMemo(() => {
+    const start = carouselPage * cardsPerPage;
+    return projectItems.slice(start, start + cardsPerPage);
+  }, [projectItems, carouselPage, cardsPerPage]);
 
   useEffect(() => {
     if (projectItemId) setSelectedItemId(projectItemId);
   }, [projectItemId]);
+
+  useEffect(() => {
+    const updateCardsPerPage = () => {
+      if (window.innerWidth >= WORKSTREAMS_BREAKPOINTS.desktop) {
+        setBaseCardsPerPage(4);
+        return;
+      }
+      if (window.innerWidth >= WORKSTREAMS_BREAKPOINTS.tablet) {
+        setBaseCardsPerPage(2);
+        return;
+      }
+      setBaseCardsPerPage(1);
+    };
+
+    updateCardsPerPage();
+    window.addEventListener('resize', updateCardsPerPage);
+    return () => window.removeEventListener('resize', updateCardsPerPage);
+  }, []);
+
+  useEffect(() => {
+    setCarouselPage((prev) => Math.min(prev, Math.max(0, totalWorkstreamPages - 1)));
+  }, [totalWorkstreamPages]);
 
   const {
     data: updates,
@@ -196,7 +269,6 @@ export function FabricationTab({
     isError,
     refetch,
   } = useFabricationUpdates(projectId, canViewUpdates, selectedFabricationItemId);
-  const { data: fabricationStatus } = useFabricationStatus(projectId, canViewUpdates, selectedFabricationItemId);
 
   // ── Live updates via WebSocket ──
   useEffect(() => {
@@ -387,57 +459,165 @@ export function FabricationTab({
         />
       )}
 
-      {projectItems.length > 1 && (
+      {(projectItems.length > 1 || fabricationStatus?.currentStatus) && (
         <Card className={`${isDark ? 'metal-panel-strong dark:bg-slate-950/85' : 'metal-panel'} rounded-xl border-[color:var(--color-border)]/60 dark:border-slate-700`}>
           <CardHeader className="pb-3">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <CardTitle className={`text-lg ${isDark ? 'text-slate-50' : 'text-[var(--color-card-foreground)]'}`}>
-                  Fabrication Overview
+                  Fabrication Overview & Lifecycle
                 </CardTitle>
                 <p className={`mt-1 text-xs ${isDark ? 'text-slate-400' : 'text-[var(--text-metal-color)]'}`}>
-                  {projectItems.length} item workstreams under this project
+                  {projectItems.length > 1
+                    ? `${projectItems.length} item workstreams under this project`
+                    : 'Current fabrication stage for this project'}
                 </p>
               </div>
-              <span className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${isDark ? 'border-slate-700 bg-slate-900 text-slate-200' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
-                Viewing {selectedItemLabel}
-              </span>
+              <div className="flex flex-wrap gap-2">
+                {projectItems.length > 1 && (
+                  <span className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${isDark ? 'border-slate-700 bg-slate-900 text-slate-200' : 'border-slate-200 bg-slate-50 text-slate-700'}`}>
+                    Viewing {selectedItemLabel}
+                  </span>
+                )}
+                {fabricationStatus?.currentStatus && (
+                  <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${isDark ? 'bg-slate-800 text-slate-100' : 'bg-[#edf0f4] text-[#1f2b37]'}`}>
+                    {currentFabricationStepIndex >= 0
+                      ? `Step ${currentFabricationStepIndex + 1} of ${FABRICATION_STEP_MARKERS.length}`
+                      : 'Queued'}
+                  </span>
+                )}
+              </div>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {projectItems.map((item, index) => (
-                <FabricationItemStatusCard
-                  key={item._id}
-                  projectId={projectId}
-                  item={item}
-                  index={index}
-                  selected={item._id === selectedFabricationItemId}
-                  canViewUpdates={canViewUpdates}
-                  onSelect={setSelectedItemId}
-                />
-              ))}
+          <CardContent className="pt-0">
+            <div className={`grid gap-4 ${projectItems.length > 1 && fabricationStatus?.currentStatus ? 'xl:grid-cols-[minmax(280px,0.9fr)_minmax(0,1.35fr)]' : ''}`}>
+              {projectItems.length > 1 && (
+                <div className="space-y-3">
+                  <div className={`grid gap-3 ${cardsPerPage === 1 ? 'grid-cols-1' : cardsPerPage === 2 ? 'grid-cols-2' : 'grid-cols-4'}`}>
+                    {visibleWorkstreams.map((item) => {
+                      const realIndex = projectItems.findIndex((projectItem) => projectItem._id === item._id);
+                      return (
+                        <FabricationItemStatusCard
+                          key={item._id}
+                          projectId={projectId}
+                          item={item}
+                          index={realIndex}
+                          selected={item._id === selectedFabricationItemId}
+                          canViewUpdates={canViewUpdates}
+                          onSelect={setSelectedItemId}
+                        />
+                      );
+                    })}
+                  </div>
+
+                  {canSlideWorkstreams && (
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          disabled={carouselPage === 0}
+                          onClick={() => setCarouselPage((prev) => Math.max(0, prev - 1))}
+                          className={`${isDark ? 'border-slate-700 bg-slate-900/75 text-slate-200 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'} h-8 w-8 rounded-full`}
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          disabled={carouselPage >= totalWorkstreamPages - 1}
+                          onClick={() => setCarouselPage((prev) => Math.min(totalWorkstreamPages - 1, prev + 1))}
+                          className={`${isDark ? 'border-slate-700 bg-slate-900/75 text-slate-200 hover:bg-slate-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'} h-8 w-8 rounded-full`}
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        {Array.from({ length: totalWorkstreamPages }).map((_, pageIndex) => (
+                          <button
+                            key={pageIndex}
+                            type="button"
+                            onClick={() => setCarouselPage(pageIndex)}
+                            aria-label={`Go to workstream page ${pageIndex + 1}`}
+                            className={`h-2.5 rounded-full transition-all ${
+                              pageIndex === carouselPage
+                                ? 'w-5 bg-sky-500'
+                                : isDark
+                                  ? 'w-2.5 bg-slate-700 hover:bg-slate-500'
+                                  : 'w-2.5 bg-slate-300 hover:bg-slate-400'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {fabricationStatus?.currentStatus && (
+                <div className={`rounded-xl border p-3 ${isDark ? 'border-slate-800 bg-slate-950/45' : 'border-slate-200 bg-white/65'}`}>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-[var(--color-card-foreground)]'}`}>
+                      Lifecycle Marker
+                    </p>
+                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${isDark ? 'bg-slate-900 text-slate-200' : 'bg-slate-100 text-slate-700'}`}>
+                      {formatFabricationStatus(fabricationStatus.currentStatus)}
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto pb-1">
+                    <div className="min-w-[700px]">
+                      <div className="grid grid-cols-8 gap-0">
+                        {FABRICATION_STEP_MARKERS.map((step, idx) => {
+                          const isCurrent = step.key === fabricationStatus.currentStatus;
+                          const isComplete = currentFabricationStepIndex >= 0 && idx < currentFabricationStepIndex;
+                          const isLast = idx === FABRICATION_STEP_MARKERS.length - 1;
+                          const StageIcon = lifecycleIconByStatus[step.key] || Hammer;
+                          const nodeClass = isCurrent
+                            ? isDark
+                              ? 'border-sky-400/50 bg-sky-500/20 text-sky-100'
+                              : 'border-sky-300 bg-sky-50 text-sky-700'
+                            : isComplete
+                              ? isDark
+                                ? 'border-emerald-500/35 bg-emerald-500/10 text-emerald-200'
+                                : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                              : isDark
+                                ? 'border-slate-700 bg-slate-900/70 text-slate-400'
+                                : 'border-[#d8dee6] bg-[#f8fafc] text-[#64748b]';
+                          const lineClass = isComplete
+                            ? isDark ? 'bg-emerald-400/60' : 'bg-emerald-300'
+                            : isDark ? 'bg-slate-700' : 'bg-slate-300';
+
+                          return (
+                            <div key={step.key} className="relative px-1 text-center">
+                              <div className="relative mx-auto mb-2 flex h-12 w-12 items-center justify-center">
+                                {!isLast && (
+                                  <span className={`absolute left-[calc(100%+6px)] top-1/2 h-[2px] w-[calc(100%-4px)] -translate-y-1/2 ${lineClass}`} />
+                                )}
+                                <span className={`relative z-10 flex h-12 w-12 items-center justify-center rounded-full border ${nodeClass}`}>
+                                  <StageIcon className="h-4 w-4" />
+                                </span>
+                              </div>
+                              <p className={`text-[11px] leading-tight ${isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                                <span className={`block text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{idx + 1}</span>
+                                {step.label}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Customer Fabrication Guide Banner */}
-      {isCustomer && fabricationStatus?.currentStatus && fabricationStatus.currentStatus !== FabricationStatus.READY_FOR_DELIVERY && fabricationStatus.currentStatus !== FabricationStatus.DONE && (
-        <Card className="rounded-xl border-indigo-200 bg-indigo-50/50 dark:border-indigo-500/35 dark:bg-indigo-500/10">
-          <CardContent className="flex items-start gap-3 py-3 px-4">
-            <Info className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600 dark:text-indigo-300" />
-            <div>
-              <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">
-                Fabrication: {fabricationStatus.currentStatus.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-              </p>
-              <p className="mt-0.5 text-xs text-indigo-700 dark:text-indigo-300">
-                Your order is being fabricated. The team posts updates with photos below. You&apos;ll be notified when it&apos;s ready for delivery.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
       {isCustomer && fabricationStatus?.currentStatus === FabricationStatus.DONE && (
         <Card className="rounded-xl border-emerald-200 bg-emerald-50/50 dark:border-emerald-500/35 dark:bg-emerald-500/10">
           <CardContent className="flex items-start gap-3 py-3 px-4">
@@ -446,97 +626,6 @@ export function FabricationTab({
               <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">Fabrication Complete</p>
               <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">Your order has been delivered and installed. Thank you!</p>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Live Fabrication Step Marker */}
-      {fabricationStatus?.currentStatus && (
-        <Card className={`${isDark ? 'metal-panel-strong dark:bg-slate-950/85' : 'metal-panel'} rounded-xl border-[color:var(--color-border)]/60 dark:border-slate-700`}>
-          <CardContent className="space-y-3 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-[var(--color-card-foreground)]'}`}>
-                Fabrication Lifecycle Marker
-              </p>
-              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${isDark ? 'bg-slate-800 text-slate-100' : 'bg-[#edf0f4] text-[#1f2b37]'}`}>
-                {currentFabricationStepIndex >= 0
-                  ? `Step ${currentFabricationStepIndex + 1} of ${FABRICATION_STEP_MARKERS.length}`
-                  : 'Queued'}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
-              {FABRICATION_STEP_MARKERS.map((step, idx) => {
-                const isCurrent = step.key === fabricationStatus.currentStatus;
-                const isComplete = currentFabricationStepIndex >= 0 && idx < currentFabricationStepIndex;
-                const isQualityCheck = step.key === FabricationStatus.QUALITY_CHECK;
-
-                return (
-                  <div
-                    key={step.key}
-                    className={`rounded-lg border px-2 py-2 text-center text-[11px] font-medium transition-colors ${
-                      isCurrent
-                        ? isDark
-                          ? 'border-sky-400/45 bg-sky-500/20 text-sky-100'
-                          : 'border-sky-300 bg-sky-50 text-sky-800'
-                        : isComplete
-                          ? isDark
-                            ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
-                            : 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                          : isDark
-                            ? 'border-slate-700 bg-slate-900/70 text-slate-400'
-                            : 'border-[#d8dee6] bg-[#f8fafc] text-[#5c6b7a]'
-                    }`}
-                  >
-                    <p className="leading-none">{idx + 1}</p>
-                    <p className={`mt-1 leading-tight ${isQualityCheck && isCurrent ? 'font-semibold' : ''}`}>
-                      {step.label}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Payment Gate Banners */}
-      {!isProjectInFabrication && (
-        <Card className={`${isDark ? 'metal-panel-strong' : 'metal-panel'} rounded-xl border-[color:var(--color-border)]/60`}>
-          <CardContent className="p-4 flex items-start gap-3">
-            <Info className={`h-5 w-5 mt-0.5 shrink-0 ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-muted-color)]'}`} />
-            <div>
-              <p className={`text-sm font-semibold ${isDark ? 'text-slate-100' : 'text-[var(--color-card-foreground)]'}`}>Fabrication has not started yet</p>
-              <p className={`mt-0.5 text-xs ${isDark ? 'text-slate-300' : 'text-[var(--text-metal-color)]'}`}>
-                Progress updates become available once the required payment is verified and the project moves into fabrication.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {fabricationStatus?.paymentGate && !fabricationStatus.paymentGate.allPaid && (
-        <Card className="rounded-xl border-amber-200 bg-amber-50/50 dark:border-amber-500/35 dark:bg-amber-500/10">
-          <CardContent className="p-4 flex items-start gap-3">
-            <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-300" />
-            <div>
-              <p className="text-sm font-semibold text-amber-800 dark:text-amber-100">Payment Gate Active</p>
-              <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-300">
-                {fabricationStatus.paymentGate.unpaidCount} payment stage(s) remain unpaid.
-                Fabrication cannot proceed to &quot;Ready for Delivery&quot; until all stages are verified.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {fabricationStatus?.paymentGate?.allPaid && (
-        <Card className="rounded-xl border-emerald-200 bg-emerald-50/50 dark:border-emerald-500/35 dark:bg-emerald-500/10">
-          <CardContent className="p-4 flex items-center gap-3">
-            <CreditCard className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-300" />
-            <p className="text-sm font-medium text-emerald-800 dark:text-emerald-100">
-              All payments verified — fabrication is unblocked
-            </p>
           </CardContent>
         </Card>
       )}

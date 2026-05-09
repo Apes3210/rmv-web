@@ -44,7 +44,7 @@ export function PublicNavbar() {
 
         <div className="hidden lg:flex items-center space-x-6">
           {isLoggedIn ? (
-            <Button asChild className="label-font brass-gradient h-9 rounded-none border-none px-6 text-[10px] font-black uppercase tracking-[0.2em] text-neutral-950 transition-transform hover:scale-105 active:scale-95 shadow-[0_5px_15px_rgba(255,215,0,0.15)]">
+            <Button asChild style={{ color: '#0a0a0a' }} className="label-font brass-gradient h-9 rounded-none border-none px-6 text-[10px] font-black uppercase tracking-[0.2em] transition-transform hover:scale-105 active:scale-95 shadow-[0_5px_15px_rgba(255,215,0,0.15)]">
               <Link to="/dashboard">Dashboard</Link>
             </Button>
           ) : (
@@ -52,7 +52,7 @@ export function PublicNavbar() {
               <Link to="/login" className="label-font text-[10px] font-bold uppercase tracking-[0.2em] text-white/60 transition-colors hover:text-white">
                 Sign In
               </Link>
-              <Button asChild className="label-font brass-gradient h-9 rounded-none border-none px-6 text-[10px] font-black uppercase tracking-[0.2em] text-neutral-950 transition-transform hover:scale-105 active:scale-95 shadow-[0_5px_15px_rgba(255,215,0,0.15)]">
+              <Button asChild style={{ color: '#0a0a0a' }} className="label-font brass-gradient h-9 rounded-none border-none px-6 text-[10px] font-black uppercase tracking-[0.2em] transition-transform hover:scale-105 active:scale-95 shadow-[0_5px_15px_rgba(255,215,0,0.15)]">
                 <Link to="/register">Get Started</Link>
               </Button>
             </div>
@@ -98,7 +98,7 @@ export function PublicNavbar() {
 
           <div className="border-t border-white/10 pt-6 flex flex-col space-y-4">
             {isLoggedIn ? (
-              <Button asChild className="label-font brass-gradient h-12 w-full rounded-none border-none text-[10px] font-black uppercase tracking-[0.2em] text-neutral-950">
+              <Button asChild style={{ color: '#0a0a0a' }} className="label-font brass-gradient h-12 w-full rounded-none border-none text-[10px] font-black uppercase tracking-[0.2em]">
                 <Link to="/dashboard" onClick={() => setMobileMenuOpen(false)}>Dashboard</Link>
               </Button>
             ) : (
@@ -110,7 +110,7 @@ export function PublicNavbar() {
                 >
                   Sign In
                 </Link>
-                <Button asChild className="label-font brass-gradient h-12 w-full rounded-none border-none text-[10px] font-black uppercase tracking-[0.2em] text-neutral-950">
+                <Button asChild style={{ color: '#0a0a0a' }} className="label-font brass-gradient h-12 w-full rounded-none border-none text-[10px] font-black uppercase tracking-[0.2em]">
                   <Link to="/register" onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
                 </Button>
               </>

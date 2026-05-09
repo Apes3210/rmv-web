@@ -98,7 +98,7 @@ export function ServiceTypePicker({
   return (
     <div ref={containerRef} className="relative space-y-1.5">
       <Label className="text-[13px] font-medium text-gray-700 dark:text-slate-300">
-        Service Type
+        Items
       </Label>
       <button
         type="button"

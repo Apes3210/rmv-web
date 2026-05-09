@@ -9,6 +9,8 @@ export interface User {
   phone?: string;
   address?: string;
   addressData?: {
+    id?: string;
+    label?: string;
     street?: string;
     barangay?: string;
     city?: string;
@@ -19,7 +21,9 @@ export interface User {
     lat?: number;
     lng?: number;
     formattedAddress?: string;
+    isDefault?: boolean;
   };
+  savedAddresses?: UserAddress[];
   roles: Role[];
   isEmailVerified: boolean;
   isActive: boolean;
@@ -56,6 +60,22 @@ export interface User {
   };
   themePreference?: 'light' | 'dark' | 'system';
   createdAt: string;
+}
+
+export interface UserAddress {
+  id?: string;
+  label?: string;
+  street?: string;
+  barangay?: string;
+  city?: string;
+  province?: string;
+  zip?: string;
+  country?: string;
+  addressType?: 'personal' | 'business';
+  lat?: number;
+  lng?: number;
+  formattedAddress?: string;
+  isDefault?: boolean;
 }
 
 export interface AuthState {
@@ -115,6 +135,7 @@ export interface CustomerSiteDetails {
   materials?: string;
   finishes?: string;
   preferredDesign?: string;
+  specifications?: ServiceSpecifications;
   customerRequirements?: string;
   notes?: string;
   photoKeys?: string[];
@@ -126,6 +147,7 @@ export interface CustomerSiteDetails {
 // ── Appointment ──
 export interface Appointment {
   _id: string;
+  canonicalAppointmentId?: string;
   customerId: string;
   customerName?: string;
   customerPhone?: string;
@@ -142,6 +164,8 @@ export interface Appointment {
   type: string;
   date: string;
   slotCode: string;
+  recommendedOcularDate?: string;
+  recommendedOcularSlot?: string;
   status: string;
   attendanceStatus?: string;
   actualArrivalAt?: string;
@@ -193,6 +217,7 @@ export interface Appointment {
   rescheduleCount: number;
   maxReschedules: number;
   projectNumber?: string;
+  cancelReason?: string;
   internalNotes?: string;
   customerSiteDetails?: CustomerSiteDetails;
   siteDetailsStatus?: 'pending' | 'submitted' | 'skipped';
@@ -338,10 +363,14 @@ export interface ProjectItem {
   materials?: string;
   finishes?: string;
   preferredDesign?: string;
+  specifications?: ServiceSpecifications;
   customerRequirements?: string;
   notes?: string;
   initialDesignKeys?: string[];
   initialDesignNotes?: string;
+  selectedDesignTemplateId?: string;
+  selectedDesignTemplateName?: string;
+  selectedDesignTemplateImageUrl?: string;
   designReviewStatus?: 'pending' | 'approved' | 'declined' | 'not_required';
   designReviewedBy?: string | User;
   designReviewedAt?: string;
@@ -353,6 +382,28 @@ export interface ProjectItem {
 }
 
 // ── Blueprint ──
+export type QuotationComplexity = 'simple' | 'standard' | 'complex';
+export type QuotationPaymentOption = 'full' | 'milestone';
+export type QuotationReviewStatus = 'draft' | 'for_review' | 'approved' | 'sent_to_customer';
+
+export interface QuotationInternalCosts<T = number> {
+  estimatedMaterials: T;
+  fabricationWork: T;
+  finishingPolishing: T;
+  installation: T;
+  deliveryMobilization: T;
+  overheadMisc: T;
+  markupProfit: T;
+}
+
+export interface QuotationMilestone {
+  label: string;
+  description?: string;
+  percentage?: number;
+  amount?: number;
+  trigger?: string;
+}
+
 export interface Blueprint {
   _id: string;
   projectId: string;
@@ -360,12 +411,16 @@ export interface Blueprint {
   version: number;
   blueprintKey: string;
   designKey?: string;
-  costingKey: string;
+  costingKey?: string;
   blueprintApproved: boolean;
   costingApproved: boolean;
   status: string;
   revisionNotes?: string;
   revisionRefKeys: string[];
+  quotationReviewStatus?: QuotationReviewStatus;
+  quotationReviewedBy?: string;
+  quotationReviewedAt?: string;
+  quotationSentAt?: string;
   uploadedBy?: {
     _id: string;
     firstName: string;
@@ -373,10 +428,28 @@ export interface Blueprint {
     phone?: string;
   };
   quotation?: {
-    materials: number;
-    labor: number;
-    fees: number;
+    internalCosts?: QuotationInternalCosts;
+    costPreset?: {
+      serviceType?: string;
+      complexity?: QuotationComplexity;
+      suggestedAt?: string;
+      suggestedValues?: Partial<QuotationInternalCosts>;
+    };
+    discount?: number;
+    subtotal?: number;
     total: number;
+    paymentOption?: QuotationPaymentOption;
+    paymentMilestones?: QuotationMilestone[];
+    validityDays?: number;
+    systemEstimatedDuration?: string;
+    adjustedEstimatedDuration?: string;
+    estimatedDuration?: string;
+    inclusions?: string;
+    exclusions?: string;
+    engineerNotes?: string;
+    materials?: number;
+    labor?: number;
+    fees?: number;
     lineItems?: {
       label: string;
       quantity: number;
@@ -384,11 +457,7 @@ export interface Blueprint {
       labor: number;
       amount: number;
     }[];
-    validityDays?: number;
     breakdown?: string;
-    estimatedDuration?: string;
-    engineerNotes?: string;
-    paymentMilestones?: { label: string; description: string }[];
   };
   createdAt: string;
 }
@@ -413,6 +482,21 @@ export interface BlueprintDraft {
     costing?: BlueprintDraftFile | null;
   };
   quotation?: {
+    internalCosts?: Partial<QuotationInternalCosts<string>>;
+    costPreset?: {
+      serviceType?: string;
+      complexity?: QuotationComplexity;
+      suggestedAt?: string;
+      suggestedValues?: Partial<QuotationInternalCosts<string>>;
+    };
+    discount?: string;
+    subtotal?: string;
+    total?: string;
+    paymentOption?: QuotationPaymentOption;
+    systemEstimatedDuration?: string;
+    adjustedEstimatedDuration?: string;
+    inclusions?: string;
+    exclusions?: string;
     lineItems?: {
       label: string;
       quantity: number;
@@ -424,7 +508,7 @@ export interface BlueprintDraft {
     breakdown?: string;
     estimatedDuration?: string;
     engineerNotes?: string;
-    paymentMilestones?: { label: string; description: string }[];
+    paymentMilestones?: QuotationMilestone[];
   };
   createdBy?: Pick<User, '_id' | 'firstName' | 'lastName' | 'phone'>;
   lastEditedBy?: Pick<User, '_id' | 'firstName' | 'lastName' | 'phone'>;
@@ -456,6 +540,7 @@ export interface PaymentPlan {
   projectItemId?: string;
   totalAmount: number;
   stages: PaymentStage[];
+  isPayInFull?: boolean;
   isImmutable: boolean;
   createdAt: string;
 }
@@ -591,6 +676,13 @@ export interface SiteConditions {
   obstaclesOrConstraints?: string;
 }
 
+export interface ServiceSpecifications {
+  measurements?: Record<string, string | number | boolean>;
+  siteConditions?: Record<string, string | number | boolean>;
+  materialsDesign?: Record<string, string | number | boolean>;
+  additional?: Record<string, string | number | boolean>;
+}
+
 export interface VisitReport {
   _id: string;
   appointmentId: string | (Partial<Appointment> & { _id: string });
@@ -625,6 +717,7 @@ export interface VisitReport {
   materials?: string;
   finishes?: string;
   preferredDesign?: string;
+  specifications?: ServiceSpecifications;
   customerRequirements?: string;
   notes?: string;
 
@@ -638,8 +731,13 @@ export interface VisitReport {
   projectScope?: string;
   initialDesignKeys?: string[];
   initialDesignNotes?: string;
+  selectedDesignTemplateId?: string;
+  selectedDesignTemplateName?: string;
+  selectedDesignTemplateImageUrl?: string;
   recommendedOcularDate?: string;
   recommendedOcularSlot?: string;
+  recommendedOcularAddressId?: string;
+  recommendedOcularAddress?: UserAddress;
   relatedOcularAppointment?: Partial<Appointment> & { _id: string };
   linkedProjectId?: string;
 

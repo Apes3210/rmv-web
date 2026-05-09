@@ -22,6 +22,7 @@ import type { Appointment } from '@/lib/types';
 import { useAuthStore } from '@/stores/auth.store';
 import { useThemeStore } from '@/stores/theme.store';
 import { Role, AppointmentStatus, APPOINTMENT_TYPE_LABELS } from '@/lib/constants';
+import { VisitReportsListPage } from '@/pages/visit-reports/VisitReportsListPage';
 
 const STATUS_FILTERS = [
   { label: 'All', value: '' },
@@ -116,6 +117,68 @@ function compareAppointmentLatestActivity(a: Appointment, b: Appointment) {
   return compareAppointmentAscending(a, b);
 }
 
+function getOcularDuplicateKey(appt: Appointment) {
+  const services = (appt.serviceTypes || [])
+    .map((service) => service.trim().toLowerCase())
+    .filter(Boolean)
+    .sort()
+    .join('|');
+  const address = (
+    appt.formattedAddress
+    || appt.address
+    || appt.customerAddress
+    || [
+      appt.addressStructured?.street,
+      appt.addressStructured?.barangay,
+      appt.addressStructured?.city,
+      appt.addressStructured?.province,
+      appt.addressStructured?.zip,
+    ].filter(Boolean).join(', ')
+  ).trim().toLowerCase();
+  const location = appt.customerLocation
+    ? `${appt.customerLocation.lat.toFixed(4)},${appt.customerLocation.lng.toFixed(4)}`
+    : '';
+
+  return `${services || 'unspecified'}::${address || location || 'no-location'}`;
+}
+
+function dedupeCustomerOcularFollowUps(appointments: Appointment[]) {
+  const preferredByKey = new Map<string, Appointment>();
+  const duplicateIds = new Set<string>();
+
+  appointments.forEach((appt) => {
+    const isUnpaidActiveOcular =
+      appt.type === 'ocular'
+      && !appt.ocularFeePaid
+      && ['pending', 'cash_pending', 'proof_submitted'].includes(String(appt.ocularFeeStatus || ''))
+      && !['completed', 'cancelled', 'no_show'].includes(appt.status);
+
+    if (!isUnpaidActiveOcular) return;
+
+    const key = getOcularDuplicateKey(appt);
+    const current = preferredByKey.get(key);
+    if (!current) {
+      preferredByKey.set(key, appt);
+      return;
+    }
+
+    const apptTime = appointmentActivityTime(appt);
+    const currentTime = appointmentActivityTime(current);
+    const keepNext =
+      apptTime > currentTime
+      || (apptTime === currentTime && compareAppointmentDescending(appt, current) < 0);
+
+    if (keepNext) {
+      duplicateIds.add(current._id);
+      preferredByKey.set(key, appt);
+    } else {
+      duplicateIds.add(appt._id);
+    }
+  });
+
+  return appointments.filter((appt) => !duplicateIds.has(appt._id));
+}
+
 export function AppointmentsPage() {
   const { user } = useAuthStore();
   const resolvedTheme = useThemeStore((state) => state.resolvedTheme);
@@ -125,6 +188,10 @@ export function AppointmentsPage() {
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const isDark = resolvedTheme === 'dark';
+  const canSeeVisitReports = Boolean(
+    user?.roles.some((role) => [Role.SALES_STAFF, Role.ENGINEER, Role.ADMIN].includes(role)),
+  );
+  const activeTab = canSeeVisitReports ? (searchParams.get('tab') || 'appointments') : 'appointments';
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -150,6 +217,11 @@ export function AppointmentsPage() {
   const isQueueRole = Boolean(
     user?.roles.some((role) => [Role.APPOINTMENT_AGENT, Role.ADMIN, Role.SALES_STAFF].includes(role)),
   );
+  const isCustomer = user?.roles.includes(Role.CUSTOMER) && user.roles.length === 1;
+
+  if (isCustomer && !params.limit) {
+    params.limit = '100';
+  }
 
   const listQuery = useAppointments(params, !isQueueRole);
   const queueQuery = useAppointmentQueue(params, isQueueRole);
@@ -161,8 +233,20 @@ export function AppointmentsPage() {
   const appointments: Appointment[] = isQueueRole
     ? queueItems.map((item) => item.appointment)
     : (listQuery.data?.items || []);
+  const visibleAppointments = isCustomer
+    ? dedupeCustomerOcularFollowUps(appointments)
+    : appointments;
 
   const recentWindowDays = queueQuery.data?.recentWindowDays || 14;
+  const hasActiveCustomerOcularFollowUp = visibleAppointments.some((appt) =>
+    appt.type === 'ocular'
+    && !['completed', 'cancelled', 'no_show'].includes(appt.status),
+  );
+  const isCompletedConsultationWithOcularFollowUp = (appt: Appointment) =>
+    appt.type === 'office'
+    && appt.status === AppointmentStatus.COMPLETED
+    && appt.consultationReportSubmitted
+    && hasActiveCustomerOcularFollowUp;
   
   let sections: Array<{ key: string; label: string; items: Appointment[] }> = [];
 
@@ -190,11 +274,12 @@ export function AppointmentsPage() {
       },
     ].filter((section) => section.items.length > 0);
   } else {
-    const upcomingItems = appointments
+    const upcomingItems = visibleAppointments
       .filter(a => !['completed', 'cancelled', 'no_show'].includes(a.status))
       .sort(compareAppointmentAscending);
-    const recentItems = appointments
+    const recentItems = visibleAppointments
       .filter(a => ['completed', 'cancelled', 'no_show'].includes(a.status))
+      .filter(a => !isCompletedConsultationWithOcularFollowUp(a))
       .sort(compareAppointmentDescending);
 
     sections = [
@@ -221,7 +306,6 @@ export function AppointmentsPage() {
     ]),
   );
 
-  const isCustomer = user?.roles.includes(Role.CUSTOMER) && user.roles.length === 1;
   const isSalesOnly = Boolean(
     user?.roles.includes(Role.SALES_STAFF)
     && !user.roles.some((role) => [Role.ADMIN, Role.APPOINTMENT_AGENT].includes(role)),
@@ -278,9 +362,9 @@ export function AppointmentsPage() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold tracking-tight text-[#171b21] dark:text-slate-100">Appointments</h1>
-            {!isLoading && appointments.length > 0 && (
+            {!isLoading && visibleAppointments.length > 0 && (
               <span className="rounded-full border border-[#56606c] bg-[#202833] px-2.5 py-1 text-[11px] font-semibold text-[#b0bac5] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                {appointments.length} visible
+                {visibleAppointments.length} visible
               </span>
             )}
           </div>
@@ -315,6 +399,39 @@ export function AppointmentsPage() {
         </div>
       </div>
 
+      {canSeeVisitReports && (
+        <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-muted)]/40 p-1">
+          {[
+            { key: 'appointments', label: 'Appointments' },
+            { key: 'visit-reports', label: 'Visit Reports' },
+          ].map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => {
+                const nextParams = new URLSearchParams(searchParams);
+                nextParams.set('tab', tab.key);
+                if (tab.key === 'visit-reports') {
+                  nextParams.delete('status');
+                }
+                navigate(`/appointments?${nextParams.toString()}`, { replace: true });
+              }}
+              className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                activeTab === tab.key
+                  ? 'bg-[color:var(--color-card)] text-[var(--color-card-foreground)] shadow-sm'
+                  : 'text-[var(--text-metal-color)] hover:text-[var(--color-card-foreground)] hover:bg-[color:var(--color-card)]/50'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'visit-reports' && canSeeVisitReports ? (
+        <VisitReportsListPage isEmbedded />
+      ) : (
+      <>
       {/* Filters */}
       <CollectionToolbar
         title="Find the right appointment fast"
@@ -363,7 +480,7 @@ export function AppointmentsPage() {
             </div>
           </div>
         </>
-      ) : !appointments.length ? (
+      ) : !visibleAppointments.length ? (
         <EmptyState
           icon={<Calendar className="h-6 w-6" />}
           title="No appointments found"
@@ -467,7 +584,7 @@ export function AppointmentsPage() {
             ))}
             <div className="px-1 pt-1">
               <p className="text-[11px] text-[#68727d] dark:text-slate-400">
-                {appointments.length} appointment{appointments.length !== 1 ? 's' : ''}
+                {visibleAppointments.length} appointment{visibleAppointments.length !== 1 ? 's' : ''}
               </p>
             </div>
           </div>
@@ -639,11 +756,13 @@ export function AppointmentsPage() {
             </Table>
             <div className="border-t border-[#dde3ea] bg-white/25 px-5 py-3 dark:border-slate-700 dark:bg-slate-900/35">
               <p className="text-xs text-[#68727d] dark:text-slate-400">
-                {appointments.length} appointment{appointments.length !== 1 ? 's' : ''}
+                {visibleAppointments.length} appointment{visibleAppointments.length !== 1 ? 's' : ''}
               </p>
             </div>
           </div>
         </>
+      )}
+      </>
       )}
     </div>
   );

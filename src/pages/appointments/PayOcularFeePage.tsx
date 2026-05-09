@@ -11,12 +11,17 @@ import {
   RefreshCw,
   Banknote,
   Clock,
+  FileText,
+  Briefcase,
+  MapPin,
+  Route,
+  ChevronRight,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 import { extractErrorMessage } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageError } from '@/components/shared/PageError';
 import { useAppointment, useCreateOcularFeeCheckout, useVerifyOcularFeeCheckout, useSimulateOcularPayment, useRequestOcularCashPayment } from '@/hooks/useAppointments'; // ⚠️ useSimulateOcularPayment is TESTING ONLY
@@ -39,6 +44,8 @@ export function PayOcularFeePage() {
   const paymentStatus = searchParams.get('status');
   const feeStatus = appt?.ocularFeeStatus;
   const feeAmount = appt?.ocularFee ?? appt?.ocularFeeBreakdown?.total ?? 0;
+  const canonicalAppointmentId = appt?.canonicalAppointmentId || appt?._id;
+  const isStaleAppointmentLink = Boolean(canonicalAppointmentId && canonicalAppointmentId !== id);
 
   const [verifyTimedOut, setVerifyTimedOut] = useState(false);
 
@@ -137,78 +144,115 @@ export function PayOcularFeePage() {
 
   if (!appt) return <PageError onRetry={refetch} />;
 
+  if (isStaleAppointmentLink && canonicalAppointmentId) {
+    navigate(`/appointments/${canonicalAppointmentId}/pay-ocular-fee`, { replace: true });
+    return null;
+  }
+
+  const appointmentDetailsPath = `/appointments/${canonicalAppointmentId || id}`;
+  const feeDetailRows = [
+    {
+      icon: Briefcase,
+      label: 'Type',
+      value: `${appt.type === 'ocular' ? 'Ocular' : appt.type} Visit`,
+    },
+    ...(appt.formattedAddress
+      ? [{
+          icon: MapPin,
+          label: 'Location',
+          value: appt.formattedAddress,
+        }]
+      : []),
+    ...(appt.distanceKm != null
+      ? [{
+          icon: Route,
+          label: 'Distance',
+          value: `${appt.distanceKm.toFixed(1)} km`,
+        }]
+      : []),
+  ];
+
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-5 px-2 pb-8">
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-start gap-3">
         <Button
           variant="ghost"
           size="icon"
-          className="rounded-full"
-          onClick={() => navigate(`/appointments/${id}`)}
+          className="mt-0.5 h-8 w-8 rounded-lg border border-white/10 bg-slate-900/70 text-slate-200 hover:bg-slate-800 dark:bg-slate-900/80"
+          onClick={() => navigate(appointmentDetailsPath)}
         >
-          <ArrowLeft className="h-5 w-5" />
+          <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[var(--color-card-foreground)]">
+          <h1 className="text-xl font-bold tracking-tight text-[var(--color-card-foreground)]">
             Pay Ocular Fee
           </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
             Appointment on {format(new Date(appt.date), 'MMMM d, yyyy')}
           </p>
         </div>
       </div>
 
       {/* Fee Summary */}
-      <Card className="rounded-xl border-[#c8c8cd]/50 dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(17,24,34,0.96)_0%,rgba(10,17,26,0.98)_100%)]">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base text-[var(--color-card-foreground)]">Fee Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm text-[var(--color-card-foreground)]">
-          <div className="flex justify-between">
-            <span className="text-slate-500 dark:text-slate-400">Type</span>
-            <span className="font-medium capitalize">{appt.type} visit</span>
+      <Card className="overflow-hidden rounded-xl border border-slate-200/70 bg-white/80 shadow-xl shadow-slate-950/5 dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(18,28,42,0.96)_0%,rgba(9,17,27,0.98)_100%)] dark:shadow-black/20">
+        <CardContent className="p-0">
+          <div className="flex items-center gap-3 border-b border-slate-200/70 px-5 py-4 dark:border-white/10">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
+              <FileText className="h-5 w-5" />
+            </span>
+            <p className="text-base font-bold text-slate-900 dark:text-slate-100">Fee Details</p>
           </div>
-          {appt.formattedAddress && (
-            <div className="flex justify-between">
-              <span className="text-slate-500 dark:text-slate-400">Location</span>
-              <span className="font-medium text-right max-w-[60%]">
-                {appt.formattedAddress}
+          <div className="divide-y divide-slate-200/70 px-5 dark:divide-white/10">
+            {feeDetailRows.map(({ icon: Icon, label, value }) => (
+              <div key={label} className="grid grid-cols-[2.5rem_minmax(8rem,14rem)_1fr] items-center gap-4 py-5">
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-slate-800/80 dark:text-slate-400">
+                  <Icon className="h-4 w-4" />
+                </span>
+                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{label}</span>
+                <span className="text-right text-sm font-semibold leading-relaxed text-slate-900 dark:text-slate-100">
+                  {value}
+                </span>
+              </div>
+            ))}
+            <div className="grid grid-cols-[2.5rem_minmax(8rem,14rem)_1fr] items-center gap-4 py-5">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
+                <CreditCard className="h-4 w-4" />
+              </span>
+              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Total Ocular Fee</span>
+              <span className="text-right text-2xl font-black text-blue-600 dark:text-blue-300">
+              {formatCurrency(feeAmount)}
               </span>
             </div>
-          )}
-          {appt.distanceKm != null && (
-            <div className="flex justify-between">
-              <span className="text-slate-500 dark:text-slate-400">Distance</span>
-              <span className="font-medium">{appt.distanceKm.toFixed(1)} km</span>
-            </div>
-          )}
-          <div className="flex justify-between border-t border-slate-200 dark:border-white/10 pt-2">
-            <span className="font-semibold text-[var(--color-card-foreground)]">Total Ocular Fee</span>
-            <span className="font-bold text-lg text-[var(--color-card-foreground)]">
-              {formatCurrency(feeAmount)}
-            </span>
           </div>
         </CardContent>
       </Card>
 
       {/* ── Verified ── */}
       {feeStatus === 'verified' && (
-        <Card className="rounded-xl border-emerald-200 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-950/20">
-          <CardContent className="flex items-center gap-3 p-5">
-            <CheckCircle2 className="h-8 w-8 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <div>
-              <p className="font-semibold text-emerald-800 dark:text-emerald-300">Payment Confirmed</p>
-              <p className="text-sm text-emerald-700 dark:text-emerald-400">
+        <Card className="overflow-hidden rounded-xl border border-emerald-400/30 bg-emerald-50/80 shadow-xl shadow-emerald-950/5 dark:bg-[linear-gradient(135deg,rgba(5,45,36,0.72)_0%,rgba(9,27,28,0.96)_100%)] dark:shadow-black/20">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-4">
+              <span className="inline-flex h-16 w-16 shrink-0 items-center justify-center rounded-full border-2 border-emerald-400 text-emerald-500 shadow-[0_0_24px_rgba(16,185,129,0.3)]">
+                <CheckCircle2 className="h-9 w-9" />
+              </span>
+              <div>
+                <p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">Payment Confirmed</p>
+                <p className="mt-1 text-sm leading-relaxed text-emerald-800/80 dark:text-emerald-100/75">
                 Your payment has been received. A sales staff will be assigned for your visit shortly.
-              </p>
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 border-t border-emerald-600/20 pt-4">
               <Button
-                variant="prominent"
-                className="mt-3 rounded-lg px-6 h-10"
+                variant="default"
+                className="h-11 rounded-lg bg-[linear-gradient(180deg,#1f8f63_0%,#146347_100%)] px-6 text-sm font-bold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_12px_24px_rgba(10,86,58,0.28)] hover:bg-[linear-gradient(180deg,#24a36f_0%,#16754f_100%)] dark:bg-[linear-gradient(180deg,#1f8f63_0%,#146347_100%)] dark:text-white dark:hover:bg-[linear-gradient(180deg,#24a36f_0%,#16754f_100%)]"
                 size="sm"
-                onClick={() => navigate(`/appointments/${id}`)}
+                onClick={() => navigate(appointmentDetailsPath)}
               >
+                <Briefcase className="mr-2 h-4 w-4" />
                 View Appointment
+                <ChevronRight className="ml-3 h-4 w-4" />
               </Button>
             </div>
           </CardContent>
@@ -292,7 +336,7 @@ export function PayOcularFeePage() {
                 variant="prominent"
                 className="mt-3 rounded-lg px-6 h-10"
                 size="sm"
-                onClick={() => navigate(`/appointments/${id}`)}
+                onClick={() => navigate(appointmentDetailsPath)}
               >
                 View Appointment
               </Button>
@@ -306,13 +350,11 @@ export function PayOcularFeePage() {
         <>
           {/* Online Payment Option */}
           <Card className="rounded-xl border-[#c8c8cd]/50 dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(17,24,34,0.96)_0%,rgba(10,17,26,0.98)_100%)]">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base text-[var(--color-card-foreground)]">
+            <CardContent className="space-y-4 p-5">
+              <p className="flex items-center gap-2 text-base font-bold text-[var(--color-card-foreground)]">
                 <QrCode className="h-5 w-5 text-slate-500 dark:text-slate-400" />
                 Pay Online
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              </p>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Pay instantly via QR code, e-wallet, or bank transfer through our secure payment gateway.
               </p>
@@ -364,13 +406,11 @@ export function PayOcularFeePage() {
 
           {/* Cash Payment Option */}
           <Card className="rounded-xl border-[#c8c8cd]/50 dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(17,24,34,0.96)_0%,rgba(10,17,26,0.98)_100%)]">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base text-[var(--color-card-foreground)]">
+            <CardContent className="space-y-4 p-5">
+              <p className="flex items-center gap-2 text-base font-bold text-[var(--color-card-foreground)]">
                 <Banknote className="h-5 w-5 text-slate-500 dark:text-slate-400" />
                 Pay via Cash
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              </p>
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Pay the ocular fee in cash directly to the assigned sales staff during your visit.
                 The amount will be collected and verified by our cashier.

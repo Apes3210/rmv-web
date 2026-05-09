@@ -1,11 +1,26 @@
-import { Bell, Check, CheckCheck, Clock, CheckCircle2, ExternalLink } from 'lucide-react';
+import {
+  Bell,
+  Check,
+  CheckCheck,
+  Clock,
+  CheckCircle2,
+  ExternalLink,
+  Search,
+  LayoutGrid,
+  CalendarDays,
+  FolderOpen,
+  CreditCard,
+  FileText,
+  Wrench,
+  Settings,
+  Filter,
+} from 'lucide-react';
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { CollectionToolbar } from '@/components/shared/CollectionToolbar';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { PageError } from '@/components/shared/PageError';
 import {
@@ -19,13 +34,13 @@ import type { Notification } from '@/lib/types';
 import { extractItems } from '@/lib/utils';
 
 const CATEGORY_TABS = [
-  { label: 'All', value: 'all' },
-  { label: 'Appointments', value: 'appointment' },
-  { label: 'Projects', value: 'project' },
-  { label: 'Payments', value: 'payment' },
-  { label: 'Blueprints', value: 'blueprint' },
-  { label: 'Fabrication', value: 'fabrication' },
-  { label: 'System', value: 'system' },
+  { label: 'All', value: 'all', icon: LayoutGrid },
+  { label: 'Appointments', value: 'appointment', icon: CalendarDays },
+  { label: 'Projects', value: 'project', icon: FolderOpen },
+  { label: 'Payments', value: 'payment', icon: CreditCard },
+  { label: 'Blueprints', value: 'blueprint', icon: FileText },
+  { label: 'Fabrication', value: 'fabrication', icon: Wrench },
+  { label: 'System', value: 'system', icon: Settings },
 ] as const;
 
 export function NotificationsPage() {
@@ -80,47 +95,86 @@ export function NotificationsPage() {
   if (isError) return <PageError onRetry={refetch} />;
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
-      <div className="metal-panel-strong flex flex-col gap-4 rounded-[1.75rem] p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-4">
-          <div className="silver-sheen flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-[#2b3138] shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_10px_24px_rgba(0,0,0,0.18)]">
-            <Bell className="h-5 w-5" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-[#171b21] dark:text-slate-50">Notifications</h1>
-            <p className="mt-1 text-sm text-[#616a74] dark:text-slate-300">
-            Stay updated with project changes and alerts.
-            </p>
-          </div>
-        </div>
-        <div className="metal-pill inline-flex items-center rounded-full px-3 py-2 text-sm font-medium text-[#616a74] dark:text-slate-200">
-          {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount !== 1 ? 's' : ''}` : 'Everything is read'}
-        </div>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-8">
+      <div className="metal-panel-strong overflow-hidden rounded-[2rem] border border-white/10 p-6 shadow-[0_24px_60px_rgba(0,0,0,0.28)] sm:p-7"
+        style={{
+          background: 'linear-gradient(180deg, rgba(7, 10, 15, 0.98) 0%, rgba(17, 23, 33, 0.98) 45%, rgba(41, 51, 68, 0.96) 100%)',
+        }}
+      >
+        <div className="flex flex-col gap-5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="silver-sheen flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-[#2b3138] shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_10px_24px_rgba(0,0,0,0.18)]">
+                <Filter className="h-6 w-6" />
+              </div>
+              <div className="space-y-2">
+                <h1 className="text-[26px] font-semibold tracking-tight text-[#f4f7fb] sm:text-[28px]">
+                  Find the right update fast
+                </h1>
+                <p className="max-w-xl text-sm leading-6 text-[#b8c1cc] sm:text-[14px]">
+                  Search message copy, then narrow the stream by notification category.
+                </p>
+              </div>
+            </div>
 
-      <CollectionToolbar
-        title="Find the right update fast"
-        description="Search message copy, then narrow the stream by notification category."
-        searchPlaceholder="Search notifications"
-        searchValue={searchQuery}
-        onSearchChange={setSearchQuery}
-        filters={CATEGORY_TABS.map((tab) => ({ label: tab.label, value: tab.value }))}
-        activeFilter={activeFilter}
-        onFilterChange={setActiveFilter}
-        action={
-          (unreadCount > 0 || notifications.length > 0) ? (
+            {(unreadCount > 0 || notifications.length > 0) ? (
+              <Button
+                variant="ghost"
+                onClick={() => markAllAsRead.mutate()}
+                disabled={markAllAsRead.isPending || unreadCount === 0}
+                className="hidden h-10 rounded-full px-3 text-[#d7dee8] hover:bg-white/10 hover:text-white sm:inline-flex"
+              >
+                <CheckCheck className="mr-2 h-4 w-4" />
+                Mark all read
+              </Button>
+            ) : null}
+          </div>
+
+          {(unreadCount > 0 || notifications.length > 0) ? (
             <Button
-              variant={unreadCount > 0 ? 'secondary' : 'outline'}
+              variant="ghost"
               onClick={() => markAllAsRead.mutate()}
               disabled={markAllAsRead.isPending || unreadCount === 0}
-              className="h-11 rounded-xl border-[#c5ccd5] text-[#3f4752] hover:text-[#171b21] dark:border-slate-600 dark:text-slate-100 dark:hover:text-slate-100"
+              className="inline-flex h-10 self-end rounded-full px-4 text-[#d7dee8] hover:bg-white/10 hover:text-white sm:hidden"
             >
               <CheckCheck className="mr-2 h-4 w-4" />
               Mark all read
             </Button>
-          ) : null
-        }
-      />
+          ) : null}
+
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#586173]" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search notifications"
+              className="h-14 w-full rounded-2xl border border-white/15 bg-[#eff3f8] pl-14 pr-5 text-[15px] font-medium text-[#1b2230] outline-none transition-shadow placeholder:text-[#7b8796] focus:border-white/25 focus:shadow-[0_0_0_3px_rgba(132,168,255,0.16)] dark:border-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:placeholder:text-slate-500"
+            />
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            {CATEGORY_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active = activeFilter === tab.value;
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setActiveFilter(tab.value)}
+                  className={`inline-flex h-14 cursor-pointer items-center gap-3 rounded-2xl border px-4 text-sm font-medium transition-all ${
+                    active
+                      ? 'border-[#dbe8ff] bg-[#f4f7ff] text-[#17315d] shadow-[inset_0_-2px_0_rgba(84,128,219,0.35)] dark:border-slate-500 dark:bg-slate-100 dark:text-slate-900'
+                      : 'border-white/10 bg-white/5 text-[#d8e0ea] hover:border-white/20 hover:bg-white/10 hover:text-white dark:border-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
 
       {isLoading ? (
         <div className="space-y-3">

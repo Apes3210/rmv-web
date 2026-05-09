@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, LocateFixed, Search, X } from 'lucide-react';
 import L from 'leaflet';
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
@@ -6,7 +6,7 @@ import 'leaflet/dist/leaflet.css';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { searchMapPlaces, type MapPoint, type PlaceSuggestion } from '@/lib/maps';
+import { reverseGeocodeLocation, searchMapPlaces, type MapPoint, type PlaceSuggestion } from '@/lib/maps';
 import { useThemeStore } from '@/stores/theme.store';
 
 interface LocationPickerProps {
@@ -52,9 +52,13 @@ export function LocationPicker({ value, address, onChange }: LocationPickerProps
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
+  const [isResolvingAddress, setIsResolvingAddress] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [accuracyMessage, setAccuracyMessage] = useState<string | null>(null);
   const [mapErrorCount, setMapErrorCount] = useState(0);
   const [mapReloadKey, setMapReloadKey] = useState(0);
+  const resolveRequestId = useRef(0);
+  const geolocationWatchId = useRef<number | null>(null);
 
   const mapUnavailable = mapErrorCount >= 3;
 
@@ -90,6 +94,26 @@ export function LocationPicker({ value, address, onChange }: LocationPickerProps
     };
   }, [searchInput]);
 
+  const resolveAndPickLocation = async (location: MapPoint) => {
+    const requestId = resolveRequestId.current + 1;
+    resolveRequestId.current = requestId;
+    setErrorMessage(null);
+    onChange(location, '');
+    setIsResolvingAddress(true);
+    try {
+      const nextAddress = await reverseGeocodeLocation(location);
+      if (resolveRequestId.current !== requestId) return;
+      onChange(location, nextAddress);
+    } catch {
+      if (resolveRequestId.current !== requestId) return;
+      setErrorMessage('Location selected, but the address could not be resolved. Try searching for the address instead.');
+    } finally {
+      if (resolveRequestId.current === requestId) {
+        setIsResolvingAddress(false);
+      }
+    }
+  };
+
   const handleUseCurrentLocation = () => {
     if (!navigator.geolocation) {
       setErrorMessage('This browser does not support geolocation.');
@@ -97,22 +121,78 @@ export function LocationPicker({ value, address, onChange }: LocationPickerProps
     }
 
     setErrorMessage(null);
+    setAccuracyMessage('Finding your exact location...');
     setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setIsLocating(false);
-        onChange({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        });
-      },
+
+    if (geolocationWatchId.current !== null) {
+      navigator.geolocation.clearWatch(geolocationWatchId.current);
+      geolocationWatchId.current = null;
+    }
+
+    let bestPosition: GeolocationPosition | null = null;
+    let settled = false;
+
+    const finishWithBestPosition = () => {
+      if (settled) return;
+      settled = true;
+      if (geolocationWatchId.current !== null) {
+        navigator.geolocation.clearWatch(geolocationWatchId.current);
+        geolocationWatchId.current = null;
+      }
+      setIsLocating(false);
+
+      if (!bestPosition) {
+        setAccuracyMessage(null);
+        setErrorMessage('Unable to access your current location. Please allow location access, then try again.');
+        return;
+      }
+
+      const accuracy = Math.round(bestPosition.coords.accuracy);
+      const nextLocation = {
+        lat: bestPosition.coords.latitude,
+        lng: bestPosition.coords.longitude,
+      };
+      if (accuracy > 250) {
+        setAccuracyMessage(`Browser location is approximate only (around ${accuracy.toLocaleString()} m accuracy). Move the pin if this is not your exact site.`);
+      } else {
+        setAccuracyMessage(`Location captured with about ${accuracy.toLocaleString()} m accuracy.`);
+      }
+      void resolveAndPickLocation(nextLocation);
+    };
+
+    const acceptPosition = (position: GeolocationPosition) => {
+      const currentAccuracy = position.coords.accuracy || Number.POSITIVE_INFINITY;
+      const bestAccuracy = bestPosition?.coords.accuracy || Number.POSITIVE_INFINITY;
+      if (!bestPosition || currentAccuracy < bestAccuracy) {
+        bestPosition = position;
+        setAccuracyMessage(`Improving GPS accuracy... best so far about ${Math.round(currentAccuracy).toLocaleString()} m.`);
+      }
+
+      if (currentAccuracy <= 50) {
+        finishWithBestPosition();
+      }
+    };
+
+    geolocationWatchId.current = navigator.geolocation.watchPosition(
+      acceptPosition,
       () => {
-        setIsLocating(false);
-        setErrorMessage('Unable to access your current location.');
+        finishWithBestPosition();
       },
-      { enableHighAccuracy: true, timeout: 10000 },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      },
     );
+
+    window.setTimeout(finishWithBestPosition, 8000);
   };
+
+  useEffect(() => () => {
+    if (geolocationWatchId.current !== null) {
+      navigator.geolocation.clearWatch(geolocationWatchId.current);
+    }
+  }, []);
 
   return (
     <div className="space-y-3">
@@ -227,7 +307,7 @@ export function LocationPicker({ value, address, onChange }: LocationPickerProps
                       },
                     }}
                   />
-                  <MapClickHandler onPick={(location) => onChange(location)} />
+                  <MapClickHandler onPick={(location) => { void resolveAndPickLocation(location); }} />
                   <RecenterMap location={markerPosition} />
                   <Marker
                     position={[markerPosition.lat, markerPosition.lng]}
@@ -236,7 +316,7 @@ export function LocationPicker({ value, address, onChange }: LocationPickerProps
                     eventHandlers={{
                       dragend: (event) => {
                         const nextPoint = (event.target as L.Marker).getLatLng();
-                        onChange({ lat: nextPoint.lat, lng: nextPoint.lng });
+                        void resolveAndPickLocation({ lat: nextPoint.lat, lng: nextPoint.lng });
                       },
                     }}
                   />
@@ -262,11 +342,16 @@ export function LocationPicker({ value, address, onChange }: LocationPickerProps
           <LocateFixed className="h-3.5 w-3.5 flex-shrink-0" />
           <span className="font-semibold whitespace-nowrap">Pinned Location</span>
           <span className={`truncate ${isDark ? 'text-emerald-200/90' : 'text-emerald-600'}`}>
-            {address || 'Location selected on map'}
+            {isResolvingAddress ? 'Resolving address...' : address || 'Location selected on map'}
           </span>
         </div>
       )}
 
+      {accuracyMessage && (
+        <p className="text-xs text-[var(--text-metal-muted-color)]" aria-live="polite">
+          {accuracyMessage}
+        </p>
+      )}
       {errorMessage && <p className="text-sm text-red-500 dark:text-red-300" aria-live="polite">{errorMessage}</p>}
     </div>
   );
