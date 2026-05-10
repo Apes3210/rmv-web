@@ -96,11 +96,7 @@ export function NotificationsPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-8">
-      <div className="metal-panel-strong overflow-hidden rounded-[2rem] border border-white/10 p-6 shadow-[0_24px_60px_rgba(0,0,0,0.28)] sm:p-7"
-        style={{
-          background: 'linear-gradient(180deg, rgba(7, 10, 15, 0.98) 0%, rgba(17, 23, 33, 0.98) 45%, rgba(41, 51, 68, 0.96) 100%)',
-        }}
-      >
+      <div className="overflow-hidden rounded-[2rem] border border-[#cfd6df]/80 bg-[radial-gradient(circle_at_16%_0%,rgba(96,165,250,0.18),transparent_34%),linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(244,247,251,0.98)_48%,rgba(229,235,243,0.96)_100%)] p-6 shadow-[0_24px_60px_rgba(71,85,105,0.14)] dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(7,10,15,0.98)_0%,rgba(17,23,33,0.98)_45%,rgba(41,51,68,0.96)_100%)] dark:shadow-[0_24px_60px_rgba(0,0,0,0.28)] sm:p-7">
         <div className="flex flex-col gap-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-start gap-4">
@@ -108,10 +104,10 @@ export function NotificationsPage() {
                 <Filter className="h-6 w-6" />
               </div>
               <div className="space-y-2">
-                <h1 className="text-[26px] font-semibold tracking-tight text-[#f4f7fb] sm:text-[28px]">
+                <h1 className="text-[26px] font-semibold tracking-tight text-[#171b21] dark:text-[#f4f7fb] sm:text-[28px]">
                   Find the right update fast
                 </h1>
-                <p className="max-w-xl text-sm leading-6 text-[#b8c1cc] sm:text-[14px]">
+                <p className="max-w-xl text-sm leading-6 text-[#53606d] dark:text-[#b8c1cc] sm:text-[14px]">
                   Search message copy, then narrow the stream by notification category.
                 </p>
               </div>
@@ -122,7 +118,7 @@ export function NotificationsPage() {
                 variant="ghost"
                 onClick={() => markAllAsRead.mutate()}
                 disabled={markAllAsRead.isPending || unreadCount === 0}
-                className="hidden h-10 rounded-full px-3 text-[#d7dee8] hover:bg-white/10 hover:text-white sm:inline-flex"
+                className="hidden h-10 rounded-full px-3 text-[#4f5b68] hover:bg-slate-900/5 hover:text-[#171b21] dark:text-[#d7dee8] dark:hover:bg-white/10 dark:hover:text-white sm:inline-flex"
               >
                 <CheckCheck className="mr-2 h-4 w-4" />
                 Mark all read
@@ -135,7 +131,7 @@ export function NotificationsPage() {
               variant="ghost"
               onClick={() => markAllAsRead.mutate()}
               disabled={markAllAsRead.isPending || unreadCount === 0}
-              className="inline-flex h-10 self-end rounded-full px-4 text-[#d7dee8] hover:bg-white/10 hover:text-white sm:hidden"
+              className="inline-flex h-10 self-end rounded-full px-4 text-[#4f5b68] hover:bg-slate-900/5 hover:text-[#171b21] dark:text-[#d7dee8] dark:hover:bg-white/10 dark:hover:text-white sm:hidden"
             >
               <CheckCheck className="mr-2 h-4 w-4" />
               Mark all read
@@ -148,7 +144,7 @@ export function NotificationsPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search notifications"
-              className="h-14 w-full rounded-2xl border border-white/15 bg-[#eff3f8] pl-14 pr-5 text-[15px] font-medium text-[#1b2230] outline-none transition-shadow placeholder:text-[#7b8796] focus:border-white/25 focus:shadow-[0_0_0_3px_rgba(132,168,255,0.16)] dark:border-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:placeholder:text-slate-500"
+              className="h-14 w-full rounded-2xl border border-[#cbd5e1] bg-white pl-14 pr-5 text-[15px] font-medium text-[#1b2230] outline-none transition-shadow placeholder:text-[#7b8796] focus:border-blue-300 focus:shadow-[0_0_0_3px_rgba(132,168,255,0.16)] dark:border-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:placeholder:text-slate-500"
             />
           </div>
 
@@ -164,7 +160,7 @@ export function NotificationsPage() {
                   className={`inline-flex h-14 cursor-pointer items-center gap-3 rounded-2xl border px-4 text-sm font-medium transition-all ${
                     active
                       ? 'border-[#dbe8ff] bg-[#f4f7ff] text-[#17315d] shadow-[inset_0_-2px_0_rgba(84,128,219,0.35)] dark:border-slate-500 dark:bg-slate-100 dark:text-slate-900'
-                      : 'border-white/10 bg-white/5 text-[#d8e0ea] hover:border-white/20 hover:bg-white/10 hover:text-white dark:border-slate-700 dark:text-slate-300'
+                      : 'border-[#cfd6df] bg-white/60 text-[#4c5968] hover:border-blue-300 hover:bg-white hover:text-[#172033] dark:border-white/10 dark:bg-white/5 dark:text-[#d8e0ea] dark:hover:border-white/20 dark:hover:bg-white/10 dark:hover:text-white'
                   }`}
                 >
                   <Icon className="h-4 w-4" />

@@ -253,20 +253,23 @@ export function AccountProfilePage() {
               Time in and time out for attendance. Admins manage availability and shift schedules.
             </CardDescription>
           </div>
-          <Button
+          <button
             type="button"
-            variant={isTimedIn ? 'outline' : 'default'}
-            className="rounded-xl"
+            className={`inline-flex h-10 min-w-[132px] items-center justify-center gap-2 whitespace-nowrap rounded-xl border px-4 text-sm font-semibold leading-none shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300/80 disabled:cursor-not-allowed disabled:opacity-60 ${
+              isTimedIn
+                ? 'border-amber-300/80 bg-amber-100 text-amber-900 hover:bg-amber-200 dark:border-amber-300/70 dark:bg-amber-300 dark:text-amber-950 dark:hover:bg-amber-200'
+                : 'border-sky-300/80 bg-sky-100 text-sky-900 hover:bg-sky-200 dark:border-sky-300/70 dark:bg-sky-300 dark:text-sky-950 dark:hover:bg-sky-200'
+            }`}
             disabled={timeClockPending}
             onClick={handleTimeClock}
           >
             {timeClockPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
             ) : (
-              <Clock className="mr-2 h-4 w-4" />
+              <Clock className="h-4 w-4 shrink-0" />
             )}
             {isTimedIn ? 'Time Out' : 'Time In'}
-          </Button>
+          </button>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-2xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-card)]/85 p-4">

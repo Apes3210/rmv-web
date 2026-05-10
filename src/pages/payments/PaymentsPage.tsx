@@ -532,28 +532,34 @@ export function PaymentsPage() {
       {!selectedProjectId ? (
         <>
           {/* ── Tab Bar ── */}
-          <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-muted)]/40 p-1">
-            {[
+          {(() => {
+            const availableTabs = [
               { key: 'payments', label: 'Payments', show: true },
               { key: 'cashier-queue', label: 'Cashier Queue', show: !!isCashier },
               { key: 'ocular-fees', label: 'Ocular Fees', show: !!isCashier },
-            ]
-              .filter((tab) => tab.show)
-              .map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                    activeTab === tab.key
-                      ? 'bg-[color:var(--color-card)] text-[var(--color-card-foreground)] shadow-sm'
-                      : 'text-[var(--text-metal-color)] hover:text-[var(--color-card-foreground)] hover:bg-[color:var(--color-card)]/50'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-          </div>
+            ].filter((tab) => tab.show);
+
+            if (availableTabs.length <= 1) return null;
+
+            return (
+              <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-muted)]/40 p-1">
+                {availableTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => setActiveTab(tab.key)}
+                    className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                      activeTab === tab.key
+                        ? 'bg-[color:var(--color-card)] text-[var(--color-card-foreground)] shadow-sm'
+                        : 'text-[var(--text-metal-color)] hover:text-[var(--color-card-foreground)] hover:bg-[color:var(--color-card)]/50'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
 
           {/* ── TAB: Payments ── */}
           {activeTab === 'payments' && (
@@ -578,8 +584,6 @@ export function PaymentsPage() {
                 activeFilter={projectStageFilter}
                 onFilterChange={setProjectStageFilter}
                 filterGroupLabel="Project stage filters"
-                className="border-0 bg-transparent p-0 shadow-none"
-                searchWidthClassName="lg:max-w-sm"
               />
               <div
                 className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar lg:flex-wrap lg:overflow-visible"

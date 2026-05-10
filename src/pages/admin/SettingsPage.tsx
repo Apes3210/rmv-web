@@ -58,13 +58,6 @@ export function SettingsPage() {
   const [stageLabels, setStageLabels] = useState(['Down Payment', 'Mid-Project', 'Final Payment']);
   const [paymentLoaded, setPaymentLoaded] = useState(false);
 
-  // Help Center State
-  const [helpTitle, setHelpTitle] = useState('');
-  const [helpSubtitle, setHelpSubtitle] = useState('');
-  const [helpContent, setHelpContent] = useState('');
-  const [helpLoaded, setHelpLoaded] = useState(false);
-  const [helpSaving, setHelpSaving] = useState(false);
-
   const maintenanceEnabled = configs?.find((c) => c.key === 'maintenance_mode')?.value === true;
   const scheduledTime = configs?.find((c) => c.key === 'maintenance_scheduled_at')?.value;
   const isScheduled = !!scheduledTime && !maintenanceEnabled;
@@ -78,23 +71,7 @@ export function SettingsPage() {
   useEffect(() => {
     if (!configs) return;
 
-    // 1. Sync Help Center
-    if (!helpLoaded) {
-      const hcConfig = configs.find((c) => c.key === 'help_center_content');
-      if (hcConfig) {
-        try {
-          const parsed = typeof hcConfig.value === 'string' ? JSON.parse(hcConfig.value) : hcConfig.value;
-          setHelpTitle(parsed.title || '');
-          setHelpSubtitle(parsed.subtitle || '');
-          setHelpContent(parsed.content || '');
-        } catch {
-          setHelpContent(typeof hcConfig.value === 'string' ? hcConfig.value : JSON.stringify(hcConfig.value));
-        }
-      }
-      setHelpLoaded(true);
-    }
-
-    // 2. Sync Payments
+    // 1. Sync Payments
     if (!paymentLoaded) {
       const sur = configs.find((c) => c.key === 'installment_surcharge_percent');
       const splits = configs.find((c) => c.key === 'installment_split');
@@ -106,7 +83,7 @@ export function SettingsPage() {
       setPaymentLoaded(true);
     }
 
-    // 3. Sync Fees & Durations (Simple values)
+    // 2. Sync Fees & Durations (Simple values)
     const trackedKeys = [
       'baseFee', 'baseCoveredKm', 'perKmRate', 'maxDistanceKm', 
       'paymentReminderDays', 'paymentEscalationAfterReminders'
@@ -126,7 +103,7 @@ export function SettingsPage() {
       return prev;
     });
 
-    // 4. Sync Map location
+    // 3. Sync Map location
     const lat = configs.find((c) => c.key === 'shopLatitude');
     const lng = configs.find((c) => c.key === 'shopLongitude');
     if (lat && lng) {
@@ -139,7 +116,7 @@ export function SettingsPage() {
         });
       }
     }
-  }, [configs, helpLoaded, paymentLoaded]);
+  }, [configs, paymentLoaded]);
 
   // Handlers
   const handleToggleMaintenance = async () => {
@@ -199,26 +176,6 @@ export function SettingsPage() {
       toast.success('Billing policies updated');
     } catch (err) {
       toast.error(extractErrorMessage(err, 'Failed to save billing policy'));
-    }
-  };
-
-  const handleSaveHelpContent = async () => {
-    try {
-      setHelpSaving(true);
-      await updateConfig.mutateAsync({
-        key: 'help_center_content',
-        value: {
-          title: helpTitle.trim(),
-          subtitle: helpSubtitle.trim(),
-          content: helpContent.trim()
-        },
-        description: 'Formatted content payload for the customer Help Center page.',
-      });
-      toast.success('Help center knowledge base updated');
-    } catch (err) {
-      toast.error(extractErrorMessage(err, 'Failed to publish user guides'));
-    } finally {
-      setHelpSaving(false);
     }
   };
 
@@ -543,68 +500,11 @@ export function SettingsPage() {
                   </CardContent>
                 </Card>
 
-                <Card className="rounded-xl">
-                  <CardHeader>
-                    <CardTitle className="text-md">Debt Rules</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4 pt-0">
-                    <div className="grid grid-cols-2 gap-4">
-                      {[{key: 'paymentReminderDays', lbl: 'Days between reminders', u: 'days'}, {key: 'paymentEscalationAfterReminders', lbl: 'Admin flag threshold', u: 'notices'}].map((cfg) => (
-                        <div key={cfg.key} className="space-y-1.5">
-                          <Label className="text-xs text-gray-600 dark:text-slate-400">{cfg.lbl}</Label>
-                          <div className="flex items-center gap-2">
-                            <Input value={simpleValues[cfg.key] || ''} onChange={e => setSimpleValues({...simpleValues, [cfg.key]: e.target.value})} className={`w-full ${inputClasses}`} />
-                            <span className="text-xs font-semibold text-gray-500 shrink-0">{cfg.u}</span>
-                          </div>
-                          {isSimpleChanged(cfg.key) && (
-                            <Button onClick={() => handleSaveSimpleConfig(cfg.key, cfg.lbl)} disabled={savingKey === cfg.key} size="sm" variant="secondary" className="h-6 text-[10px] w-full mt-1">
-                              Apply changes
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
               </div>
             </div>
           </section>
 
-          {/* Section 3: Platform Resources */}
-          <section className="space-y-4">
-            <h2 className="text-lg font-bold text-[#171b21] dark:text-slate-100 flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-gray-400" /> Platform Knowledge
-            </h2>
-            <Card className="rounded-xl">
-              <CardHeader>
-                <CardTitle className="text-md">Help Center Directory</CardTitle>
-                <CardDescription className="text-xs">Publish the FAQ and rules visible to all customers on the /help page.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4 pt-0">
-                <div className="space-y-2">
-                  <Label>Primary Heading</Label>
-                  <Input value={helpTitle} onChange={e => setHelpTitle(e.target.value)} placeholder="e.g. Terms & Condition" className={inputClasses} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Subheading</Label>
-                  <Input value={helpSubtitle} onChange={e => setHelpSubtitle(e.target.value)} placeholder="e.g. Everything you need to know about us" className={inputClasses}/>
-                </div>
-                <div className="space-y-2">
-                  <Label>Main Article Bodies</Label>
-                  <Textarea value={helpContent} onChange={e => setHelpContent(e.target.value)} className="min-h-[250px] resize-y rounded-xl bg-[var(--color-card)]/50 p-4 font-mono text-sm shadow-inner" placeholder="Pasting double line breaks splits text into beautiful paragraphs..." />
-                  <p className="text-[11px] text-gray-500">Leaving a blank line separates text into individual blocks or rules automatically.</p>
-                </div>
-                <div className="flex justify-end pt-2">
-                  <Button onClick={handleSaveHelpContent} disabled={helpSaving} className="shadow-md rounded-xl">
-                    {helpSaving ? <RefreshCw className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/> }
-                    Publish to Help Page
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </section>
-
-          {/* Section 4: Map Bounds */}
+          {/* Section 3: Map Bounds */}
           <section className="space-y-4">
             <h2 className="text-lg font-bold text-[#171b21] dark:text-slate-100 flex items-center gap-2">
               <MapPin className="h-5 w-5 text-gray-400" /> Ground Logistics

@@ -362,50 +362,32 @@ export function AppointmentsPage() {
         ? 'No queue items match your current search or status filters.'
         : 'No appointments match your current search or status filters.';
 
+    const toolbarActions = (
+      <div className="flex items-center gap-2 self-start">
+        <button
+          type="button"
+          onClick={() => void refetch()}
+          disabled={isFetching}
+          className="inline-flex h-11 items-center gap-2 rounded-full border border-[#8f99a6] bg-white/75 px-4 text-sm font-semibold text-[#2f3a46] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-colors hover:border-[#6f7b88] hover:bg-white/95 hover:text-[#1f2933] disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-500/80 dark:bg-slate-800/90 dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
+          aria-label="Refresh appointments"
+          title="Refresh appointments"
+        >
+          <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''} text-current`} />
+          Refresh
+        </button>
+        {isCustomer && (
+          <Button asChild variant="prominent" className={`h-10 ${customerCtaClassName}`}>
+            <Link to="/appointments/book">
+              <Plus className="mr-2 h-4 w-4" />
+              Book Appointment
+            </Link>
+          </Button>
+        )}
+      </div>
+    );
+
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight text-[#171b21] dark:text-slate-100">Appointments</h1>
-            {!isLoading && visibleAppointments.length > 0 && (
-              <span className="rounded-full border border-[#56606c] bg-[#202833] px-2.5 py-1 text-[11px] font-semibold text-[#b0bac5] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                {visibleAppointments.length} visible
-              </span>
-            )}
-          </div>
-          <p className="mt-1 text-sm text-[#616a74] dark:text-slate-400">
-            {isCustomer
-              ? 'Schedule and manage your site visits.'
-              : isQueueRole
-                ? 'Manage the appointment queue with upcoming work first and recent outcomes second.'
-                : 'Manage customer booking requests.'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            disabled={isFetching}
-            className="inline-flex h-11 items-center gap-2 rounded-full border border-[#8f99a6] bg-white/75 px-4 text-sm font-semibold text-[#2f3a46] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-colors hover:border-[#6f7b88] hover:bg-white/95 hover:text-[#1f2933] disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-500/80 dark:bg-slate-800/90 dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-slate-300 dark:hover:bg-slate-700 dark:hover:text-white"
-            aria-label="Refresh appointments"
-            title="Refresh appointments"
-          >
-            <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''} text-current`} />
-            Refresh
-          </button>
-          {isCustomer && (
-            <Button asChild variant="prominent" className={`h-10 ${customerCtaClassName}`}>
-              <Link to="/appointments/book">
-                <Plus className="mr-2 h-4 w-4" />
-                Book Appointment
-              </Link>
-            </Button>
-          )}
-        </div>
-      </div>
-
       {canSeeVisitReports && (
         <div className="flex items-center gap-1 overflow-x-auto rounded-xl border border-[color:var(--color-border)]/60 bg-[color:var(--color-muted)]/40 p-1">
           {[
@@ -449,6 +431,7 @@ export function AppointmentsPage() {
         filters={STATUS_FILTERS}
         activeFilter={statusFilter ?? ''}
         onFilterChange={setStatusFilter}
+        action={toolbarActions}
       />
 
       {/* Content */}

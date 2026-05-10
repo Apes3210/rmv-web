@@ -28,7 +28,7 @@ import { canAccessPath } from '@/lib/auth-routing';
 import { getVisibleNavigationPaths } from './navigation';
 import toast from 'react-hot-toast';
 import type { Project, Appointment, User } from '@/lib/types';
-import { useCloseOwnAvailability, useSignature, useUpdateOwnAvailability } from '@/hooks/useUsers';
+import { useSignature } from '@/hooks/useUsers';
 import {
   Dialog,
   DialogContent,
@@ -246,8 +246,6 @@ export function AppLayout() {
   const { data: notificationsData } = useNotifications({ limit: '50' });
   const queryClient = useQueryClient();
   const { data: signatureData } = useSignature();
-  const timeInMutation = useUpdateOwnAvailability();
-  const timeOutMutation = useCloseOwnAvailability();
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
   const isInternalAvailabilityUser = Boolean(
@@ -261,31 +259,16 @@ export function AppLayout() {
     ].includes(role)),
   );
   const isCashier = Boolean(user?.roles.includes(Role.CASHIER));
-  const isTimedIn = Boolean(user?.activeShift);
-  const timeClockPending = timeInMutation.isPending || timeOutMutation.isPending;
-
-  const handleTimeClock = async () => {
-    if (timeClockPending) return;
-    if (isTimedIn) {
-      await timeOutMutation.mutateAsync();
-      toast.success('Timed out');
-      return;
-    }
-    await timeInMutation.mutateAsync({ availabilityNote: 'Timed in' });
-    toast.success('Timed in');
-  };
 
   const profileChecks = useMemo(() => {
-    if (!user) return { completed: 0, total: 2, percent: 0 };
+    if (!user) return { completed: 0, total: 1, percent: 0 };
     const hasAddress = Boolean(
       user.addressData?.formattedAddress
       || user.addressData?.street
       || user.addressData?.city,
     );
-    const checks = [
-      Boolean(user.isEmailVerified),
-      hasAddress,
-    ];
+    const checks = [Boolean(user.isEmailVerified)];
+    if (!isInternalAvailabilityUser) checks.push(hasAddress);
     if (isCashier) checks.push(Boolean(signatureData?.signatureKey));
     const total = checks.length;
     const completed = checks.filter(Boolean).length;
@@ -294,7 +277,7 @@ export function AppLayout() {
       total,
       percent: Math.round((completed / total) * 100),
     };
-  }, [isCashier, signatureData?.signatureKey, user]);
+  }, [isCashier, isInternalAvailabilityUser, signatureData?.signatureKey, user]);
 
   const profileChecklist = useMemo(() => {
     if (!user) return [] as Array<{ label: string; done: boolean; path: string }>;
@@ -303,10 +286,10 @@ export function AppLayout() {
       || user.addressData?.street
       || user.addressData?.city,
     );
-    const checklist = [
-      { label: 'Verify your email address', done: Boolean(user.isEmailVerified), path: '/account/security' },
-      { label: 'Complete your address details', done: hasAddress, path: '/account/profile' },
-    ];
+    const checklist = [{ label: 'Verify your email address', done: Boolean(user.isEmailVerified), path: '/account/security' }];
+    if (!isInternalAvailabilityUser) {
+      checklist.push({ label: 'Complete your address details', done: hasAddress, path: '/account/profile' });
+    }
     if (isCashier) {
       checklist.push({
         label: 'Save your cashier signature',
@@ -315,7 +298,7 @@ export function AppLayout() {
       });
     }
     return checklist;
-  }, [isCashier, signatureData?.signatureKey, user]);
+  }, [isCashier, isInternalAvailabilityUser, signatureData?.signatureKey, user]);
 
   // ── Real-time socket connection ──────────────────────────────────────
   const addNotificationRef = useRef(addNotification);
@@ -696,7 +679,7 @@ export function AppLayout() {
               <button
                 type="button"
                 aria-label="Workspace switcher"
-                className="metal-pill flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-300"
+                className="metal-pill flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[#6b7480] dark:text-slate-300"
               >
                 <LayoutDashboard className="h-4 w-4" />
               </button>
@@ -921,22 +904,6 @@ export function AppLayout() {
                   </span>
                 )}
               </Link>
-
-              {isInternalAvailabilityUser && (
-                <button
-                  type="button"
-                  onClick={handleTimeClock}
-                  disabled={timeClockPending}
-                  className="metal-pill hidden h-10 items-center gap-2 rounded-xl px-3 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 lg:flex"
-                >
-                  {timeClockPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Clock className="h-4 w-4" />
-                  )}
-                  <span className="font-medium">{isTimedIn ? 'Time Out' : 'Time In'}</span>
-                </button>
-              )}
 
               {user && profileChecks.percent < 100 && (
                 <button

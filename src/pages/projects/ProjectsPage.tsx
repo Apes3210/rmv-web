@@ -175,16 +175,6 @@ export function ProjectsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-[var(--color-card-foreground)]">
-          Projects
-        </h1>
-        <p className="mt-1 text-sm text-[var(--text-metal-color)]">
-          Track fabrication progress and project milestones.
-        </p>
-      </div>
-
       <>
 
       {/* Controls */}

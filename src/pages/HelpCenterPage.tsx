@@ -14,9 +14,7 @@ import {
   FolderOpen,
   CalendarCheck,
   Mail,
-  MessageCircle,
   Pencil,
-  Phone,
   Plus,
   Save,
   Search,
@@ -847,15 +845,15 @@ function getSectionIcon(heading: string) {
 
 function getCategoryVisual(slug: string) {
   const visualMap: Record<string, { icon: ElementType; accent: string; glow: string }> = {
-    'getting-started': { icon: BookOpen, accent: 'text-sky-300', glow: 'bg-sky-500/15 border-sky-400/25' },
-    'appointments-visits': { icon: CalendarCheck, accent: 'text-emerald-300', glow: 'bg-emerald-500/15 border-emerald-400/25' },
-    'projects-fabrication': { icon: FolderOpen, accent: 'text-violet-300', glow: 'bg-violet-500/15 border-violet-400/25' },
-    payments: { icon: CreditCard, accent: 'text-amber-300', glow: 'bg-amber-500/15 border-amber-400/25' },
-    'operations-admin': { icon: Settings, accent: 'text-cyan-300', glow: 'bg-cyan-500/15 border-cyan-400/25' },
-    'support-and-troubleshooting': { icon: HelpCircle, accent: 'text-rose-300', glow: 'bg-rose-500/15 border-rose-400/25' },
+    'getting-started': { icon: BookOpen, accent: 'text-sky-700 dark:text-sky-300', glow: 'bg-sky-100 border-sky-200 dark:bg-sky-500/15 dark:border-sky-400/25' },
+    'appointments-visits': { icon: CalendarCheck, accent: 'text-emerald-700 dark:text-emerald-300', glow: 'bg-emerald-100 border-emerald-200 dark:bg-emerald-500/15 dark:border-emerald-400/25' },
+    'projects-fabrication': { icon: FolderOpen, accent: 'text-violet-700 dark:text-violet-300', glow: 'bg-violet-100 border-violet-200 dark:bg-violet-500/15 dark:border-violet-400/25' },
+    payments: { icon: CreditCard, accent: 'text-amber-700 dark:text-amber-300', glow: 'bg-amber-100 border-amber-200 dark:bg-amber-500/15 dark:border-amber-400/25' },
+    'operations-admin': { icon: Settings, accent: 'text-cyan-700 dark:text-cyan-300', glow: 'bg-cyan-100 border-cyan-200 dark:bg-cyan-500/15 dark:border-cyan-400/25' },
+    'support-and-troubleshooting': { icon: HelpCircle, accent: 'text-rose-700 dark:text-rose-300', glow: 'bg-rose-100 border-rose-200 dark:bg-rose-500/15 dark:border-rose-400/25' },
   };
 
-  return visualMap[slug] || { icon: Wrench, accent: 'text-blue-300', glow: 'bg-blue-500/15 border-blue-400/25' };
+  return visualMap[slug] || { icon: Wrench, accent: 'text-blue-700 dark:text-blue-300', glow: 'bg-blue-100 border-blue-200 dark:bg-blue-500/15 dark:border-blue-400/25' };
 }
 
 function getPopularArticles(categories: HelpCategory[]) {
@@ -877,7 +875,7 @@ function HelpCategoryRoute({ categories }: { categories: HelpCategory[] }) {
 
   return (
     <div className="space-y-5">
-      <Card className="overflow-hidden rounded-[1.4rem] border-[color:var(--color-border)]/60 bg-[radial-gradient(circle_at_18%_0%,rgba(59,130,246,0.16),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.92),rgba(15,23,42,0.64))]">
+      <Card className="overflow-hidden rounded-[1.4rem] border-[color:var(--color-border)]/60 bg-[radial-gradient(circle_at_18%_0%,rgba(59,130,246,0.18),transparent_34%),linear-gradient(135deg,rgba(255,255,255,0.98),rgba(237,242,248,0.9))] dark:bg-[radial-gradient(circle_at_18%_0%,rgba(59,130,246,0.16),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.92),rgba(15,23,42,0.64))]">
         <CardHeader className="space-y-4 p-6">
           <Link to="/help" className="inline-flex w-fit items-center gap-1 text-xs font-semibold text-[var(--text-metal-muted-color)] hover:text-[var(--color-card-foreground)]">
             Help Center <ChevronRight className="h-3.5 w-3.5" /> {category.title}
@@ -894,7 +892,7 @@ function HelpCategoryRoute({ categories }: { categories: HelpCategory[] }) {
                 </CardDescription>
               </div>
             </div>
-            <Badge className="w-fit rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-slate-100">
+            <Badge className="w-fit rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs text-blue-700 dark:border-white/10 dark:bg-white/10 dark:text-slate-100">
               {category.articles.length} articles
             </Badge>
           </div>
@@ -912,7 +910,7 @@ function HelpCategoryRoute({ categories }: { categories: HelpCategory[] }) {
               <h3 className="text-base font-semibold text-[var(--color-card-foreground)]">{article.title}</h3>
               <p className="mt-2 text-sm leading-relaxed text-[var(--text-metal-color)]">{article.summary}</p>
             </div>
-            <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-blue-300">
+            <div className="mt-4 flex items-center gap-1 text-xs font-semibold text-blue-700 dark:text-blue-300">
               Read article <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
             </div>
           </Link>
@@ -973,7 +971,7 @@ function HelpArticleRoute({ categories }: { categories: HelpCategory[] }) {
 
           {article.checklist && article.checklist.length > 0 && (
             <div id="checklist" className="scroll-mt-28 rounded-2xl border border-emerald-400/20 bg-emerald-500/5 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-300">Checklist</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-700 dark:text-emerald-300">Checklist</p>
               <div className="mt-3 grid gap-2">
                 {article.checklist.map((item, idx) => (
                   <p key={`${article.slug}-c-${idx}`} className="text-sm text-[var(--text-metal-color)]">- {item}</p>
@@ -984,7 +982,7 @@ function HelpArticleRoute({ categories }: { categories: HelpCategory[] }) {
 
           {article.systemLinks && article.systemLinks.length > 0 && (
             <div id="system-links" className="scroll-mt-28 rounded-2xl border border-blue-400/20 bg-blue-500/5 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-300">Open in system</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-blue-700 dark:text-blue-300">Open in system</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {article.systemLinks.map((item) => (
                   <Button key={`${article.slug}-${item.path}`} size="sm" variant="outline" className="rounded-lg" asChild>
@@ -1208,17 +1206,17 @@ export function HelpCenterPage() {
 
   return (
     <div className="space-y-5">
-      <Card className="relative overflow-hidden rounded-[1.8rem] border-blue-400/20 bg-[radial-gradient(circle_at_50%_115%,rgba(37,99,235,0.5),transparent_35%),radial-gradient(circle_at_50%_120%,rgba(14,165,233,0.35),transparent_47%),linear-gradient(180deg,rgba(15,23,42,0.94),rgba(2,6,23,0.94))] shadow-[0_24px_80px_rgba(2,6,23,0.28)]">
-        <div className="absolute inset-x-0 bottom-0 h-24 bg-[radial-gradient(ellipse_at_center,rgba(59,130,246,0.42),transparent_68%)]" />
+      <Card className="relative overflow-hidden rounded-[1.8rem] border-blue-200/80 bg-[radial-gradient(circle_at_50%_115%,rgba(96,165,250,0.32),transparent_35%),radial-gradient(circle_at_50%_120%,rgba(14,165,233,0.2),transparent_47%),linear-gradient(180deg,rgba(255,255,255,0.98),rgba(240,246,255,0.96))] shadow-[0_24px_80px_rgba(71,85,105,0.16)] dark:border-blue-400/20 dark:bg-[radial-gradient(circle_at_50%_115%,rgba(37,99,235,0.5),transparent_35%),radial-gradient(circle_at_50%_120%,rgba(14,165,233,0.35),transparent_47%),linear-gradient(180deg,rgba(15,23,42,0.94),rgba(2,6,23,0.94))] dark:shadow-[0_24px_80px_rgba(2,6,23,0.28)]">
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-[radial-gradient(ellipse_at_center,rgba(59,130,246,0.22),transparent_68%)] dark:bg-[radial-gradient(ellipse_at_center,rgba(59,130,246,0.42),transparent_68%)]" />
         <CardHeader className="relative space-y-4 px-5 py-8 sm:py-10">
           <div className="mx-auto max-w-3xl text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-blue-300/30 bg-blue-500/20 shadow-[0_0_34px_rgba(59,130,246,0.35)]">
-              <LifeBuoy className="h-6 w-6 text-blue-200" />
+            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-blue-200 bg-blue-100 text-blue-700 shadow-[0_18px_38px_rgba(59,130,246,0.18)] dark:border-blue-300/30 dark:bg-blue-500/20 dark:text-blue-200 dark:shadow-[0_0_34px_rgba(59,130,246,0.35)]">
+              <LifeBuoy className="h-6 w-6" />
             </div>
-            <CardTitle className="text-2xl text-white sm:text-3xl">
+            <CardTitle className="text-2xl text-[#172033] dark:text-white sm:text-3xl">
               {isCustomerView ? 'How can we help you?' : 'How can your team get help today?'}
             </CardTitle>
-            <CardDescription className="mx-auto mt-2 max-w-2xl text-sm text-slate-300">
+            <CardDescription className="mx-auto mt-2 max-w-2xl text-sm text-[#596675] dark:text-slate-300">
               {isCustomerView
                 ? 'Find answers about bookings, payments, account setup, and project tracking.'
                 : 'Find internal guidance for queues, approvals, controls, operations, and troubleshooting.'}
@@ -1231,7 +1229,7 @@ export function HelpCenterPage() {
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                className="h-12 rounded-full border-blue-300/30 bg-slate-950/70 pl-10 text-slate-100 shadow-[0_0_30px_rgba(59,130,246,0.28)] placeholder:text-slate-500 focus-visible:ring-blue-400"
+                className="h-12 rounded-full border-blue-200/80 bg-white/90 pl-10 text-[#172033] shadow-[0_16px_38px_rgba(96,165,250,0.16)] placeholder:text-[#64748b] focus-visible:ring-blue-400 dark:border-blue-300/30 dark:bg-slate-950/70 dark:text-slate-100 dark:shadow-[0_0_30px_rgba(59,130,246,0.28)] dark:placeholder:text-slate-500"
                 placeholder={
                   isCustomerView
                     ? 'Search topics like account, booking, payments...'
@@ -1246,7 +1244,7 @@ export function HelpCenterPage() {
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="rounded-full border-white/10 bg-white/5 text-xs text-slate-300 hover:bg-white/10 hover:text-white"
+                  className="rounded-full border-blue-200 bg-white/80 text-xs text-[#5b6b7d] hover:bg-white hover:text-[#172033] dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
                   onClick={() => handleQuickTopicClick(topic)}
                 >
                   {topic.label}
@@ -1298,7 +1296,7 @@ export function HelpCenterPage() {
                         Choose a topic and jump straight into the article you need.
                       </p>
                     </div>
-                    <Link to="/help/support-and-troubleshooting" className="hidden text-xs font-semibold text-blue-300 hover:text-blue-200 sm:inline-flex">
+                    <Link to="/help/support-and-troubleshooting" className="hidden text-xs font-semibold text-blue-700 hover:text-blue-600 dark:text-blue-300 dark:hover:text-blue-200 sm:inline-flex">
                       View all articles <ChevronRight className="ml-1 h-3.5 w-3.5" />
                     </Link>
                   </div>
@@ -1321,7 +1319,7 @@ export function HelpCenterPage() {
                           </div>
                           <div className="mt-4 flex items-center justify-between text-xs">
                             <span className="text-[var(--text-metal-muted-color)]">{category.articles.length} articles</span>
-                            <ChevronRight className="h-4 w-4 text-[var(--text-metal-muted-color)] transition-transform group-hover:translate-x-0.5 group-hover:text-blue-300" />
+                            <ChevronRight className="h-4 w-4 text-[var(--text-metal-muted-color)] transition-transform group-hover:translate-x-0.5 group-hover:text-blue-700 dark:group-hover:text-blue-300" />
                           </div>
                         </Link>
                       );
@@ -1339,7 +1337,7 @@ export function HelpCenterPage() {
                             Useful guides based on your visible help topics.
                           </CardDescription>
                         </div>
-                        <BookOpen className="h-5 w-5 text-blue-300" />
+                        <BookOpen className="h-5 w-5 text-blue-700 dark:text-blue-300" />
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-2">
@@ -1353,7 +1351,7 @@ export function HelpCenterPage() {
                             <p className="truncate text-sm font-semibold text-[var(--color-card-foreground)]">{article.title}</p>
                             <p className="mt-1 text-xs text-[var(--text-metal-muted-color)]">{category.title}</p>
                           </div>
-                          <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-metal-muted-color)] transition-transform group-hover:translate-x-0.5 group-hover:text-blue-300" />
+                          <ChevronRight className="h-4 w-4 shrink-0 text-[var(--text-metal-muted-color)] transition-transform group-hover:translate-x-0.5 group-hover:text-blue-700 dark:group-hover:text-blue-300" />
                         </Link>
                       ))}
                     </CardContent>
@@ -1363,26 +1361,22 @@ export function HelpCenterPage() {
                     <CardHeader className="pb-3">
                       <CardTitle className="text-base text-[var(--color-card-foreground)]">Need More Help?</CardTitle>
                       <CardDescription className="text-[var(--text-metal-color)]">
-                        Quick support options when an article is not enough.
+                        Contact staff directly when an article is not enough.
                       </CardDescription>
                     </CardHeader>
-                    <CardContent className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
-                      {[
-                        { title: 'Live Chat', text: 'Chat with support in real time.', icon: MessageCircle, tone: 'text-sky-300 bg-sky-500/15 border-sky-400/25' },
-                        { title: 'Email Support', text: 'Send your question and get a reply.', icon: Mail, tone: 'text-emerald-300 bg-emerald-500/15 border-emerald-400/25' },
-                        { title: 'Call Support', text: 'Speak with a staff member during business hours.', icon: Phone, tone: 'text-violet-300 bg-violet-500/15 border-violet-400/25' },
-                      ].map((item) => {
-                        const IconComp = item.icon;
-                        return (
-                          <div key={item.title} className="rounded-2xl border border-[color:var(--color-border)]/50 p-4 text-center">
-                            <div className={`mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-2xl border ${item.tone}`}>
-                              <IconComp className="h-5 w-5" />
-                            </div>
-                            <p className="text-sm font-semibold text-[var(--color-card-foreground)]">{item.title}</p>
-                            <p className="mt-1 text-xs leading-relaxed text-[var(--text-metal-color)]">{item.text}</p>
-                          </div>
-                        );
-                      })}
+                    <CardContent>
+                      <a
+                        href="mailto:rmvstainless@gmail.com?subject=RMV%20Help%20Request"
+                        className="group block rounded-2xl border border-[color:var(--color-border)]/50 p-4 text-center transition-colors hover:bg-[color:var(--color-muted)]/35"
+                      >
+                        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-400/25 dark:bg-emerald-500/15 dark:text-emerald-300">
+                          <Mail className="h-5 w-5" />
+                        </div>
+                        <p className="text-sm font-semibold text-[var(--color-card-foreground)]">Email Staff</p>
+                        <p className="mt-1 text-xs leading-relaxed text-[var(--text-metal-color)]">
+                          Send your question directly to our team.
+                        </p>
+                      </a>
                     </CardContent>
                   </Card>
                 </div>
