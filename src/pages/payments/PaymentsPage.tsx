@@ -90,10 +90,25 @@ type PaymentListProject = {
   _id: string;
   title: string;
   customerName?: string;
+  customerId?: string | { _id: string; firstName?: string; lastName?: string };
   serviceType?: string;
   siteAddress?: string;
   status: string;
   items?: { _id: string; status: string }[];
+};
+
+const getPaymentProjectCustomerName = (project: PaymentListProject) => {
+  const explicitCustomerName = typeof project.customerName === 'string' ? project.customerName.trim() : '';
+  if (explicitCustomerName) return explicitCustomerName;
+
+  if (project.customerId && typeof project.customerId === 'object') {
+    const firstName = project.customerId.firstName?.trim();
+    const lastName = project.customerId.lastName?.trim();
+    const populatedName = [firstName, lastName].filter(Boolean).join(' ').trim();
+    if (populatedName) return populatedName;
+  }
+
+  return 'Customer';
 };
 
 const PAYMENT_STATUS_LABELS: Record<PaymentListStatus, string> = {
@@ -174,7 +189,7 @@ function PaymentProjectRow({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-[var(--color-card-foreground)]">{String(project.title)}</p>
           <p className="mt-0.5 truncate text-xs text-[var(--text-metal-color)]">
-            {project.customerName || 'Unknown Customer'}
+            {getPaymentProjectCustomerName(project)}
           </p>
           <p className="mt-0.5 truncate text-xs capitalize text-[var(--text-metal-color)]">
             {String(project.serviceType || '').replace(/_/g, ' ')}
@@ -190,7 +205,7 @@ function PaymentProjectRow({
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-[var(--color-card-foreground)] group-hover:text-[var(--text-metal-color)] dark:group-hover:text-slate-200">{String(project.title)}</p>
           <p className="mt-0.5 truncate text-xs text-[var(--text-metal-color)] dark:text-slate-300">
-            {project.customerName || 'Unknown Customer'}
+            {getPaymentProjectCustomerName(project)}
           </p>
           {project.siteAddress && (
             <p className="mt-0.5 truncate text-xs text-[var(--text-metal-color)] dark:text-slate-300">
@@ -448,7 +463,7 @@ export function PaymentsPage() {
       const q = projectSearch.toLowerCase();
       items = items.filter((p) =>
         String(p.title).toLowerCase().includes(q) ||
-        String(p.customerName || '').toLowerCase().includes(q) ||
+        getPaymentProjectCustomerName(p as PaymentListProject).toLowerCase().includes(q) ||
         String(p.serviceType || '').toLowerCase().includes(q) ||
         String(p.siteAddress || '').toLowerCase().includes(q)
       );
@@ -583,49 +598,57 @@ export function PaymentsPage() {
             <div className="px-4 pb-3 pt-4 sm:px-6">
               <CollectionToolbar
                 title="Find a payment-ready project"
-                description="Search by project details, then filter project stage separately from payment status."
+                description="Search by project details, then use the filters below."
                 searchPlaceholder="Search projects"
                 searchValue={projectSearch}
                 onSearchChange={setProjectSearch}
-                filters={[
-                  { value: 'all', label: 'All Project Stages' },
-                  ...projectStages.map((status) => ({
-                    value: status,
-                    label: formatProjectStageFilterLabel(status),
-                  })),
-                ]}
-                activeFilter={projectStageFilter}
-                onFilterChange={setProjectStageFilter}
-                filterGroupLabel="Project stage filters"
+                filters={[]}
+                activeFilter=""
+                onFilterChange={() => undefined}
                 footer={(
-                  <div
-                    className="flex flex-col gap-3 rounded-2xl border border-[#cfd6df]/75 bg-white/55 px-4 py-4 dark:border-white/10 dark:bg-white/5"
-                    role="group"
-                    aria-label="Payment status filters"
-                  >
-                    <span className="shrink-0 text-xs font-semibold uppercase tracking-wider text-[var(--text-metal-color)]">
-                      Payment Status
-                    </span>
-                    <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar lg:flex-wrap lg:overflow-visible">
+                  <div className="rounded-[1.35rem] border border-[#cfd6df]/70 bg-white/50 p-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[var(--text-metal-color)]">
+                      Filters
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
                       {[
-                        { value: 'all', label: 'All Payment Statuses' },
-                        ...Object.entries(PAYMENT_STATUS_LABELS).map(([value, label]) => ({ value, label })),
-                      ].map((filter) => (
-                        <button
-                          type="button"
-                          key={filter.value}
-                          onClick={() => setPaymentStatusFilter(filter.value)}
-                          aria-pressed={paymentStatusFilter === filter.value}
-                          className={cn(
-                            'whitespace-nowrap rounded-2xl border px-4 py-2 text-xs font-semibold transition-colors',
-                            paymentStatusFilter === filter.value
-                              ? 'border-emerald-300 bg-emerald-500/15 text-emerald-800 dark:border-emerald-400/50 dark:bg-emerald-400/15 dark:text-emerald-100'
-                              : 'border-[color:var(--color-border)] bg-[color:var(--color-muted)]/40 text-[var(--text-metal-color)] hover:bg-[color:var(--color-muted)]',
-                          )}
-                        >
-                          {filter.label}
-                        </button>
-                      ))}
+                        { value: 'all-project-stages', label: 'All Project Stages', kind: 'stage' as const },
+                        ...projectStages.map((status) => ({
+                          value: status,
+                          label: formatProjectStageFilterLabel(status),
+                          kind: 'stage' as const,
+                        })),
+                        { value: 'all-payment-statuses', label: 'All Payment Statuses', kind: 'payment' as const },
+                        ...Object.entries(PAYMENT_STATUS_LABELS).map(([value, label]) => ({ value, label, kind: 'payment' as const })),
+                      ].map((filter) => {
+                        const isStage = filter.kind === 'stage';
+                        const isActive = isStage
+                          ? (filter.value === 'all-project-stages' ? projectStageFilter === 'all' : projectStageFilter === filter.value)
+                          : (filter.value === 'all-payment-statuses' ? paymentStatusFilter === 'all' : paymentStatusFilter === filter.value);
+
+                        return (
+                          <button
+                            type="button"
+                            key={`${filter.kind}-${filter.value}`}
+                            onClick={() => {
+                              if (isStage) {
+                                setProjectStageFilter(filter.value === 'all-project-stages' ? 'all' : filter.value);
+                                return;
+                              }
+                              setPaymentStatusFilter(filter.value === 'all-payment-statuses' ? 'all' : filter.value);
+                            }}
+                            aria-pressed={isActive}
+                            className={cn(
+                              'whitespace-nowrap rounded-2xl border px-4 py-2 text-xs font-semibold transition-colors',
+                              isActive
+                                ? 'border-[#98b8ff] bg-[#f4f7ff] text-[#17315d] shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-slate-500 dark:bg-slate-100 dark:text-slate-900'
+                                : 'border-[color:var(--color-border)] bg-[color:var(--color-muted)]/40 text-[var(--text-metal-color)] hover:bg-[color:var(--color-muted)]',
+                            )}
+                          >
+                            {filter.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

@@ -72,28 +72,30 @@ export function CollectionToolbar({
           />
         </div>
 
-        <div
-          className="flex flex-wrap gap-3"
-          role="group"
-          aria-label={filterGroupLabel}
-        >
-          {filters.map((filter) => (
-            <button
-              type="button"
-              key={filter.value || '__all'}
-              onClick={() => onFilterChange(filter.value)}
-              aria-pressed={activeFilter === filter.value}
-              className={cn(
-                'inline-flex h-14 cursor-pointer items-center gap-3 whitespace-nowrap rounded-2xl border px-4 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2',
-                activeFilter === filter.value
-                  ? 'border-[#dbe8ff] bg-[#f4f7ff] text-[#17315d] shadow-[inset_0_-2px_0_rgba(84,128,219,0.35)] dark:border-slate-500 dark:bg-slate-100 dark:text-slate-900'
-                  : 'border-[#cfd6df] bg-white/60 text-[#4c5968] hover:border-blue-300 hover:bg-white hover:text-[#172033] dark:border-white/10 dark:bg-white/5 dark:text-[#d8e0ea] dark:hover:border-white/20 dark:hover:bg-white/10 dark:hover:text-white',
-              )}
-            >
-              {filter.label}
-            </button>
-          ))}
-        </div>
+        {filters.length > 0 && (
+          <div
+            className="flex flex-wrap gap-3"
+            role="group"
+            aria-label={filterGroupLabel}
+          >
+            {filters.map((filter) => (
+              <button
+                type="button"
+                key={filter.value || '__all'}
+                onClick={() => onFilterChange(filter.value)}
+                aria-pressed={activeFilter === filter.value}
+                className={cn(
+                  'inline-flex h-14 cursor-pointer items-center gap-3 whitespace-nowrap rounded-2xl border px-4 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 focus-visible:ring-offset-2',
+                  activeFilter === filter.value
+                    ? 'border-[#dbe8ff] bg-[#f4f7ff] text-[#17315d] shadow-[inset_0_-2px_0_rgba(84,128,219,0.35)] dark:border-slate-500 dark:bg-slate-100 dark:text-slate-900'
+                    : 'border-[#cfd6df] bg-white/60 text-[#4c5968] hover:border-blue-300 hover:bg-white hover:text-[#172033] dark:border-white/10 dark:bg-white/5 dark:text-[#d8e0ea] dark:hover:border-white/20 dark:hover:bg-white/10 dark:hover:text-white',
+                )}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {footer}
       </div>
