@@ -53,6 +53,7 @@ import {
 } from '@/components/ui/dialog';
 import { useUnpaidOcularFees } from '@/hooks/useAppointments';
 import { resolvePaymentWorkflowStatus } from '@/lib/workflow-status';
+import { getProjectDisplaySiteAddress } from '@/lib/project-display';
 
 
 import { CashierQueuePage } from './CashierQueuePage';
@@ -93,6 +94,22 @@ type PaymentListProject = {
   customerId?: string | { _id: string; firstName?: string; lastName?: string };
   serviceType?: string;
   siteAddress?: string;
+  siteAddressStructured?: {
+    street?: string;
+    barangay?: string;
+    city?: string;
+    province?: string;
+    zip?: string;
+  };
+  visitReportId?: string | {
+    appointmentId?: string | {
+      formattedAddress?: string;
+      customerAddress?: string;
+    };
+    recommendedOcularAddress?: {
+      formattedAddress?: string;
+    };
+  };
   status: string;
   items?: { _id: string; status: string }[];
 };
@@ -178,6 +195,7 @@ function PaymentProjectRow({
   const projectStageBadge = projectStage === 'paid'
     ? { status: 'verified', label: 'Paid' }
     : { status: projectStage, label: formatStatusLabel(projectStage) };
+  const siteAddress = getProjectDisplaySiteAddress(project);
 
   return (
     <button
@@ -207,10 +225,10 @@ function PaymentProjectRow({
           <p className="mt-0.5 truncate text-xs text-[var(--text-metal-color)] dark:text-slate-300">
             {getPaymentProjectCustomerName(project)}
           </p>
-          {project.siteAddress && (
+          {siteAddress && (
             <p className="mt-0.5 truncate text-xs text-[var(--text-metal-color)] dark:text-slate-300">
               <MapPin className="inline h-3 w-3 mr-1" />
-              {String(project.siteAddress)}
+              {siteAddress}
             </p>
           )}
         </div>
@@ -612,13 +630,13 @@ export function PaymentsPage() {
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {[
-                        { value: 'all-project-stages', label: 'All Project Stages', kind: 'stage' as const },
+                        { value: 'all-project-stages', label: 'Stage: All Project Stages', kind: 'stage' as const },
                         ...projectStages.map((status) => ({
                           value: status,
-                          label: formatProjectStageFilterLabel(status),
+                          label: `Stage: ${formatProjectStageFilterLabel(status)}`,
                           kind: 'stage' as const,
                         })),
-                        { value: 'all-payment-statuses', label: 'All Payment Statuses', kind: 'payment' as const },
+                        { value: 'all-payment-statuses', label: 'Payment: All Payment Statuses', kind: 'payment' as const },
                         ...Object.entries(PAYMENT_STATUS_LABELS).map(([value, label]) => ({ value, label, kind: 'payment' as const })),
                       ].map((filter) => {
                         const isStage = filter.kind === 'stage';

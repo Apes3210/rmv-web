@@ -55,6 +55,7 @@ import { ContractStatus, Role, StaffAvailabilityStatus, ProjectStatus, ServiceTy
 import { canManageFabricationUpdates, canViewFabricationUpdates, isAssignedEngineer as isProjectEngineerAssigned, isAssignedFabricationMember } from '@/lib/project-access';
 import { getServiceSpecificationSchema, hasMeaningfulSpecifications } from '@/lib/service-specifications';
 import { getDesignTemplatePlaceholderImage } from '@/lib/design-templates';
+import { getProjectDisplaySiteAddress } from '@/lib/project-display';
 import { cn, extractErrorMessage } from '@/lib/utils';
 import { resolveProjectWorkflowStatus } from '@/lib/workflow-status';
 import type { ApiResponse, PaymentPlan, ProjectItem, VisitReport } from '@/lib/types';
@@ -636,6 +637,7 @@ export function ProjectDetailPage() {
   const visitReportHasSpecifications = hasMeaningfulSpecifications(visitReport?.specifications);
 
   const activeWorkflowStatus = getDisplayItemStatus(project?.status, activeProjectItemRecord?.status) || 'submitted';
+  const projectSiteAddress = getProjectDisplaySiteAddress(project, visitReport);
 
   const isAssignedEngineer = useMemo(() => {
     if (!project) return false;
@@ -1522,8 +1524,8 @@ export function ProjectDetailPage() {
               {isStaff && project.customerName && (
                 <DetailField label="Customer" value={project.customerName} />
               )}
-              {project.siteAddress && (
-                <DetailField label="Site Address" value={project.siteAddress} />
+              {projectSiteAddress && (
+                <DetailField label="Site Address" value={projectSiteAddress} />
               )}
               {project.projectNumber && (
                 <DetailField label="Project Number" value={project.projectNumber} />
