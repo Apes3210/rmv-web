@@ -21,6 +21,7 @@ interface CollectionToolbarProps {
   className?: string;
   searchWidthClassName?: string;
   action?: React.ReactNode;
+  footer?: React.ReactNode;
 }
 
 export function CollectionToolbar({
@@ -37,6 +38,7 @@ export function CollectionToolbar({
   className,
   searchWidthClassName,
   action,
+  footer,
 }: CollectionToolbarProps) {
   return (
     <div
@@ -92,6 +94,8 @@ export function CollectionToolbar({
             </button>
           ))}
         </div>
+
+        {footer}
       </div>
     </div>
   );

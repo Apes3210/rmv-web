@@ -597,35 +597,39 @@ export function PaymentsPage() {
                 activeFilter={projectStageFilter}
                 onFilterChange={setProjectStageFilter}
                 filterGroupLabel="Project stage filters"
-              />
-              <div
-                className="mt-3 flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar lg:flex-wrap lg:overflow-visible"
-                role="group"
-                aria-label="Payment status filters"
-              >
-                <span className="shrink-0 text-xs font-semibold uppercase tracking-wider text-[var(--text-metal-color)]">
-                  Payment Status
-                </span>
-                {[
-                  { value: 'all', label: 'All Payment Statuses' },
-                  ...Object.entries(PAYMENT_STATUS_LABELS).map(([value, label]) => ({ value, label })),
-                ].map((filter) => (
-                  <button
-                    type="button"
-                    key={filter.value}
-                    onClick={() => setPaymentStatusFilter(filter.value)}
-                    aria-pressed={paymentStatusFilter === filter.value}
-                    className={cn(
-                      'whitespace-nowrap rounded-2xl border px-4 py-2 text-xs font-semibold transition-colors',
-                      paymentStatusFilter === filter.value
-                        ? 'border-emerald-300 bg-emerald-500/15 text-emerald-800 dark:border-emerald-400/50 dark:bg-emerald-400/15 dark:text-emerald-100'
-                        : 'border-[color:var(--color-border)] bg-[color:var(--color-muted)]/40 text-[var(--text-metal-color)] hover:bg-[color:var(--color-muted)]',
-                    )}
+                footer={(
+                  <div
+                    className="flex flex-col gap-3 rounded-2xl border border-[#cfd6df]/75 bg-white/55 px-4 py-4 dark:border-white/10 dark:bg-white/5"
+                    role="group"
+                    aria-label="Payment status filters"
                   >
-                    {filter.label}
-                  </button>
-                ))}
-              </div>
+                    <span className="shrink-0 text-xs font-semibold uppercase tracking-wider text-[var(--text-metal-color)]">
+                      Payment Status
+                    </span>
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar lg:flex-wrap lg:overflow-visible">
+                      {[
+                        { value: 'all', label: 'All Payment Statuses' },
+                        ...Object.entries(PAYMENT_STATUS_LABELS).map(([value, label]) => ({ value, label })),
+                      ].map((filter) => (
+                        <button
+                          type="button"
+                          key={filter.value}
+                          onClick={() => setPaymentStatusFilter(filter.value)}
+                          aria-pressed={paymentStatusFilter === filter.value}
+                          className={cn(
+                            'whitespace-nowrap rounded-2xl border px-4 py-2 text-xs font-semibold transition-colors',
+                            paymentStatusFilter === filter.value
+                              ? 'border-emerald-300 bg-emerald-500/15 text-emerald-800 dark:border-emerald-400/50 dark:bg-emerald-400/15 dark:text-emerald-100'
+                              : 'border-[color:var(--color-border)] bg-[color:var(--color-muted)]/40 text-[var(--text-metal-color)] hover:bg-[color:var(--color-muted)]',
+                          )}
+                        >
+                          {filter.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              />
             </div>
 
             {/* Customer ocular fee action list */}
