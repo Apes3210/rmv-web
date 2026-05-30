@@ -90,6 +90,9 @@ const AccountInfoPage = lazy(() =>
 const LandingPage = lazy(() =>
   import('@/pages/LandingPage').then((module) => ({ default: module.LandingPage })),
 );
+const ServiceDetailsPage = lazy(() =>
+  import('@/pages/ServiceDetailsPage').then((module) => ({ default: module.ServiceDetailsPage })),
+);
 const DashboardPage = lazy(() =>
   import('@/pages/DashboardPage').then((module) => ({ default: module.DashboardPage })),
 );
@@ -261,6 +264,7 @@ export default function App() {
           <Route path="/complete-profile" element={<Suspense fallback={<AuthPageLoader />}><CompleteProfilePage /></Suspense>} />
           <Route path="/privacy" element={<PrivacyPolicyPage />} />
           <Route path="/terms" element={<TermsOfServicePage />} />
+          <Route path="/services/:serviceId" element={<ServiceDetailsPage />} />
 
           <Route element={<ProtectedRoute />}>
             <Route element={<AppLayout />}>
