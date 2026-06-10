@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -49,6 +49,7 @@ export function BookAppointmentPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const rescheduleId = searchParams.get('reschedule');
+  const selectedServiceTypeParam = searchParams.get('serviceType');
 
   const {
     register,
@@ -89,6 +90,18 @@ export function BookAppointmentPage() {
   const [serviceTypes, setServiceTypes] = useState<string[]>([]);
   const [serviceTypeCustom, setServiceTypeCustom] = useState('');
   const [notes, setNotes] = useState('');
+
+  useEffect(() => {
+    if (!selectedServiceTypeParam) return;
+    if (serviceTypes.length > 0) return;
+    const validType = Object.values(ServiceType).includes(selectedServiceTypeParam as ServiceType);
+    if (!validType) return;
+
+    setServiceTypes([selectedServiceTypeParam]);
+    if (selectedServiceTypeParam === ServiceType.CUSTOM) {
+      setServiceTypeCustom('Custom fabrication');
+    }
+  }, [selectedServiceTypeParam, serviceTypes]);
 
   const { data: slotsData, isLoading: slotsLoading } = useAvailableSlots(
     selectedDate,
