@@ -97,7 +97,7 @@ export function LandingPage() {
                       {hero.ctaLabel}
                     </Button>
                     <Button asChild variant="secondary" className="rounded-full px-8 py-3 text-sm font-semibold tracking-[0.08em]">
-                      <Link to={hero.secondaryUrl}>{hero.secondaryLabel}</Link>
+                      <a href={hero.secondaryUrl}>{hero.secondaryLabel}</a>
                     </Button>
                   </div>
 
