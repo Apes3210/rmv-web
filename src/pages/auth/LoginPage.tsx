@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, ArrowLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { signInWithPopup } from 'firebase/auth';
+import { getRedirectResult, signInWithPopup, signInWithRedirect, type UserCredential } from 'firebase/auth';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,6 +40,85 @@ export function LoginPage() {
 
   const from = locationState?.from?.pathname || '/dashboard';
 
+  function getGoogleErrorMessage(err: unknown) {
+    const error = err as {
+      code?: string;
+      message?: string;
+      response?: { data?: { error?: { message?: string } } };
+    };
+
+    const backendMessage = error.response?.data?.error?.message;
+    if (backendMessage) return backendMessage;
+
+    if (error.code === 'auth/unauthorized-domain') {
+      return 'Google sign-in is not enabled for this domain. Add localhost and the production domain in Firebase Authentication settings.';
+    }
+
+    if (error.code === 'auth/web-storage-unsupported') {
+      return 'Google sign-in needs browser storage/cookies enabled. Disable strict privacy blocking for this site and try again.';
+    }
+
+    if (error.code === 'auth/network-request-failed') {
+      return 'Google sign-in could not reach Firebase. Check connection, extensions, or browser blocking.';
+    }
+
+    if (error.code) {
+      return `Google sign-in failed (${error.code}). ${error.message ?? 'Please try again.'}`;
+    }
+
+    return error.message || 'Google sign-in failed. Please try again.';
+  }
+
+  const finishGoogleSignIn = useCallback(async (result: UserCredential) => {
+    const idToken = await result.user.getIdToken();
+
+    const csrfToken = await fetchCsrfToken();
+    setCsrfToken(csrfToken);
+
+    const response = await api.post('/auth/google', { idToken });
+    const responseData = response.data.data;
+
+    if (responseData.needsProfile) {
+      navigate('/complete-profile', {
+        state: {
+          email: responseData.email,
+          googleName: responseData.googleName,
+          googlePhoto: responseData.googlePhoto,
+          idToken,
+        },
+        replace: true,
+      });
+      return;
+    }
+
+    if (responseData.requires2FA) {
+      navigate('/verify-2fa', {
+        state: {
+          tempToken: responseData.tempToken,
+          email: responseData.user.email,
+          firstName: responseData.user.firstName,
+          from,
+        },
+        replace: true,
+      });
+      return;
+    }
+
+    const newCsrfToken = responseData.csrfToken;
+    setCsrfToken(newCsrfToken);
+    if (responseData.accessToken) setAccessToken(responseData.accessToken);
+    if (responseData.refreshToken) setRefreshToken(responseData.refreshToken);
+    await fetchMe();
+    toast.success('Welcome back!');
+
+    const destination = resolvePostLoginPath(from, responseData.user.roles);
+    if (destination.redirectReason) {
+      toast(destination.redirectReason, { icon: 'ℹ️' });
+    }
+
+    navigate(destination.path, { replace: true });
+  }, [fetchMe, from, navigate, setAccessToken, setCsrfToken, setRefreshToken]);
+
   useEffect(() => {
     const redirectReason = consumeAuthRedirectReason();
     if (redirectReason) {
@@ -50,6 +129,29 @@ export function LoginPage() {
       toast.success('Registration successful. Sign in when you are ready. If your email is still unverified, we will send you to OTP verification next.');
     }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const completeRedirectSignIn = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (!result || cancelled) return;
+        setGoogleLoading(true);
+        await finishGoogleSignIn(result);
+      } catch (err: unknown) {
+        toast.error(getGoogleErrorMessage(err), { duration: 8000 });
+      } finally {
+        if (!cancelled) setGoogleLoading(false);
+      }
+    };
+
+    void completeRedirectSignIn();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [finishGoogleSignIn]);
 
   const {
     register,
@@ -67,83 +169,25 @@ export function LoginPage() {
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
-
-    // Firebase is slow to detect a closed popup (5-10s polling).
-    // When the user closes the popup and this window regains focus,
-    // we give Firebase a short grace period and then clear the spinner.
-    let settled = false;
-    const onFocus = () => {
-      setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          setGoogleLoading(false);
-        }
-      }, 1500);
-    };
-    window.addEventListener('focus', onFocus);
-
     try {
       const result = await signInWithPopup(auth, googleProvider);
-      settled = true; // success — don't let the focus handler interfere
-
-      const idToken = await result.user.getIdToken();
-
-      const csrfToken = await fetchCsrfToken();
-      setCsrfToken(csrfToken);
-
-      const response = await api.post('/auth/google', { idToken });
-      const responseData = response.data.data;
-
-      if (responseData.needsProfile) {
-        // New Google user — redirect to complete profile
-        navigate('/complete-profile', {
-          state: {
-            email: responseData.email,
-            googleName: responseData.googleName,
-            googlePhoto: responseData.googlePhoto,
-            idToken,
-          },
-          replace: true,
-        });
-        return;
-      }
-
-      // 2FA required — redirect to verification page
-      if (responseData.requires2FA) {
-        navigate('/verify-2fa', {
-          state: {
-            tempToken: responseData.tempToken,
-            email: responseData.user.email,
-            firstName: responseData.user.firstName,
-            from,
-          },
-          replace: true,
-        });
-        return;
-      }
-
-      // Existing user — logged in
-      const newCsrfToken = responseData.csrfToken;
-      setCsrfToken(newCsrfToken);
-      if (responseData.accessToken) setAccessToken(responseData.accessToken);
-      if (responseData.refreshToken) setRefreshToken(responseData.refreshToken);
-      await fetchMe();
-      toast.success('Welcome back!');
-
-      const destination = resolvePostLoginPath(from, responseData.user.roles);
-      if (destination.redirectReason) {
-        toast(destination.redirectReason, { icon: 'ℹ️' });
-      }
-
-      navigate(destination.path, { replace: true });
+      await finishGoogleSignIn(result);
     } catch (err: unknown) {
-      const error = err as { code?: string; response?: { data?: { error?: { message?: string } } } };
-      if (error.code === 'auth/popup-closed-by-user') return;
-      toast.error(error.response?.data?.error?.message || 'Google sign-in failed. Please try again.');
-    } finally {
-      window.removeEventListener('focus', onFocus);
-      settled = true;
+      const error = err as { code?: string };
+      const canFallbackToRedirect =
+        error.code === 'auth/popup-blocked' ||
+        error.code === 'auth/popup-closed-by-user' ||
+        error.code === 'auth/cancelled-popup-request' ||
+        error.code === 'auth/operation-not-supported-in-this-environment';
+
+      if (canFallbackToRedirect) {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+
+      toast.error(getGoogleErrorMessage(err), { duration: 8000 });
       setGoogleLoading(false);
+    } finally {
     }
   };
 

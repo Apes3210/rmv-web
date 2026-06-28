@@ -10,7 +10,15 @@ const SMOOTH_240: [number, number, number, number] = [0.22, 1, 0.36, 1];
 export function PublicNavbar() {
   const { user } = useAuthStore();
   const isLoggedIn = !!user;
+  const quoteTarget = isLoggedIn ? '/appointments/book' : '/login';
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const navItems = [
+    { label: 'Services', href: '/#services' },
+    { label: 'Projects', href: '/#projects' },
+    { label: 'Materials', href: '/#materials' },
+    { label: 'About', href: '/#about' },
+    { label: 'Contact', href: '/#contact' },
+  ];
 
   return (
     <motion.header
@@ -25,13 +33,8 @@ export function PublicNavbar() {
         </Link>
 
         {/* Desktop Nav */}
-        <nav className="hidden lg:flex items-center space-x-10 label-font tracking-widest text-[10px] uppercase">
-          {[
-            { label: 'Studio', href: '/#hero' },
-            { label: 'Legacy', href: '/#about' },
-            { label: 'Gallery', href: '/#projects' },
-            { label: 'Inquiry', href: '/#contact' },
-          ].map((item) => (
+        <nav className="hidden lg:flex items-center space-x-10 label-font text-[12px] uppercase tracking-[0.14em]">
+          {navItems.map((item) => (
             <a
               key={item.label}
               href={item.href}
@@ -43,20 +46,16 @@ export function PublicNavbar() {
         </nav>
 
         <div className="hidden lg:flex items-center space-x-6">
-          {isLoggedIn ? (
-            <Button asChild style={{ color: '#0a0a0a' }} className="label-font brass-gradient h-9 rounded-none border-none px-6 text-[10px] font-black uppercase tracking-[0.2em] transition-transform hover:scale-105 active:scale-95 shadow-[0_5px_15px_rgba(255,215,0,0.15)]">
-              <Link to="/dashboard">Dashboard</Link>
-            </Button>
-          ) : (
-            <div className="flex items-center space-x-4">
-              <Link to="/login" className="label-font text-[10px] font-bold uppercase tracking-[0.2em] text-white/60 transition-colors hover:text-white">
+          <div className="flex items-center space-x-4">
+            {!isLoggedIn && (
+              <Link to="/login" className="label-font text-[12px] font-bold uppercase tracking-[0.14em] text-white/60 transition-colors hover:text-white">
                 Sign In
               </Link>
-              <Button asChild style={{ color: '#0a0a0a' }} className="label-font brass-gradient h-9 rounded-none border-none px-6 text-[10px] font-black uppercase tracking-[0.2em] transition-transform hover:scale-105 active:scale-95 shadow-[0_5px_15px_rgba(255,215,0,0.15)]">
-                <Link to="/register">Get Started</Link>
-              </Button>
-            </div>
-          )}
+            )}
+            <Button asChild style={{ color: '#0a0a0a' }} className="label-font brass-gradient h-9 rounded-none border-none px-6 text-[12px] font-black uppercase tracking-[0.14em] transition-transform hover:scale-105 active:scale-95 shadow-[0_5px_15px_rgba(255,215,0,0.15)]">
+              <Link to={quoteTarget}>Request Quote</Link>
+            </Button>
+          </div>
         </div>
 
         {/* Mobile menu button */}
@@ -79,12 +78,7 @@ export function PublicNavbar() {
           className="lg:hidden absolute top-full left-0 w-full bg-neutral-900/95 backdrop-blur-2xl border-b border-white/10 p-6 flex flex-col space-y-4"
         >
           <nav className="flex flex-col space-y-4">
-            {[
-              { label: 'Studio', href: '/#hero' },
-              { label: 'Legacy', href: '/#about' },
-              { label: 'Gallery', href: '/#projects' },
-              { label: 'Inquiry', href: '/#contact' },
-            ].map((item) => (
+            {navItems.map((item) => (
               <a
                 key={item.label}
                 href={item.href}
@@ -97,24 +91,23 @@ export function PublicNavbar() {
           </nav>
 
           <div className="border-t border-white/10 pt-6 flex flex-col space-y-4">
-            {isLoggedIn ? (
-              <Button asChild style={{ color: '#0a0a0a' }} className="label-font brass-gradient h-12 w-full rounded-none border-none text-[10px] font-black uppercase tracking-[0.2em]">
-                <Link to="/dashboard" onClick={() => setMobileMenuOpen(false)}>Dashboard</Link>
-              </Button>
-            ) : (
-              <>
-                <Link 
-                  to="/login" 
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="label-font text-center text-[10px] font-bold uppercase tracking-[0.2em] text-white/60 py-2"
-                >
-                  Sign In
-                </Link>
-                <Button asChild style={{ color: '#0a0a0a' }} className="label-font brass-gradient h-12 w-full rounded-none border-none text-[10px] font-black uppercase tracking-[0.2em]">
-                  <Link to="/register" onClick={() => setMobileMenuOpen(false)}>Get Started</Link>
-                </Button>
-              </>
+            {!isLoggedIn && (
+              <Link
+                to="/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className="label-font text-center text-[10px] font-bold uppercase tracking-[0.2em] text-white/60 py-2"
+              >
+                Sign In
+              </Link>
             )}
+            <Button asChild style={{ color: '#0a0a0a' }} className="label-font brass-gradient h-12 w-full rounded-none border-none text-[10px] font-black uppercase tracking-[0.2em]">
+                <Link 
+                  to={quoteTarget}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Request Quote
+                </Link>
+            </Button>
           </div>
         </motion.div>
       )}
