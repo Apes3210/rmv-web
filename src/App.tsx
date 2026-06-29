@@ -90,6 +90,9 @@ const AccountInfoPage = lazy(() =>
 const LandingPage = lazy(() =>
   import('@/pages/LandingPage').then((module) => ({ default: module.LandingPage })),
 );
+const AboutPage = lazy(() =>
+  import('@/pages/AboutPage').then((module) => ({ default: module.AboutPage })),
+);
 const ServiceDetailsPage = lazy(() =>
   import('@/pages/ServiceDetailsPage').then((module) => ({ default: module.ServiceDetailsPage })),
 );
@@ -201,6 +204,7 @@ export default function App() {
     const init = async () => {
       const publicPaths = [
         '/',
+        '/about',
         '/login',
         '/register',
         '/verify-otp',
@@ -255,6 +259,7 @@ export default function App() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           <Route path="/" element={<Suspense fallback={<LandingPageLoader />}><LandingPage /></Suspense>} />
+          <Route path="/about" element={<Suspense fallback={<LandingPageLoader />}><AboutPage /></Suspense>} />
           <Route path="/login" element={<Suspense fallback={<AuthPageLoader />}><LoginPage /></Suspense>} />
           <Route path="/register" element={<Suspense fallback={<AuthPageLoader />}><RegisterPage /></Suspense>} />
           <Route path="/verify-otp" element={<Suspense fallback={<AuthPageLoader />}><VerifyOTPPage /></Suspense>} />

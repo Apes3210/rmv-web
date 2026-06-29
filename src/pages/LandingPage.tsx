@@ -4,15 +4,24 @@ import {
   Armchair,
   ArrowRight,
   ArrowUpFromLine,
+  BadgeCheck,
   BookOpen,
   ChefHat,
+  Clock,
   DoorClosed,
   DoorOpen,
+  Drill,
   Fence,
   Frame,
   Grid3x3,
+  Handshake,
   Layers,
+  Mail,
+  MapPin,
+  Navigation,
   PenTool,
+  Phone,
+  ShieldCheck,
   Umbrella,
   Utensils,
   Wrench,
@@ -30,6 +39,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { PublicNavbar } from '@/components/shared/PublicNavbar';
+import { LocationView } from '@/components/maps/LocationView';
 import { useAuthStore } from '@/stores/auth.store';
 import { ServiceType, SERVICE_TYPE_LABELS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
@@ -502,6 +512,42 @@ const MATERIALS = [
   },
 ];
 
+const SERVICE_BENEFITS = [
+  {
+    title: 'Premium Materials',
+    description: 'High-quality stainless steel built to last.',
+    Icon: ShieldCheck,
+  },
+  {
+    title: 'Precision Fabrication',
+    description: 'Expert craftsmanship with attention to detail.',
+    Icon: Drill,
+  },
+  {
+    title: 'Custom Solutions',
+    description: 'Tailored designs to fit your needs and space.',
+    Icon: BadgeCheck,
+  },
+  {
+    title: 'Reliable Service',
+    description: 'On-time delivery and professional support.',
+    Icon: Handshake,
+  },
+];
+
+const OFFICE_LOCATION = {
+  label: 'RMV Stainless Steel Fabrication',
+  address: 'BIR Village, Novaliches, Quezon City, Metro Manila 1118',
+  plusCode: 'M3X3+RF4, Dahlia Ext, Quezon City, Metro Manila',
+  lat: 14.6995125,
+  lng: 121.053703125,
+  tel: '02-9506187',
+  mobile: '0945 285 2974',
+  email: 'rmvstainless@gmail.com',
+  hours: 'Mon - Sat: 8:00 AM - 6:00 PM',
+  directionsUrl: 'https://www.google.com/maps?q=14.6995125,121.053703125',
+};
+
 export function LandingPage() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
@@ -595,44 +641,103 @@ export function LandingPage() {
           </div>
         </section>
 
-        <section id="services" className="border-b border-white/10 bg-[#050607] py-10 sm:py-12">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="mb-6 text-center">
-              <p className="label-font text-[11px] font-black uppercase tracking-[0.3em] text-[#FFD700]">What We Fabricate</p>
-              <h2 className="headline-font mt-2 text-2xl font-black uppercase tracking-[0.14em] text-white sm:text-3xl">
+        <section
+          id="services"
+          className="relative overflow-hidden border-b border-white/10 bg-[#050708] py-8 sm:py-10"
+        >
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-white/[0.025] to-transparent" />
+
+          <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="mx-auto mb-6 max-w-3xl text-center">
+              <div className="flex items-center justify-center gap-4">
+                <span className="h-px w-8 bg-[#FFD700]/70 sm:w-12" />
+                <p className="label-font text-[11px] font-black uppercase tracking-[0.32em] text-[#FFD700]">
+                  What We Fabricate
+                </p>
+                <span className="h-px w-8 bg-[#FFD700]/70 sm:w-12" />
+              </div>
+
+              <h2 className="headline-font mt-3 text-2xl font-black uppercase tracking-[0.16em] text-white sm:text-3xl lg:text-4xl">
                 RMV Services
               </h2>
+
+              <p className="mt-2 text-sm leading-6 text-white/68">
+                Precision craftsmanship. Premium stainless steel. Built to last.
+              </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               {FEATURED_SERVICES.map((service) => {
                 const Icon = service.Icon;
+
                 return (
                   <button
                     key={service.type}
                     type="button"
                     onClick={() => setSelectedService(service)}
-                    className="group overflow-hidden rounded-lg border border-white/12 bg-[#0b0e10] text-left shadow-[0_18px_50px_rgba(0,0,0,0.22)] transition duration-300 hover:-translate-y-1 hover:border-[#FFD700]/55 hover:shadow-[0_24px_70px_rgba(255,215,0,0.12)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#050607]"
+                    className="group relative overflow-hidden rounded-xl border border-white/12 bg-[#0b1014] text-left shadow-[0_8px_22px_rgba(0,0,0,0.24)] transition duration-200 hover:-translate-y-0.5 hover:border-[#FFD700]/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFD700]/70 focus-visible:ring-offset-2 focus-visible:ring-offset-[#050708]"
                     aria-label={`View details for ${service.label}`}
                   >
-                    <div className="aspect-[4/3] overflow-hidden bg-white/5">
+                    <div className="relative h-32 overflow-hidden bg-white/5 sm:h-36 xl:h-32">
                       <img
                         src={service.imageUrl}
                         alt={service.label}
-                        className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                        className="h-full w-full object-cover"
                         loading="lazy"
                       />
+                      <div className="absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#0b1014] to-transparent" />
                     </div>
-                    <div className="space-y-3 p-4">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-md border border-[#FFD700]/35 bg-[#FFD700]/10 text-[#FFD700]">
-                        <Icon className="h-4 w-4" />
+
+                    <div className="relative min-h-[128px] px-3 pb-4 pt-9 text-center">
+                      <div className="absolute left-1/2 top-0 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[#FFD700]/65 bg-[#0a0e11] text-[#FFD700] shadow-[0_6px_18px_rgba(0,0,0,0.32)]">
+                        <Icon className="h-5 w-5" strokeWidth={1.8} />
                       </div>
-                      <h3 className="text-sm font-bold leading-tight text-white">{service.label}</h3>
-                      <p className="line-clamp-3 text-xs leading-5 text-white/62">{service.description}</p>
+
+                      <h3 className="text-sm font-black leading-tight text-white">
+                        {service.label}
+                      </h3>
+
+                      <div className="mx-auto mt-2 h-px w-8 bg-[#FFD700]" />
+
+                      <p className="mx-auto mt-2 line-clamp-3 max-w-[12rem] text-[11px] leading-5 text-white/64">
+                        {service.description}
+                      </p>
                     </div>
                   </button>
                 );
               })}
+            </div>
+
+            <div className="mt-4 overflow-hidden rounded-xl border border-white/12 bg-[#070b0e]/90 shadow-[0_8px_24px_rgba(0,0,0,0.22)]">
+              <div className="grid gap-0 sm:grid-cols-2 lg:grid-cols-4">
+                {SERVICE_BENEFITS.map((benefit, index) => {
+                  const Icon = benefit.Icon;
+
+                  return (
+                    <div
+                      key={benefit.title}
+                      className={cn(
+                        'flex items-center gap-3 p-3 sm:p-4',
+                        index > 0 && 'lg:border-l lg:border-white/10',
+                        index > 1 && 'sm:border-t sm:border-white/10 lg:border-t-0',
+                      )}
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#FFD700]">
+                        <Icon className="h-5 w-5" strokeWidth={1.7} />
+                      </div>
+
+                      <div>
+                        <h3 className="text-xs font-black text-white">
+                          {benefit.title}
+                        </h3>
+                        <p className="mt-0.5 text-xs leading-5 text-white/58">
+                          {benefit.description}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </section>
@@ -677,15 +782,15 @@ export function LandingPage() {
             </div>
 
             <div className="mt-6 flex justify-center">
-              <Button
+              <button
                 type="button"
                 onClick={goToBooking}
-                variant="outline"
-                className="h-11 rounded-md border-white/25 bg-transparent px-7 text-[11px] font-black uppercase tracking-[0.18em] text-white hover:bg-white/10 hover:text-white"
+                style={{ backgroundColor: '#FFD700', backgroundImage: 'none' }}
+                className="label-font inline-flex h-[52px] cursor-pointer items-center justify-center gap-2 rounded-md border border-[#FFD700] px-8 text-[11px] font-black uppercase tracking-[0.2em] text-black shadow-[0_16px_42px_rgba(255,215,0,0.28)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#ffe766] hover:brightness-110 hover:shadow-[0_20px_58px_rgba(255,215,0,0.42)] active:translate-y-0 active:scale-[0.98]"
               >
                 Request a Similar Project
                 <ArrowRight className="ml-3 h-4 w-4" />
-              </Button>
+              </button>
             </div>
           </div>
         </section>
@@ -707,6 +812,97 @@ export function LandingPage() {
                     </div>
                   </article>
                 ))}
+              </div>
+
+              <div className="mt-10 overflow-hidden rounded-2xl border border-white/10 bg-[#080b0d] shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+                <div className="grid gap-0 lg:grid-cols-[1.1fr_0.9fr]">
+                  <div className="min-h-[320px] border-b border-white/10 bg-black/30 p-3 lg:border-b-0 lg:border-r">
+                    <LocationView
+                      lat={OFFICE_LOCATION.lat}
+                      lng={OFFICE_LOCATION.lng}
+                      heightClass="h-[320px] sm:h-[380px]"
+                    />
+                  </div>
+
+                  <div className="flex flex-col justify-center p-6 sm:p-8">
+                    <p className="label-font text-[10px] font-black uppercase tracking-[0.28em] text-[#FFD700]">
+                      Visit Our Office
+                    </p>
+                    <h3 className="headline-font mt-3 text-2xl font-black uppercase tracking-[0.1em] text-white sm:text-3xl">
+                      {OFFICE_LOCATION.label}
+                    </h3>
+                    <p className="mt-4 text-sm leading-7 text-white/60">
+                      Find RMV Fabrication or book a site visit for your project.
+                    </p>
+
+                    <div className="mt-6 grid gap-3">
+                      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                        <div className="flex gap-3">
+                          <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[#FFD700]" />
+                          <div>
+                            <p className="label-font text-[10px] font-black uppercase tracking-[0.2em] text-white/42">
+                              Address
+                            </p>
+                            <p className="mt-2 text-sm font-semibold leading-6 text-white">{OFFICE_LOCATION.address}</p>
+                            <p className="mt-1 text-xs leading-5 text-white/50">{OFFICE_LOCATION.plusCode}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                          <Phone className="h-5 w-5 text-[#FFD700]" />
+                          <p className="label-font mt-3 text-[10px] font-black uppercase tracking-[0.2em] text-white/42">
+                            Contact
+                          </p>
+                          <p className="mt-2 text-sm font-semibold text-white">{OFFICE_LOCATION.tel}</p>
+                          <p className="mt-1 text-sm text-white/60">{OFFICE_LOCATION.mobile}</p>
+                        </div>
+
+                        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                          <Clock className="h-5 w-5 text-[#FFD700]" />
+                          <p className="label-font mt-3 text-[10px] font-black uppercase tracking-[0.2em] text-white/42">
+                            Office Hours
+                          </p>
+                          <p className="mt-2 text-sm font-semibold leading-6 text-white">{OFFICE_LOCATION.hours}</p>
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                        <div className="flex gap-3">
+                          <Mail className="mt-0.5 h-5 w-5 shrink-0 text-[#FFD700]" />
+                          <div>
+                            <p className="label-font text-[10px] font-black uppercase tracking-[0.2em] text-white/42">
+                              Email
+                            </p>
+                            <p className="mt-2 break-words text-sm font-semibold text-white">{OFFICE_LOCATION.email}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                      <a
+                        href={OFFICE_LOCATION.directionsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="label-font inline-flex h-[48px] cursor-pointer items-center justify-center gap-3 rounded-md border border-white/15 bg-white/[0.04] px-5 text-[10px] font-black uppercase tracking-[0.2em] text-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[#FFD700]/60 hover:text-[#FFD700] active:translate-y-0"
+                      >
+                        Get Directions
+                        <Navigation className="h-4 w-4" />
+                      </a>
+                      <button
+                        type="button"
+                        onClick={goToBooking}
+                        style={{ backgroundColor: '#FFD700', backgroundImage: 'none' }}
+                        className="label-font inline-flex h-[48px] cursor-pointer items-center justify-center gap-3 rounded-md border border-[#FFD700] px-5 text-[10px] font-black uppercase tracking-[0.2em] text-black shadow-[0_14px_34px_rgba(255,215,0,0.24)] transition-all duration-200 hover:-translate-y-0.5 hover:brightness-110 hover:shadow-[0_18px_46px_rgba(255,215,0,0.36)] active:translate-y-0 active:scale-[0.98]"
+                      >
+                        Request Quote
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

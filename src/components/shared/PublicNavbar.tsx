@@ -16,7 +16,7 @@ export function PublicNavbar() {
     { label: 'Services', href: '/#services' },
     { label: 'Projects', href: '/#projects' },
     { label: 'Materials', href: '/#materials' },
-    { label: 'About', href: '/#about' },
+    { label: 'About', href: '/about' },
     { label: 'Contact', href: '/#contact' },
   ];
 
