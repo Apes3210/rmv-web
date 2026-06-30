@@ -1,21 +1,14 @@
 import {
-  ArrowRight,
   Award,
   Building2,
-  CalendarCheck,
-  ClipboardList,
   Clock,
   Flame,
-  Hammer,
   HardHat,
   Home,
   PackageCheck,
   PenTool,
-  Ruler,
-  Search,
   ShieldCheck,
   Sparkles,
-  Truck,
   Utensils,
   Wind,
   Wrench,
@@ -115,39 +108,6 @@ const services: IconCard[] = [
   },
 ];
 
-const bookingSteps: IconCard[] = [
-  {
-    title: 'Choose Service',
-    description: 'Select the fabrication service that best matches the project.',
-    icon: Search,
-  },
-  {
-    title: 'Book Appointment',
-    description: 'Schedule a visit so the team can review the request properly.',
-    icon: CalendarCheck,
-  },
-  {
-    title: 'Site Visit & Measurement',
-    description: 'Measurements and site conditions are checked before pricing.',
-    icon: Ruler,
-  },
-  {
-    title: 'Quotation & Estimate',
-    description: 'The scope is reviewed and converted into a project estimate.',
-    icon: ClipboardList,
-  },
-  {
-    title: 'Fabrication',
-    description: 'Approved work moves into stainless or steel fabrication.',
-    icon: Hammer,
-  },
-  {
-    title: 'Delivery & Installation',
-    description: 'Finished work is delivered and installed according to project needs.',
-    icon: Truck,
-  },
-];
-
 const advantages: IconCard[] = [
   {
     title: 'Experienced Fabrication Team',
@@ -206,7 +166,7 @@ export function AboutPage() {
       <PublicNavbar />
 
       <main>
-        <section className="relative isolate flex min-h-[680px] items-center overflow-hidden pt-20">
+        <section className="relative isolate flex min-h-[560px] items-center overflow-hidden pt-20 sm:min-h-[600px]">
           <img
             src="/landing/hero/hero-stainless-railing-bg.png"
             alt="Stainless railing fabrication background"
@@ -216,29 +176,21 @@ export function AboutPage() {
           <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,#000_0%,rgba(0,0,0,0.9)_32%,rgba(0,0,0,0.28)_72%,rgba(0,0,0,0.55)_100%)]" />
           <div className="absolute inset-x-0 bottom-0 -z-10 h-44 bg-gradient-to-t from-black to-transparent" />
 
-          <div className="mx-auto w-full max-w-7xl px-4 py-24 sm:px-6 lg:px-8">
-            <div className="max-w-3xl">
+          <div className="mx-auto w-full max-w-5xl px-4 py-20 text-center sm:px-6 lg:px-8">
+            <div className="mx-auto max-w-3xl">
               <p className="label-font text-[11px] font-bold uppercase tracking-[0.32em] text-[#FFD700]">
                 ABOUT RMV FABRICATION
               </p>
-              <div className="mt-5 h-0.5 w-16 bg-[#FFD700]" />
-              <h1 className="headline-font mt-8 text-5xl font-extrabold leading-[1.04] tracking-[-0.04em] text-white sm:text-6xl lg:text-[76px]">
+              <div className="mx-auto mt-5 h-0.5 w-16 bg-[#FFD700]" />
+              <h1 className="headline-font mx-auto mt-8 max-w-4xl text-4xl font-extrabold leading-[1.08] tracking-[-0.035em] text-white sm:text-5xl lg:text-[60px]">
                 Built from experience. Focused on precision fabrication.
               </h1>
-              <p className="mt-7 max-w-2xl text-base leading-8 text-white/72 sm:text-lg">
+              <p className="mx-auto mt-7 max-w-2xl text-base leading-8 text-white/72 sm:text-lg">
                 RMV Fabrication grew from Mr. Reden M. Verdadero&apos;s hands-on work in stainless
                 steel fabrication, kitchen equipment, and project management. Today, the company
                 serves customers with custom stainless and steel fabrication built around real site
                 requirements.
               </p>
-              <button
-                type="button"
-                onClick={goToBooking}
-                className="label-font mt-10 inline-flex h-14 cursor-pointer items-center justify-center gap-5 rounded-[10px] bg-[#FFD700] px-8 text-[12px] font-black uppercase tracking-[0.2em] text-black shadow-[0_16px_34px_rgba(255,215,0,0.22)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#ffdf33] hover:shadow-[0_20px_42px_rgba(255,215,0,0.34)] active:translate-y-0"
-              >
-                Request a Quote
-                <ArrowRight className="h-5 w-5" />
-              </button>
             </div>
           </div>
         </section>
@@ -256,13 +208,6 @@ export function AboutPage() {
                 The RMV story starts with industry work, stainless kitchen equipment fabrication,
                 and a founder who turned that background into his own fabrication company.
               </p>
-              <div className="mt-8 overflow-hidden rounded-[18px] border border-white/10 bg-white/[0.03]">
-                <img
-                  src="/landing/about-legacy-welder.png"
-                  alt="RMV fabrication work"
-                  className="h-[320px] w-full object-cover opacity-85"
-                />
-              </div>
             </div>
 
             <div className="relative">
@@ -339,49 +284,6 @@ export function AboutPage() {
           </div>
         </section>
 
-        <section className="bg-[#050606] px-4 py-24 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-7xl">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-2xl">
-                <p className="label-font text-[11px] font-bold uppercase tracking-[0.3em] text-[#FFD700]">
-                  How Booking Works
-                </p>
-                <h2 className="headline-font mt-4 text-4xl font-extrabold tracking-[-0.03em] text-white sm:text-5xl">
-                  From service choice to installation.
-                </h2>
-              </div>
-              <p className="max-w-xl text-sm leading-7 text-white/56">
-                The process keeps each project grounded in measurement, quotation, fabrication,
-                delivery, and installation.
-              </p>
-            </div>
-
-            <div className="mt-12 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-              {bookingSteps.map((step, index) => {
-                const Icon = step.icon;
-
-                return (
-                  <article
-                    key={step.title}
-                    className="relative rounded-[18px] border border-white/10 bg-white/[0.03] p-5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#FFD700] text-black">
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <span className="label-font text-[11px] font-black uppercase tracking-[0.18em] text-white/28">
-                        {String(index + 1).padStart(2, '0')}
-                      </span>
-                    </div>
-                    <h3 className="mt-5 text-base font-bold text-white">{step.title}</h3>
-                    <p className="mt-3 text-sm leading-6 text-white/56">{step.description}</p>
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
         <section className="px-4 py-24 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-7xl">
             <div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-center">
@@ -444,7 +346,7 @@ export function AboutPage() {
                 onClick={goToBooking}
                 className="label-font inline-flex h-14 cursor-pointer items-center justify-center gap-5 rounded-[10px] bg-black px-8 text-[12px] font-black uppercase tracking-[0.2em] text-white transition-all duration-300 hover:-translate-y-0.5 hover:bg-zinc-900 active:translate-y-0"
               >
-                Request Quote
+                Book Project Visit
                 <PackageCheck className="h-5 w-5" />
               </button>
             </div>
