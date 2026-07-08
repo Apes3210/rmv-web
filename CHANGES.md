@@ -1,4 +1,4 @@
-CHANGES — No‑Ocular submission fixes
+No‑Ocular submission fixes
 
 Summary
 - Ensure consultation reports that proceed without an ocular ("no_ocular") include project description fields required by the backend.
