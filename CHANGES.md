@@ -27,5 +27,3 @@ Notes
 
 Patch file
 - See `rmv-no-ocular-fallback.patch` in repository root.
-
-If you want, I can also create a branch and prepare a PR instruction for you to push to your fork.
